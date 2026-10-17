@@ -96,13 +96,23 @@ Every plan passes a deterministic governance gate before approval and again befo
 
 ## 6b. Self-improvement from conversations
 
-Conversations are the raw material for improving the system. A separate workflow, the **Improve** agent, reads them and proposes changes. It is not one of the operating agents and never talks to the operator.
+Conversations are the raw material for a better user experience: new features in avd-buddy, better answers, and fewer dead ends. A separate workflow, the **Improve** agent, reads them and proposes changes. It is not one of the operating agents and never talks to the operator.
 
-**Flow.** Conversation transcripts (pseudonymized as in §6) go to a private store with a 90-day retention. On a schedule, never on an incoming message, Improve reads the recent ones together with plan outcomes, gate refusals, rejections with their reasons, and failed verifications. It looks for questions the agents answered badly, plans people rejected, missing actions, and tools that kept failing. It then opens draft PRs:
+**UX signals.** Each conversation gets a small set of structured signals, stored beside the transcript, so trends can be read without rereading every conversation:
+- **Explicit:** thumbs up or down on an answer in avd-buddy, with an optional one-line reason.
+- **Sentiment:** a per-turn score for frustration or satisfaction, from a classifier run after the conversation ends, never during it.
+- **Behavior:** the operator rephrased the same question, abandoned a plan, asked for a Cloud Shell block instead, left mid-answer, or waited long for an answer.
+- **Gaps:** questions no agent could answer, and requests for actions that aren't in the catalog. These are feature requests.
+
+Improve tunes how the signals are computed too: the sentiment classifier's prompt and thresholds are files it can propose changes to, checked against labeled examples the same way the agents are.
+
+**Flow.** Conversation transcripts (pseudonymized as in §6) go to a private store with a 90-day retention. On a schedule, never on an incoming message, Improve reads the recent ones together with plan outcomes, gate refusals, rejections with their reasons, and failed verifications. It looks for questions the agents answered badly, plans people rejected, missing actions, tools that kept failing, and where the UX signals dropped. It then opens draft PRs:
 - prompt changes for a specialist;
 - new eval questions, drawn from real conversations (added, never removed);
 - new or changed actions in the catalog, each with its schema, test and verification;
-- notes on missing tools or agents, as issues.
+- avd-buddy UX changes (layout, shortcuts, suggested follow-ups), as draft PRs to `buddy/`;
+- feature requests ranked by how often the gap came up and how frustrated people were, as issues;
+- changes to the UX signals and the sentiment classifier, with their labeled examples.
 
 **What keeps it from weakening the system.** Conversation text is untrusted: an operator, a log or a tool output could carry text meant to steer Improve. So:
 - Improve can only open draft PRs. A person merges.
