@@ -1,0 +1,65 @@
+# Spend as a built-in function
+
+- **Status:** Proposed
+- **Part of:** [spec.md](spec.md) (Cost agent, §4) and [governance.md](governance.md) (Budget rule, §2.1). Builds on tenant-swarm's spend ledger (tenant-swarm `docs/spend.md`), which does the work; this page says how avd-swarm uses it.
+
+## 1. Why
+
+The sandboxes avd-swarm runs in are paid by personal and work cards. Nick's rule: an estimate before every run, evidence of what each run cost, evidence that its teardown removed everything, and a monthly statement that squares with the invoice and the card. avd-swarm makes changes, so it is where runs start and end. It should not be possible to deploy through avd-swarm without a run record, or to leave one open without being told.
+
+## 2. One ledger, not two
+
+tenant-swarm owns the scripts (`scripts/spend/`), the workflows and the `ledger` branch. avd-swarm doesn't copy them:
+
+- avd-swarm's tools import `Spend.psm1` from tenant-swarm at a **pinned commit**, the way the brain reads knowledge at a pinned commit (C6). A change to the spend logic is a tenant-swarm PR, then a pin bump here.
+- avd-swarm reads and writes the same records (`spend-run/v1`, `spend-statement/v1`). A run started from avd-buddy and one started from the GitHub app are the same kind of record, in the same ledger.
+- The records hold amounts, resource group names and hashed resource IDs, never a tenant, subscription or card detail (tenant-swarm's ID guard covers them).
+
+## 3. What it adds to avd-swarm
+
+### 3.1 Cost agent (spec §4)
+Reads the ledger and Cost Management, read-only. Questions it answers with evidence:
+- "What will this cost?" The estimate for a plan, line by line, with the per-day cost if it isn't torn down.
+- "What did yesterday's run cost?" A run's actual cost, settled or provisional, against its estimate.
+- "Is everything torn down?" The teardown check and the cost tail after the close day.
+- "Where's the month?" Month to date against the cap, the forecast, runs vs standing cost, and the statement's open items.
+
+### 3.2 Plans that cost money carry a run (governance §2.1, Budget rule)
+- `propose_change` adds a **spend block** to any plan that creates, starts or resizes resources: the run estimate (`Get-SpendRunEstimate`, from the deploy agent's sizing or the preflight's estimate), the cap decision (`Get-SpendGateDecision`), and the run ID it will open or extend.
+- The gate's Budget rule is that decision: a plan is refused when the checked cost is over the per-run cap or what's left of the monthly cap, when a line is unpriced, or when no cap is set. The rule's inputs live in `governance/policy.yml` like every other rule. avd-swarm adds no second budget formula.
+- The approve job's first step opens the run (`Start-SpendRun.ps1`) before anything is deployed; a refusal there stops the job, even if the gate passed earlier in the day.
+- The teardown plan closes it (`Stop-SpendRun.ps1`). Leftovers fail the plan's verification step, which counts toward the watchdog's "two failed verifications" trigger.
+- A plan that would start a second run in a sandbox with one open is refused: one open run per sandbox keeps attribution honest.
+
+### 3.3 Stopping spend is never blocked
+Every kill switch position, `halt-all` included, still allows Stop, Lock and teardown plans for resources inside a run. A cost spiral must be stoppable while the platform is halted. This goes into governance §2.3 as an explicit exception.
+
+### 3.4 Watchdog and observer events (governance §2.2, §2.4)
+| Signal (from the daily check) | Event | Default trigger |
+|---|---|---|
+| Month to date reached the monthly cap | `spend.cap.reached` | `halt-actions` except stopping spend (§3.3) |
+| A run past its planned hours | `spend.run.overdue` | none; avd-buddy nags |
+| Leftovers after a teardown, or charges after a run closed | `spend.teardown.failed` | `halt-actions` for new runs in that sandbox |
+| Resources appeared with no run open | `spend.stray` | none; reported |
+
+Events carry counts and amounts, never conversation text, as governance requires.
+
+### 3.5 avd-buddy
+- The plan card shows the estimate, the per-day cost if left up, and what's left of the cap, in the fixed plan layout (agent text never states the cost).
+- While a run is open, a banner says when it's due down and what it has cost so far.
+- On the 10th, a card with the monthly statement and a field for the card charge, which reruns the statement.
+
+### 3.6 Insights to the brain (spec §6c)
+Monthly counts only, in `avd-swarm-insights/v1`: runs, refused runs by reason, median actual-to-estimate ratio per run kind, teardowns with leftovers. These feed the brain's harvest so estimate allowances and caps start from real numbers in other estates.
+
+## 4. Phases
+| Phase (spec §9) | Adds |
+|---|---|
+| S1 | Cost agent reads the ledger; avd-buddy shows open runs |
+| S2 | Spend block on plans, Budget rule through the gate, the stop-spend exception, the watchdog events |
+| S3 | Deploy and Images agents size and price their own plans |
+
+## 5. Open questions
+- **CQ1** Pin tenant-swarm's module by commit (default), or publish it as a package both repos install?
+- **CQ2** Should a run that crosses a month count against the month it started in (today's rule), or be split by day?
+- **CQ3** Should `spend.cap.reached` trip `halt-agents` too, to stop token spend, or only actions?
