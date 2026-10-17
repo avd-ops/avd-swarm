@@ -94,6 +94,25 @@ Actions are a catalog in Git, each with a schema, the role it needs and its veri
 
 Every plan passes a deterministic governance gate before approval and again before it runs. Every step is sent as a signed event to external observers, which avd-swarm doesn't control. Observers can deny sensitive plans and trip a kill switch. The kill switch has four positions from `run` to `halt-all`, is enforced by a separate identity, and can be reset only by a person. Details: [governance.md](governance.md).
 
+## 6b. Self-improvement from conversations
+
+Conversations are the raw material for improving the system. A separate workflow, the **Improve** agent, reads them and proposes changes. It is not one of the operating agents and never talks to the operator.
+
+**Flow.** Conversation transcripts (pseudonymized as in §6) go to a private store with a 90-day retention. On a schedule, never on an incoming message, Improve reads the recent ones together with plan outcomes, gate refusals, rejections with their reasons, and failed verifications. It looks for questions the agents answered badly, plans people rejected, missing actions, and tools that kept failing. It then opens draft PRs:
+- prompt changes for a specialist;
+- new eval questions, drawn from real conversations (added, never removed);
+- new or changed actions in the catalog, each with its schema, test and verification;
+- notes on missing tools or agents, as issues.
+
+**What keeps it from weakening the system.** Conversation text is untrusted: an operator, a log or a tool output could carry text meant to steer Improve. So:
+- Improve can only open draft PRs. A person merges.
+- It can't change `governance/`, the observer registry, the kill switch, CI, or the write identity's roles. A PR it authored that touches them fails CI (governance §2.1).
+- A change to a prompt, an allowlist or an action passes the eval set first. The eval gate runs the base branch's cases too, so removing a case doesn't help.
+- Every PR lists the conversations and outcomes it drew on, written by the workflow rather than the model, so the reviewer can see where an idea came from.
+- The observer sees Improve's PRs as `guardrail.changed` events when they touch protected paths, but never the transcripts.
+
+The second brain's Retro and Evolve agents work the same way (brain §4.6, §4.7). When a brain is deployed, Improve's findings about the landing zone itself go to the brain as issues instead.
+
 ## 7. Cost
 
 - Static Web Apps on the Free plan and Functions on Flex Consumption scale to zero. Prompt agents in Foundry Agent Service carry no service fee of their own; tokens are the cost.
@@ -127,4 +146,5 @@ The pattern moves to tenant-swarm once avd-swarm has a record of approved, verif
 - **SQ7** Does avd-buddy live in this repo (`buddy/`) or in its own repo once it grows? Default: `buddy/` here until S2.
 - **SQ4** Should S1 start with Claude Code in GitHub Actions as the coordinator, before the Foundry setup?
 - **SQ5** A custom MCP server for tools the Azure MCP Server doesn't cover, which Claude Code and other clients could also use. It stays open, with one limit: it exposes read tools and `propose_change` or `propose_playbook_run` only, never a direct write.
+- **SQ8** Where do transcripts live (Cosmos DB, Blob), and is 90 days the right retention for what Improve needs?
 - **SQ6** Language for the tools: PowerShell to match the landing zone and the brain, or another language where an SDK or the MCP server is stronger?
