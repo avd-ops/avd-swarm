@@ -1,7 +1,7 @@
 # Spend as a built-in function
 
 - **Status:** Proposed
-- **Part of:** [spec.md](spec.md) (Cost agent, §4) and [governance.md](governance.md) (Budget rule, §2.1). Builds on tenant-swarm's spend ledger (tenant-swarm `docs/spend.md`), which does the work; this page says how avd-swarm uses it.
+- **Part of:** [spec.md](spec.md) §7a (Cost agent, §4) and [governance.md](governance.md) (Budget rule, §2.1). Builds on tenant-swarm's spend ledger (tenant-swarm `docs/spend.md`), which does the work; this page says how avd-swarm uses it.
 
 ## 1. Why
 
