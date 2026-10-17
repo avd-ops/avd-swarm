@@ -110,7 +110,7 @@ The pattern moves to tenant-swarm once avd-swarm has a record of approved, verif
 | Phase | Delivers | Exit |
 |---|---|---|
 | S0 | This spec, a red team, eval questions for read-only answers | Red team findings resolved |
-| S1 | Chat page, coordinator, and the Hosts and Cost agents, read-only | Answers cite evidence in ≥ 80% of eval questions |
+| S1 | avd-buddy, the coordinator, and the Hosts and Cost agents, read-only | Answers cite evidence in ≥ 80% of eval questions |
 | S2 | The `approve` write path with a first action catalog (drain, restart, Stop/Resume, group membership) | Ten approved, verified changes |
 | S3 | Users, Deploy and Images agents; brain playbooks when a brain is deployed | Eval gate per agent |
 | S4 | Readiness agent across the assessment and inventory repos | Eval gate |
@@ -119,7 +119,8 @@ The pattern moves to tenant-swarm once avd-swarm has a record of approved, verif
 
 - **SQ1** Can Foundry pass the signed-in operator's identity to tools (on-behalf-of), or do tools always run as the agent's identity? Reads work either way; on-behalf-of would let them honor the operator's own permissions.
 - **SQ2** Does the Azure MCP Server's Cost Management coverage answer forecast questions, or does the Cost agent need its own tool?
-- **SQ3** Teams as a second chat surface, or the web page only?
+- **SQ3** Teams as a second front end beside avd-buddy, or avd-buddy only?
+- **SQ7** Does avd-buddy live in this repo (`buddy/`) or in its own repo once it grows? Default: `buddy/` here until S2.
 - **SQ4** Should S1 start with Claude Code in GitHub Actions as the coordinator, before the Foundry setup?
 - **SQ5** A custom MCP server for tools the Azure MCP Server doesn't cover, which Claude Code and other clients could also use. It stays open, with one limit: it exposes read tools and `propose_change` or `propose_playbook_run` only, never a direct write.
 - **SQ6** Language for the tools: PowerShell to match the landing zone and the brain, or another language where an SDK or the MCP server is stronger?

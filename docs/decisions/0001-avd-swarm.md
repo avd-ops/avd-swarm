@@ -6,7 +6,7 @@
 The owner wants to run AVD estates, and eventually the whole tenant, from a chat window on any device instead of the Azure, Entra and Microsoft 365 portals. The second brain ([avd-landing-zone decision 0012](https://github.com/nickprignano/avd-landing-zone/blob/master/docs/decisions/0012-second-brain.md)) already watches a landing zone and heals it through approved playbooks, but its scope is deliberately narrow: no Graph, no deployments, no users. avd-swarm needs all of those. Details: [spec.md](../spec.md).
 
 ## Decision
-- Build **avd-swarm** in its own private repository: a coordinator with specialist agents (readiness, deploy, hosts, images, users, cost) behind a chat page on Static Web Apps with Entra sign-in.
+- Build **avd-swarm** in its own private repository: a coordinator with specialist agents (readiness, deploy, hosts, images, users, cost) with a chat front end, **avd-buddy**, on Static Web Apps with Entra sign-in.
 - It connects to the brain but doesn't depend on it. When a brain is deployed, avd-swarm reads its episodes and proposes its playbooks. Otherwise, it uses its own plan-and-approve path.
 - Agents read through allowlisted tools, including Graph for AVD-related objects. Every change is a plan a person approves in the GitHub Environment `approve`, the only place a write identity gets a token.
 - Tenant-wide administration that isn't about AVD belongs to **tenant-swarm**, which adopts this pattern once it has proven itself here.
