@@ -71,6 +71,10 @@ The counters let an observer see a runaway (an agent calling tools a thousand ti
 - `verdict(planId, allow | deny, reason)`: required for plans the policy marks `observer: required` (by default: anything touching identities, groups or more than one host). No verdict before the plan expires counts as deny.
 - `trip(position, reason)`: moves the kill switch (§2.3). An observer can trip; it can never reset.
 
+**Corroborate, don't trust (R9).** A compromised avd-swarm can sign false events, so an observer treats them as claims. It checks them against Azure's own records, the Activity Log and the Entra audit and sign-in logs for every swarm identity, which avd-swarm can't edit. The watchdog's `halt-all` triggers read only those records.
+
+**Audit trail (R12).** Every event is also written to immutable blob storage with a one-year time-based retention policy that no swarm identity can delete or shorten.
+
 **Transports.** Event Grid custom topic (default), a webhook, or both. The observer registry (`governance/observers.yml`, protected) lists each observer, its transport, the events it gets, and whether its verdicts are required.
 
 **Failing closed.** If an observer with required verdicts stops acknowledging events or heartbeats for 15 minutes, the switch moves to `halt-actions` until it is back. Reads keep working.
@@ -98,9 +102,11 @@ The counters let an observer see a runaway (an agent calling tools a thousand ti
 
 **Who can trip it:** a person (a button in avd-buddy, a Cloud Shell block, or a GitHub workflow), any registered observer, and the watchdog. **No agent can trip or reset it.** An agent can recommend a trip, and a person or an observer decides.
 
-**Who can reset it:** only a person, through `swarm-resume.yml` in the `resume` GitHub Environment, which recreates the credentials and roles and clears the flag. A reset outside that workflow trips the switch again at the previous position.
+**Who can reset it:** only a person, by running a self-contained Cloud Shell block as themselves (R6). It recreates the credentials and roles with the person's own rights and then clears the flag. No standing identity can recreate credentials, because that identity would be the best target in the system. A flag cleared while any layer is still missing trips the switch again at the previous position.
 
-**Independence:** the switch runs as its own Consumption Logic App with its own managed identity, holding exactly the roles it needs (Tag Contributor on the swarm's resource group, Managed Identity Contributor on the `approve` identity, User Access Administrator scoped to the agents' role assignments). It doesn't depend on Foundry, the agents, avd-buddy or any private endpoint. A failed trip pages the owner.
+**Drill (R13).** Once a month, in a test environment, a workflow trips each position, checks that every layer took effect, and resumes. A failed drill blocks deployments of S2 and later.
+
+**Independence:** the switch runs as its own Consumption Logic App with its own managed identity, holding custom roles that can only take capability away (R5): tag write on the swarm's resource group, `federatedIdentityCredentials/delete` on the `approve` identity, and `roleAssignments/delete` scoped to the agents' assignments. It can't create a credential or grant a role. It doesn't depend on Foundry, the agents, avd-buddy or any private endpoint. A failed trip pages the owner.
 
 ### 2.4 Watchdog rules
 
@@ -115,11 +121,12 @@ Deterministic triggers, evaluated by Azure Monitor alerts and the switch's Logic
 | Two failed verifications or rollbacks within 24 hours | `halt-actions` |
 | A required observer silent for 15 minutes | `halt-actions` (clears itself when it's back) |
 | `governance/` or the observer registry changed on `main` without the owner's review | `halt-actions` |
-| The switch flag changed outside `swarm-resume.yml` | Trips again at the previous position |
+| One operator's reads spike far above their usual rate (a stolen avd-buddy session) | `halt-agents` (R15) |
+| The switch flag cleared while a layer is still missing | Trips again at the previous position |
 
 ## 3. Relationship to the second brain
 
-When a brain is deployed alongside avd-swarm, each switch also listens to the other: a brain trip to `halt-actions` or `halt-all` moves avd-swarm to `halt-actions`, so no brain playbook can be proposed while the brain is stopped. avd-swarm tripping doesn't stop the brain's cost safeties (EX-0001, EX-0002).
+When a brain is deployed alongside avd-swarm, each switch also listens to the other: a brain trip to `halt-actions` or `halt-all` moves avd-swarm to `halt-actions`, so no brain playbook can be proposed while the brain is stopped. avd-swarm tripping doesn't stop the brain's cost safeties (EX-0001, EX-0002). Each resume clears only its own switch; while the brain is still halted, avd-swarm stays at `halt-actions` and avd-buddy says why (R16).
 
 ## 4. Open questions
 

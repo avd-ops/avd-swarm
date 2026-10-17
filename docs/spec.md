@@ -64,29 +64,32 @@ avd-swarm deploys into its own resource group (`rg-<prefix>-<env>-swarm`) and do
 |---|---|---|---|
 | **Coordinator** | Anything; routes to a specialist and merges the answers with citations | Catalogs only; calls specialists as connected agents | Nothing |
 | **Readiness** | Is this environment ready for AVD, what's in the current estate | avd-readiness-stratusphere and avd-current-state outputs | Nothing |
-| **Deploy** | What's deployed where, what a redeploy would change, preflight results | Deployment history, what-if, preflight state line, Well-Architected review | Deployments and parameter changes, as plans |
+| **Deploy** | What's deployed where, what a redeploy would change, preflight results | Deployment history, what-if, preflight state line, Well-Architected review | A PR to avd-landing-zone's parameters, which that repo's own `deploy.yml` runs. Never an `approve` action (red team R8) |
 | **Hosts** | Health, sessions, drain state, agent version, failed checks | Resource Graph, KQL (`WVDAgentHealthStatus`, `WVDErrors`, ...), brain episodes | Host actions (drain, restart agent, recycle, re-register) |
 | **Images** | Current and candidate image versions, which hosts run what | Compute Gallery, image pipeline state (decision 0013) | Promotion, as a PR (decision 0013) |
 | **Users** | Who can sign in, why a user can't, profile and FSLogix problems, licenses | Graph: AVD user groups, app group assignments, license assignments, sign-in logs; storage and FSLogix logs | Group membership and assignment changes |
 | **Cost** | Spend to date, forecast against the budget, idle hosts, auto shutdown savings | Cost Management, retail prices (decision 0010), budget state | Stop, Resume, size changes |
 
-Adding an agent is a PR with its prompt, its tool allowlist and its eval questions. Prompts and allowlists are protected paths: a PR an agent authored that touches them fails CI, as in brain §9.2. Models start on Claude Opus 5.5 with effort per agent, and move to a cheaper model only where evals hold.
+Adding an agent is a PR with its prompt, its tool allowlist and its eval questions. Prompts and allowlists are protected paths: a PR an agent authored that touches them fails CI, as in brain §9.2. The coordinator starts on a smaller, cheaper model, since it routes and merges; specialists start on Claude Opus 5.5 with effort per agent and move to a cheaper model only where evals hold. Cost per question is measured from the first eval run (red team R14).
 
 ## 5. Write path
 
 1. The operator asks for a change ("drain host 3 and restart its agent", "add Sam to the AVD users group").
 2. The specialist calls `propose_playbook_run` if a brain is deployed and a playbook fits; otherwise it calls `propose_change`.
-3. `propose_change` builds the plan without the model's help with the details: targets resolved by the tool, parameters validated against the action's schema, the expected effect, the rollback, and an expiry. The plan gets a hash.
-4. The chat shows the plan and a link to the approval. The operator approves in the GitHub Environment `approve`. Its federated credential is the only identity with write roles, so no token for a write exists until a person approves.
-5. The job re-checks the plan, applies it, verifies the result, and reports back in the chat with evidence.
+3. `propose_change` builds the plan without the model's help with the details: targets resolved by the tool, parameters validated against the action's schema, the expected effect, the rollback, and an expiry. The plan gets a hash and goes into the **plan store**. Only the `propose_change` function's own identity can write there; agents can't (R2).
+4. avd-buddy shows the plan rendered from the plan store, in a fixed layout set apart from agent text. Agent text never describes what a plan does (R4).
+5. A GitHub App limited to `actions:write` on this repo dispatches the approve workflow with **the plan ID only** (R2). Its first job, outside the environment, re-runs the gate and renders the plan into the run summary: targets, diff, blast radius, gate results, rollback (R3). avd-buddy links straight to that summary.
+6. The operator approves the second job in the GitHub Environment `approve`. Its federated credential is the only identity with write roles, so no token for a write exists until a person approves. The environment allows `main` only, the credential's subject names that environment, and the workflow files are protected paths with CODEOWNERS review (R1).
+7. The job checks the plan's hash again, applies it, verifies the result, and reports back in the chat with evidence.
 
 Actions are a catalog in Git, each with a schema, the role it needs and its verification. If no action fits, the specialist says so and offers a Cloud Shell block for the operator to run. It never improvises a write.
 
 ## 6. Identity and data
 
-- **Operator sign-in:** Static Web Apps built-in authentication with Entra ID, restricted to one group. Every plan records the operator who asked.
+- **Operator sign-in:** Static Web Apps Standard plan with a custom Entra app registration for avd-buddy: this tenant only, assignment required, one operators group, and Conditional Access requiring phishing-resistant MFA and a short session (R10, R15). Every plan records the operator who asked.
 - **Agent identities:** one per agent, read-only: Reader and Log Analytics Reader on the AVD resource groups, plus Graph read permissions only for the Users agent. Entra Agent ID where available.
-- **Write identity:** one, federated to the `approve` environment only, with roles limited to the action catalog's needs.
+- **Write identity:** one, federated to the `approve` environment only, with roles limited to the action catalog's needs. For groups: the AVD groups sit in an Entra administrative unit, and the identity holds Groups Administrator scoped to that unit, with no tenant-wide Graph write permission and never a role-assignable group (R7).
+- **What "AVD-related only" really means for reads:** Graph read permissions such as `AuditLog.Read.All` are tenant-wide. The Users agent's tool layer filters to the registered groups and users, but the identity itself could read more. On-behalf-of (SQ1) would narrow this to the operator's own rights (R7).
 - **Personal data:** user names and sign-in data reach the model only when the question needs them. Brain-sourced data stays pseudonymized as brain §9.4 requires. Where model calls are processed is a deployment setting, printed at deploy time.
 - **Untrusted text:** tool output, logs and issue text are data, never instructions. The chat shows them as quoted evidence.
 
@@ -108,7 +111,7 @@ Improve tunes how the signals are computed too: the sentiment classifier's promp
 
 **Flow.** Conversation transcripts (pseudonymized as in §6) go to a private store with a 90-day retention. On a schedule, never on an incoming message, Improve reads the recent ones together with plan outcomes, gate refusals, rejections with their reasons, and failed verifications. It looks for questions the agents answered badly, plans people rejected, missing actions, tools that kept failing, and where the UX signals dropped. It then opens draft PRs:
 - prompt changes for a specialist;
-- new eval questions, drawn from real conversations (added, never removed);
+- new eval questions, drawn from real conversations (added, never removed). Improve proposes the question; a person writes or confirms the expected answer before it enters the set (R11);
 - new or changed actions in the catalog, each with its schema, test and verification;
 - avd-buddy UX changes (layout, shortcuts, suggested follow-ups), as draft PRs to `buddy/`;
 - feature requests ranked by how often the gap came up and how frustrated people were, as issues;
@@ -140,7 +143,7 @@ The contract has to change in pairs (avd-second-brain's rule): `docs/contracts.m
 
 ## 7. Cost
 
-- Static Web Apps on the Free plan and Functions on Flex Consumption scale to zero. Prompt agents in Foundry Agent Service carry no service fee of their own; tokens are the cost.
+- Static Web Apps needs the Standard plan for the sign-in in §6, a small fixed monthly fee. Functions on Flex Consumption scale to zero. Prompt agents in Foundry Agent Service carry no service fee of their own; tokens are the cost.
 - A daily token budget and a resource-group budget cap the spend. Crossing either disables the agents until a person resets it.
 - The deploy step prices the setup from the meters (decision 0010). This spec doesn't estimate it.
 
@@ -158,7 +161,7 @@ The pattern moves to tenant-swarm once avd-swarm has a record of approved, verif
 | Phase | Delivers | Exit |
 |---|---|---|
 | S0 | This spec, a red team, eval questions for read-only answers | Red team findings resolved |
-| S1 | avd-buddy, the coordinator, and the Hosts and Cost agents, read-only | Answers cite evidence in ≥ 80% of eval questions |
+| S1 | avd-buddy, the coordinator, and the Hosts and Cost agents, read-only, with the daily token cap and the `halt-agents` switch position from day one | Answers cite evidence in ≥ 80% of eval questions |
 | S2 | The kill switch, watchdog and governance gate first, then the `approve` write path with a first action catalog (drain, restart, Stop/Resume, group membership) | Ten approved, verified changes |
 | S3 | Users, Deploy and Images agents; brain playbooks when a brain is deployed | Eval gate per agent |
 | S4 | Readiness agent across the assessment and inventory repos | Eval gate |
