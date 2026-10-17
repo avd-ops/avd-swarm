@@ -1,7 +1,7 @@
 # Spend as a built-in function
 
 - **Status:** Proposed
-- **Part of:** [spec.md](spec.md) §7a (Cost agent, §4) and [governance.md](governance.md) (Budget rule, §2.1). Builds on tenant-swarm's spend ledger (tenant-swarm `docs/spend.md`), which does the work; this page says how avd-swarm uses it.
+- **Part of:** [spec.md](spec.md) §7a (Cost agent, §4) and [governance.md](governance.md) (spend gate §2.1, stop-spend path §2.3, watchdog §2.4). Builds on tenant-swarm's spend ledger (tenant-swarm `docs/spend.md`), which does the work; this page says how avd-swarm uses it.
 
 ## 1. Why
 
@@ -27,12 +27,14 @@ Reads the ledger and Cost Management, read-only. Questions it answers with evide
 ### 3.2 Plans that cost money carry a run (governance §2.1, Budget rule)
 - `propose_change` adds a **spend block** to any plan that creates, starts or resizes resources: the run estimate (`Get-SpendRunEstimate`, from the deploy agent's sizing or the preflight's estimate), the cap decision (`Get-SpendGateDecision`), and the run ID it will open or extend.
 - The gate's Budget rule is that decision: a plan is refused when the checked cost is over the per-run cap or what's left of the monthly cap, when a line is unpriced, or when no cap is set. The rule's inputs live in `governance/policy.yml` like every other rule. avd-swarm adds no second budget formula.
-- The approve job's first step opens the run (`Start-SpendRun.ps1`) before anything is deployed; a refusal there stops the job, even if the gate passed earlier in the day.
+- The approve job's first step opens the run (`Start-SpendRun.ps1`) before anything is deployed; a refusal there stops the job, even if the gate passed earlier in the day. It then deploys with the `spend-run` tag (§3.3).
 - The teardown plan closes it (`Stop-SpendRun.ps1`). Leftovers fail the plan's verification step, which counts toward the watchdog's "two failed verifications" trigger.
 - A plan that would start a second run in a sandbox with one open is refused: one open run per sandbox keeps attribution honest.
 
 ### 3.3 Stopping spend is never blocked
-Every kill switch position, `halt-all` included, still allows Stop, Lock and teardown plans for resources inside a run. A cost spiral must be stoppable while the platform is halted. This goes into governance §2.3 as an explicit exception.
+Every kill switch position, `halt-all` included, still allows Stop, Lock and teardown plans for resources inside a run. A cost spiral must be stoppable while the platform is halted. Governance §2.3 does this with a separate **`stop-spend`** GitHub Environment and identity: its custom role can only deallocate, stop and delete resources tagged with a run ID, each plan still needs a person's approval, the kill switch never removes it, and any other write by it trips `halt-all`.
+
+That role scopes by tag, so the approve job that opens a run also tags everything it deploys with `spend-run: <run ID>` (avd-landing-zone's `tags` parameter already merges extra tags onto every resource group and resource). The ledger itself doesn't depend on the tag: teardown evidence and actual cost still come from the inventory baseline and resource groups, so resources a tag missed still show up as leftovers.
 
 ### 3.4 Watchdog and observer events (governance §2.2, §2.4)
 | Signal (from the daily check) | Event | Default trigger |
