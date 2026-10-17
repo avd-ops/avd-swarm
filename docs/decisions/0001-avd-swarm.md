@@ -12,7 +12,8 @@ The owner wants to run the landing zone, and eventually the whole tenant, from a
 - No Microsoft Graph. Tenant-wide management (Entra, Microsoft 365) belongs to **tenant-swarm**, a separate private repository, which adopts this pattern once it has proven itself here.
 
 ## Alternatives considered
-- **A custom MCP server with a confirmation token in the chat:** simpler to start, but it creates a second write path that the brain's approval, audit and kill switch don't cover, and a new runtime language (brain §4.4 rules out both).
+- **A confirmation token in the chat as the write path:** simpler to start, but it creates a second write path that the brain's approval, audit and kill switch don't cover. Rejected.
+- **A custom MCP server for tools:** not rejected. It stays open (spec SQ5) as long as it carries read tools and `propose_playbook_run` only.
 - **Building it straight into tenant-swarm:** no public, testable estate to prove it against, and Graph permissions from day one.
 - **Claude Code in GitHub Actions as the only agent:** works for Tiers 1 and 2 but has no interactive surface; kept as a fallback for phase S1 (spec SQ4).
 

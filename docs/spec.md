@@ -24,7 +24,6 @@ It is the development version of **tenant-swarm**, a private project for the who
 ### Non-goals
 - Any write path that skips the brain's plan and approval. There is no "confirm in chat" button.
 - Microsoft Graph, Entra or Microsoft 365 management. The brain deliberately holds no Graph permissions (brain red-team H8); that scope belongs to tenant-swarm.
-- A custom MCP server or a new runtime language. Tools are the brain's PowerShell tools (brain §4.4, "One language").
 - Replacing Cloud Shell blocks for operators who prefer them (lesson 0015).
 
 ## 3. Architecture
@@ -108,6 +107,7 @@ The pattern moves to tenant-swarm once avd-swarm has a record of approved, verif
 ## 10. Open questions
 
 - **SQ1** Can Foundry pass the signed-in operator's identity to tools (on-behalf-of), or do tools always run as the agent's identity? The design works either way, because tools only read; on-behalf-of would let reads honor the operator's own RBAC.
+- **SQ5** A custom MCP server: when the Azure MCP Server and the brain's PowerShell tools don't cover a question, or when the same tools should serve Claude Code and other clients as well as Foundry. It stays open as an option, under two conditions: it exposes read tools and `propose_playbook_run` only, never a direct write, and its tools get offline mocks and evals like the brain's. It departs from brain §4.4 ("no custom MCP server"), so choosing it means updating that spec too.
 - **SQ2** Does the Azure MCP Server's Cost Management coverage answer forecast questions, or does the Cost agent need its own PowerShell tool?
 - **SQ3** Teams as a second chat surface (brain Q2), or the web page only?
 - **SQ4** Should avd-swarm wait for brain Tier 3, or run S1 against Tier 1 with Claude Code in Actions as the coordinator?
