@@ -13,6 +13,8 @@ avd-swarm is an agent-based platform for managing Azure and Entra ID without the
 
 The agents read freely through allowlisted tools. They change nothing themselves: a change is always a plan that a person approves in a GitHub Environment.
 
+**Where the value is** ([prior art](prior-art.md)). Chat over Azure and read tools are becoming commodity: Azure Copilot, Azure SRE Agent, the Azure MCP Server. None of them combines per-plan approval outside the chat, no standing write credential, a deterministic gate, an external observer and a layered kill switch. That governed write path is what avd-swarm builds; for chat and reads it reuses what exists. If Azure SRE Agent adds AVD and out-of-band approval, revisit the build-or-reuse choice for the read side.
+
 **Scope compared with the second brain.** The brain watches a deployed landing zone and heals it through tested playbooks. avd-swarm is wider: it is the interface for everything an AVD operator does, including the parts the brain deliberately leaves out, like users, groups, licenses and deployments. The two connect where they overlap:
 - When a brain is deployed, avd-swarm reads its episodes and proposes its playbooks, so the brain's guardrails and audit apply to those changes.
 - Without a brain, or for changes the brain doesn't cover, avd-swarm uses its own plan-and-approve path (§5), which follows the same rule: a person approves the exact change before any identity can make it.
@@ -42,13 +44,14 @@ iPad / browser
 avd-buddy: Static Web App chat page + thin API (Functions)
    │  passes the signed-in operator's identity as a claim, never a token
    ▼
-Foundry Agent Service
-   coordinator ──► readiness · deploy · hosts · images · users · cost
+Foundry Agent Service: hosted agent running an Agent Framework workflow
+   coordinator ──► readiness · deploy · hosts · images · users · cost   (handoffs)
    │  tool calls, per-agent allowlist
    ▼
 Read tools                                     Write paths (both approved by a person)
-  Azure MCP Server: Resource Graph, KQL,         Brain deployed and a playbook fits:
-    Monitor, Advisor, Cost Management              propose_playbook_run → brain plan
+  Azure MCP Server (--read-only, namespaces       Brain deployed and a playbook fits:
+    incl. virtualdesktop, allowed_tools per agent)  propose_playbook_run → brain plan
+  ARM MCP server cost read tools (forecast_costs)
   Graph (read, AVD-related objects only)           → brain approval → brain executor
   avd-landing-zone scripts: preflight state      Otherwise:
     line, -WhatIf, Well-Architected review         propose_change → avd-swarm plan
@@ -58,11 +61,16 @@ Read tools                                     Write paths (both approved by a p
 
 avd-swarm deploys into its own resource group (`rg-<prefix>-<env>-swarm`) and doesn't require any brain tier. When a brain is present, it reuses the brain's Foundry project if one exists.
 
+- **Multi-agent:** Foundry's GA Agent Service has no connected agents, and portal workflows retire on 2026-12-01. The coordinator and specialists are one Agent Framework workflow (handoffs) deployed as a hosted agent that scales to zero.
+- **Read tools:** the Azure MCP Server, hosted from Microsoft's Container Apps template with a managed identity, run with `--read-only`, an explicit namespace list, and `allowed_tools` per agent. Its `virtualdesktop` namespace covers host pools, session hosts and user sessions. A custom MCP server (SQ5) only fills what that leaves out. Cost forecasts come from the ARM MCP server's `forecast_costs`, with only its read tools allowed, since that toolset can also create budgets and deploy.
+- **Foundry's own tool approval** (`require_approval`, MCP approval requests) answers inside the conversation, so it is never the write approval. At most it is an extra check in front of `propose_change`.
+- **Foundry guardrails and tracing:** indirect prompt injection and task adherence checks on tool calls and responses are on, and traces go to Application Insights. They feed the observer's security events.
+
 ## 4. Agents
 
 | Agent | Answers | Reads | Proposes |
 |---|---|---|---|
-| **Coordinator** | Anything; routes to a specialist and merges the answers with citations | Catalogs only; calls specialists as connected agents | Nothing |
+| **Coordinator** | Anything; routes to a specialist and merges the answers with citations | Catalogs only; hands off to specialists in the workflow | Nothing |
 | **Readiness** | Is this environment ready for AVD, what's in the current estate | avd-readiness-stratusphere and avd-current-state outputs | Nothing |
 | **Deploy** | What's deployed where, what a redeploy would change, preflight results | Deployment history, what-if, preflight state line, Well-Architected review | A PR to avd-landing-zone's parameters, which that repo's own `deploy.yml` runs. Never an `approve` action (red team R8) |
 | **Hosts** | Health, sessions, drain state, agent version, failed checks | Resource Graph, KQL (`WVDAgentHealthStatus`, `WVDErrors`, ...), brain episodes | Host actions (drain, restart agent, recycle, re-register) |
@@ -87,7 +95,8 @@ Actions are a catalog in Git, each with a schema, the role it needs and its veri
 ## 6. Identity and data
 
 - **Operator sign-in:** Static Web Apps Standard plan with a custom Entra app registration for avd-buddy: this tenant only, assignment required, one operators group, and Conditional Access requiring phishing-resistant MFA and a short session (R10, R15). Every plan records the operator who asked.
-- **Agent identities:** one per agent, read-only: Reader and Log Analytics Reader on the AVD resource groups, plus Graph read permissions only for the Users agent. Entra Agent ID where available.
+- **Agent identities:** one per agent, read-only: Reader and Log Analytics Reader on the AVD resource groups, plus Graph read permissions only for the Users agent. **Entra Agent ID is required** (it's GA), with Conditional Access for agent identities, including blocking high-risk agents. A Conditional Access block on the agent identities is also a kill switch layer at `halt-agents` (governance §2.3).
+- **Model hosting:** Claude in Foundry is in preview and offered in East US 2 and Sweden Central. Confirm in the S1 spike that the chosen Claude model runs in a hosted agent in the chosen region and billing type. If not, the workflow calls the Anthropic API directly; the agent definitions keep the provider a setting.
 - **Write identity:** one, federated to the `approve` environment only, with roles limited to the action catalog's needs. For groups: the AVD groups sit in an Entra administrative unit, and the identity holds Groups Administrator scoped to that unit, with no tenant-wide Graph write permission and never a role-assignable group (R7).
 - **What "AVD-related only" really means for reads:** Graph read permissions such as `AuditLog.Read.All` are tenant-wide. The Users agent's tool layer filters to the registered groups and users, but the identity itself could read more. On-behalf-of (SQ1) would narrow this to the operator's own rights (R7).
 - **Personal data:** user names and sign-in data reach the model only when the question needs them. Brain-sourced data stays pseudonymized as brain §9.4 requires. Where model calls are processed is a deployment setting, printed at deploy time.
@@ -143,7 +152,7 @@ The contract has to change in pairs (avd-second-brain's rule): `docs/contracts.m
 
 ## 7. Cost
 
-- Static Web Apps needs the Standard plan for the sign-in in §6, a small fixed monthly fee. Functions on Flex Consumption scale to zero. Prompt agents in Foundry Agent Service carry no service fee of their own; tokens are the cost.
+- Static Web Apps needs the Standard plan for the sign-in in §6, a small fixed monthly fee. Functions on Flex Consumption scale to zero. A hosted agent is billed for its container compute while it runs, and scales to zero; tokens are the main cost.
 - A daily token budget and a resource-group budget cap the spend. Crossing either disables the agents until a person resets it.
 - The deploy step prices the setup from the meters (decision 0010). This spec doesn't estimate it.
 
@@ -171,6 +180,7 @@ The pattern moves to tenant-swarm once avd-swarm has a record of approved, verif
 | Phase | Delivers | Exit |
 |---|---|---|
 | S0 | This spec, a red team, eval questions for read-only answers | Red team findings resolved |
+| S1a | Spike: Claude in a Foundry hosted agent in the chosen region, an Agent Framework handoff workflow, the Azure MCP Server read-only with `virtualdesktop`, Entra Agent ID. A throwaway resource group, torn down at the end with cost evidence | Each item confirmed or replaced, with the cost of the spike |
 | S1 | avd-buddy, the coordinator, and the Hosts and Cost agents, read-only, with the daily token cap and the `halt-agents` switch position from day one | Answers cite evidence in ≥ 80% of eval questions |
 | S2 | The kill switch, watchdog and governance gate first, then the `approve` write path with a first action catalog (drain, restart, Stop/Resume, group membership) | Ten approved, verified changes |
 | S3 | Users, Deploy and Images agents; brain playbooks when a brain is deployed | Eval gate per agent |
@@ -178,8 +188,8 @@ The pattern moves to tenant-swarm once avd-swarm has a record of approved, verif
 
 ## 10. Open questions
 
-- **SQ1** Can Foundry pass the signed-in operator's identity to tools (on-behalf-of), or do tools always run as the agent's identity? Reads work either way; on-behalf-of would let them honor the operator's own permissions.
-- **SQ2** Does the Azure MCP Server's Cost Management coverage answer forecast questions, or does the Cost agent need its own tool?
+- **SQ1** ~~Can Foundry pass the operator's identity to tools?~~ **Answered:** yes, through user token passthrough, but only if avd-buddy forwards the operator's token, which §3 currently rules out. Default for S1: tools read as the agent's identity. Revisit if R7's tenant-wide Graph reads need narrowing.
+- **SQ2** ~~Cost forecasts?~~ **Answered:** the ARM MCP server's `forecast_costs` (preview), read tools only.
 - **SQ3** Teams as a second front end beside avd-buddy, or avd-buddy only?
 - **SQ7** Does avd-buddy live in this repo (`buddy/`) or in its own repo once it grows? Default: `buddy/` here until S2.
 - **SQ4** Should S1 start with Claude Code in GitHub Actions as the coordinator, before the Foundry setup?

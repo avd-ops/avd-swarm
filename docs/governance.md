@@ -40,6 +40,8 @@ The observer watches the change workflow and the security signals for both. It d
 
 Every plan passes the gate before it is shown for approval, and again in the job before it runs. The gate is deterministic code with the policy in Git (`governance/policy.yml`, a protected path). No model is involved.
 
+Write the policy in Rego or Cedar and evaluate it through Microsoft's Agent Governance Toolkit (MIT), so the same policy refuses early inside the agents and decides with authority in the job. The toolkit's own kill switch runs inside the agent process, so it doesn't replace §2.3. Borrow Azure SRE Agent's allow, ask and deny rule format.
+
 | Check | Example rule |
 |---|---|
 | Action allowlist | Only actions in the catalog, at the level the catalog allows |
@@ -86,6 +88,8 @@ The counters let an observer see a runaway (an agent calling tools a thousand ti
 3. A **person's channel**: events to email, Teams or a phone notification, with trip links.
 4. A **third-party monitor or SIEM** (Sentinel, a SOAR playbook) that can call `trip`.
 
+**Rejected:** Copilot Studio's external security webhook, the nearest shipped equivalent. It sends the chat history and fails open after one second, the opposite of both choices here.
+
 ### 2.3 Kill switch
 
 | Position | Effect | Reads | Agents | Writes |
@@ -99,7 +103,8 @@ The counters let an observer see a runaway (an agent calling tools a thousand ti
 1. **Flag:** a tag on the swarm's resource group, read by the gate, the agents' tool layer and every job before each step.
 2. **Credentials:** at `halt-actions` and above, the federated credential of the `approve` identity is deleted, so Azure issues no write token whatever the code does.
 3. **Roles:** at `halt-agents` and above, the agents' role assignments are removed and the Foundry agents disabled.
-4. **Front end:** at `halt-all`, avd-buddy's API is stopped.
+4. **Conditional Access:** at `halt-agents` and above, a policy blocks the agents' Entra Agent IDs from getting tokens at all. Turning that policy on needs a permission that can edit any Conditional Access policy, so the switch's Logic App never holds it (R5): this layer is added by the person's Cloud Shell trip block, and by the watchdog only through an alert to the person.
+5. **Front end:** at `halt-all`, avd-buddy's API is stopped.
 
 **Who can trip it:** a person (a button in avd-buddy, a Cloud Shell block, or a GitHub workflow), any registered observer, and the watchdog. **No agent can trip or reset it.** An agent can recommend a trip, and a person or an observer decides.
 
