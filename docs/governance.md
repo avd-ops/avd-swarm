@@ -49,7 +49,7 @@ Write the policy in Rego or Cedar and evaluate it through Microsoft's Agent Gove
 | Blast radius | At most one host per pool at a time; at most N users per group change |
 | Rate | At most N plans per hour and N writes per day, per action and overall |
 | Time windows | No host actions in business hours unless the plan says why |
-| Budget | Refuse plans with no cost estimate, and plans whose estimate crosses the remaining budget. Full rules in `spend.md` (spec §7a) |
+| Budget | Refuse a plan whose spend block fails the spend gate ([spend.md](spend.md) §3.2): over the per-run cap, over the remaining monthly cap, any unpriced line, or no cap set |
 | Switch position | Refuse everything the current position forbids (§2.3) |
 | Observer verdict | When the policy requires it, wait for the observer to allow the plan (§2.2) |
 
@@ -106,6 +106,8 @@ The counters let an observer see a runaway (an agent calling tools a thousand ti
 4. **Conditional Access:** at `halt-agents` and above, a policy blocks the agents' Entra Agent IDs from getting tokens at all. Turning that policy on needs a permission that can edit any Conditional Access policy, so the switch's Logic App never holds it (R5): this layer is added by the person's Cloud Shell trip block, and by the watchdog only through an alert to the person.
 5. **Front end:** at `halt-all`, avd-buddy's API is stopped.
 
+**Stopping spend is never blocked** ([spend.md](spend.md) §3.3). Every position, `halt-all` included, still allows Stop, Lock and teardown plans for resources inside a run, still approved by a person. Because `halt-actions` and above delete the `approve` credential, those plans run through a separate `stop-spend` environment and identity. Its custom role can only deallocate, stop and delete, and only resources tagged with a run ID. The switch never removes it, and the watchdog trips `halt-all` if it writes anything else.
+
 **Who can trip it:** a person (a button in avd-buddy, a Cloud Shell block, or a GitHub workflow), any registered observer, and the watchdog. **No agent can trip or reset it.** An agent can recommend a trip, and a person or an observer decides.
 
 **Who can reset it:** only a person, by running a self-contained Cloud Shell block as themselves (R6). It recreates the credentials and roles with the person's own rights and then clears the flag. No standing identity can recreate credentials, because that identity would be the best target in the system. A flag cleared while any layer is still missing trips the switch again at the previous position.
@@ -127,6 +129,8 @@ Deterministic triggers, evaluated by Azure Monitor alerts and the switch's Logic
 | Two failed verifications or rollbacks within 24 hours | `halt-actions` |
 | A required observer silent for 15 minutes | `halt-actions` (clears itself when it's back) |
 | `governance/` or the observer registry changed on `main` without the owner's review | `halt-actions` |
+| `spend.cap.reached`: month to date reached the monthly cap | `halt-actions`, except plans that stop spend |
+| `spend.teardown.failed`: a run's teardown didn't finish | `halt-actions` for new runs in that sandbox |
 | One operator's reads spike far above their usual rate (a stolen avd-buddy session) | `halt-agents` (R15) |
 | The switch flag cleared while a layer is still missing | Trips again at the previous position |
 

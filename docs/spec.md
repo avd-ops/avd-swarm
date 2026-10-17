@@ -76,7 +76,7 @@ avd-swarm deploys into its own resource group (`rg-<prefix>-<env>-swarm`) and do
 | **Hosts** | Health, sessions, drain state, agent version, failed checks | Resource Graph, KQL (`WVDAgentHealthStatus`, `WVDErrors`, ...), brain episodes | Host actions (drain, restart agent, recycle, re-register) |
 | **Images** | Current and candidate image versions, which hosts run what | Compute Gallery, image pipeline state (decision 0013) | Promotion, as a PR (decision 0013) |
 | **Users** | Who can sign in, why a user can't, profile and FSLogix problems, licenses | Graph: AVD user groups, app group assignments, license assignments, sign-in logs; storage and FSLogix logs | Group membership and assignment changes |
-| **Cost** | Spend to date, forecast against the budget, idle hosts, auto shutdown savings | Cost Management, retail prices (decision 0010), budget state | Stop, Resume, size changes |
+| **Cost** | Spend to date, forecast against the budget, idle hosts, auto shutdown savings, what each run cost and whether its teardown finished | Cost Management, retail prices (decision 0010), budget state, and tenant-swarm's spend ledger ([spend.md](spend.md)) | Stop, Resume, size changes |
 
 Adding an agent is a PR with its prompt, its tool allowlist and its eval questions. Prompts and allowlists are protected paths: a PR an agent authored that touches them fails CI, as in brain §9.2. The coordinator starts on a smaller, cheaper model, since it routes and merges; specialists start on Claude Opus 5.5 with effort per agent and move to a cheaper model only where evals hold. Cost per question is measured from the first eval run (red team R14).
 
@@ -164,7 +164,7 @@ The sandboxes are billed to personal and work cards, so spend control is a platf
 - evidence that teardown finished and nothing is left billing;
 - a monthly reconciliation of the books.
 
-The design lives in `docs/spend.md`, written by the "Sandbox spend guardrails" thread. Until it lands, the governance budget check refuses any plan without a cost estimate.
+The design is in [spend.md](spend.md), on top of tenant-swarm's spend ledger. Until it is merged, the governance budget check refuses any plan without a cost estimate.
 
 ## 8. Relationship to tenant-swarm
 
@@ -180,9 +180,9 @@ The pattern moves to tenant-swarm once avd-swarm has a record of approved, verif
 | Phase | Delivers | Exit |
 |---|---|---|
 | S0 | This spec, a red team, eval questions for read-only answers | Red team findings resolved |
-| S1a | Spike: Claude in a Foundry hosted agent in the chosen region, an Agent Framework handoff workflow, the Azure MCP Server read-only with `virtualdesktop`, Entra Agent ID. A throwaway resource group, torn down at the end with cost evidence | Each item confirmed or replaced, with the cost of the spike |
-| S1 | avd-buddy, the coordinator, and the Hosts and Cost agents, read-only, with the daily token cap and the `halt-agents` switch position from day one | Answers cite evidence in ≥ 80% of eval questions |
-| S2 | The kill switch, watchdog and governance gate first, then the `approve` write path with a first action catalog (drain, restart, Stop/Resume, group membership) | Ten approved, verified changes |
+| S1a | Spike: Claude in a Foundry hosted agent in the chosen region, an Agent Framework handoff workflow, the Azure MCP Server read-only with `virtualdesktop`, Entra Agent ID. A throwaway resource group, estimated beforehand in the [spend.md](spend.md) format and torn down at the end with cost and teardown evidence | Each item confirmed or replaced, with the cost of the spike |
+| S1 | avd-buddy, the coordinator, and the Hosts and Cost agents, read-only, with the daily token cap and the `halt-agents` switch position from day one, plus the spend pieces in [spend.md](spend.md) §4 | Answers cite evidence in ≥ 80% of eval questions |
+| S2 | The kill switch, watchdog, governance gate and spend gate ([spend.md](spend.md) §4) first, then the `approve` write path with a first action catalog (drain, restart, Stop/Resume, group membership) | Ten approved, verified changes |
 | S3 | Users, Deploy and Images agents; brain playbooks when a brain is deployed | Eval gate per agent |
 | S4 | Readiness agent across the assessment and inventory repos | Eval gate |
 
