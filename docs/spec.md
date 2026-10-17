@@ -1,4 +1,4 @@
-# Spec: avd-swarm, a chat front end for the whole AVD estate
+# Spec: avd-swarm, an agent-based Azure and Entra self-management platform, with avd-buddy as its chat front end
 
 - **Status:** Proposed ([decision 0001](decisions/0001-avd-swarm.md))
 - **Visibility:** private for now. It may go public later, so it follows avd-landing-zone's rules: no IDs, no secrets, American English.
@@ -7,7 +7,9 @@
 
 ## 1. Summary
 
-avd-swarm lets an operator run an AVD estate by talking to it, from any browser including an iPad, instead of opening the Azure, Entra or Microsoft 365 portals. A coordinator agent answers questions and hands work to specialist agents covering the whole AVD lifecycle: readiness, deployment, hosts, images, users and access, and cost.
+avd-swarm is an agent-based platform for managing Azure and Entra ID without the portals, starting with AVD. A coordinator agent answers questions and hands work to specialist agents covering the whole AVD lifecycle: readiness, deployment, hosts, images, users and access, and cost.
+
+**avd-buddy** is its chat front end (not built yet): the page an operator talks to from any browser, iPad included. avd-buddy holds no logic of its own. It signs the operator in, relays the conversation to the coordinator, and shows answers, plans and approval links. Other front ends, such as Teams or Claude Code through MCP, can talk to the same agents.
 
 The agents read freely through allowlisted tools. They change nothing themselves: a change is always a plan that a person approves in a GitHub Environment.
 
@@ -37,7 +39,7 @@ It is also the development version of **tenant-swarm**, a private project for th
 iPad / browser
    │  Entra sign-in (Static Web Apps built-in auth, one allowed group)
    ▼
-Static Web App: chat page + thin API (Functions)
+avd-buddy: Static Web App chat page + thin API (Functions)
    │  passes the signed-in operator's identity as a claim, never a token
    ▼
 Foundry Agent Service
