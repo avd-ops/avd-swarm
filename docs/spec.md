@@ -147,6 +147,16 @@ The contract has to change in pairs (avd-second-brain's rule): `docs/contracts.m
 - A daily token budget and a resource-group budget cap the spend. Crossing either disables the agents until a person resets it.
 - The deploy step prices the setup from the meters (decision 0010). This spec doesn't estimate it.
 
+## 7a. Spend control (placeholder)
+
+The sandboxes are billed to personal and work cards, so spend control is a platform function, not a setting. avd-swarm must give:
+- a cost estimate before every run, shown in the plan and checked by the governance gate;
+- evidence of what each run actually cost;
+- evidence that teardown finished and nothing is left billing;
+- a monthly reconciliation of the books.
+
+The design lives in `docs/spend.md`, written by the "Sandbox spend guardrails" thread. Until it lands, the governance budget check refuses any plan without a cost estimate.
+
 ## 8. Relationship to tenant-swarm
 
 | | avd-swarm (this repo) | tenant-swarm |

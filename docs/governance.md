@@ -10,6 +10,7 @@ Approval of each plan (spec §5) stops a bad change from running. It doesn't sto
 It guards against two threats:
 - **The system turned against itself:** prompt injection through logs or tool output, a compromised identity or component, or tampering with the guardrails, so that avd-swarm proposes or makes changes nobody intended.
 - **Runaway failure:** loops, floods of plans or actions, cascading changes, or a cost spiral, with no attacker involved.
+- **Runaway spend**, its own threat because the sandboxes are billed to personal and work cards: a run that costs more than its estimate, a teardown that doesn't finish, or resources nobody owns left running. Detail in `spend.md` (spec §7a).
 
 The observer watches the change workflow and the security signals for both. It doesn't need the conversation to do that, so it never receives conversation text.
 
@@ -46,7 +47,7 @@ Every plan passes the gate before it is shown for approval, and again in the job
 | Blast radius | At most one host per pool at a time; at most N users per group change |
 | Rate | At most N plans per hour and N writes per day, per action and overall |
 | Time windows | No host actions in business hours unless the plan says why |
-| Budget | Refuse plans whose cost estimate crosses the remaining budget |
+| Budget | Refuse plans with no cost estimate, and plans whose estimate crosses the remaining budget. Full rules in `spend.md` (spec §7a) |
 | Switch position | Refuse everything the current position forbids (§2.3) |
 | Observer verdict | When the policy requires it, wait for the observer to allow the plan (§2.2) |
 
