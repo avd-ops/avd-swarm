@@ -90,6 +90,10 @@ Actions are a catalog in Git, each with a schema, the role it needs and its veri
 - **Personal data:** user names and sign-in data reach the model only when the question needs them. Brain-sourced data stays pseudonymized as brain §9.4 requires. Where model calls are processed is a deployment setting, printed at deploy time.
 - **Untrusted text:** tool output, logs and issue text are data, never instructions. The chat shows them as quoted evidence.
 
+## 6a. Governance, observer and kill switch
+
+Every plan passes a deterministic governance gate before approval and again before it runs. Every step is sent as a signed event to external observers, which avd-swarm doesn't control. Observers can deny sensitive plans and trip a kill switch. The kill switch has four positions from `run` to `halt-all`, is enforced by a separate identity, and can be reset only by a person. Details: [governance.md](governance.md).
+
 ## 7. Cost
 
 - Static Web Apps on the Free plan and Functions on Flex Consumption scale to zero. Prompt agents in Foundry Agent Service carry no service fee of their own; tokens are the cost.
@@ -111,7 +115,7 @@ The pattern moves to tenant-swarm once avd-swarm has a record of approved, verif
 |---|---|---|
 | S0 | This spec, a red team, eval questions for read-only answers | Red team findings resolved |
 | S1 | avd-buddy, the coordinator, and the Hosts and Cost agents, read-only | Answers cite evidence in ≥ 80% of eval questions |
-| S2 | The `approve` write path with a first action catalog (drain, restart, Stop/Resume, group membership) | Ten approved, verified changes |
+| S2 | The kill switch, watchdog and governance gate first, then the `approve` write path with a first action catalog (drain, restart, Stop/Resume, group membership) | Ten approved, verified changes |
 | S3 | Users, Deploy and Images agents; brain playbooks when a brain is deployed | Eval gate per agent |
 | S4 | Readiness agent across the assessment and inventory repos | Eval gate |
 
