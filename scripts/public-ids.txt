@@ -1,0 +1,3 @@
+# GUIDs allowed in the repo: Microsoft's public, well-known IDs only. One per line, with a comment.
+# 00000000-0000-0000-0000-000000000000  placeholder used in examples
+00000000-0000-0000-0000-000000000000
