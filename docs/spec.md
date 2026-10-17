@@ -123,6 +123,20 @@ Improve tunes how the signals are computed too: the sentiment classifier's promp
 
 The second brain's Retro and Evolve agents work the same way (brain §4.6, §4.7). When a brain is deployed, Improve's findings about the landing zone itself go to the brain as issues instead.
 
+### 6c. What feeds the second brain
+
+What avd-swarm learns also feeds [avd-second-brain](https://github.com/nickprignano/avd-second-brain), so the factory, the landing zone and future estates benefit. The brain's rule holds: only generalized knowledge enters `knowledge/`, only by a PR a person merges, and never transcripts or tenant data.
+
+| Flow | What goes | Form | Brain side |
+|---|---|---|---|
+| **Insights** | Monthly aggregates from the Improve workflow: question themes per area, unanswered and badly answered topics, missing actions and tools, action outcomes (verified, failed, rolled back, rejected with the reason's category), UX signal averages | `avd-swarm-insights/v1`: counts and topics from a fixed vocabulary, with no free-text field and no field for a name, ID or resource | Proposed contract **C8**, read by the `harvest` skill into rules, runbooks and catalog entries by PR |
+| **Lessons and decisions** | Lessons from real runs and this repo's decisions | Markdown in `docs/` | Searched in place through C7 (needs read access to this private repo) |
+| **Back the other way** | Rules, runbooks and the app catalog, cited in answers | Knowledge files at a pinned commit | C6, as the landing zone does |
+
+Examples of what an insight can become: a runbook for a question operators keep asking, a rule change when a sizing answer keeps getting rejected, a catalog note when an app keeps coming up in profile problems.
+
+The contract has to change in pairs (avd-second-brain's rule): `docs/contracts.md`, `contracts/schemas/swarm-insights.schema.json` and a test in `tests/Connectors.Tests.ps1` land together in avd-second-brain, and Improve's exporter here follows.
+
 ## 7. Cost
 
 - Static Web Apps on the Free plan and Functions on Flex Consumption scale to zero. Prompt agents in Foundry Agent Service carry no service fee of their own; tokens are the cost.
@@ -157,4 +171,5 @@ The pattern moves to tenant-swarm once avd-swarm has a record of approved, verif
 - **SQ4** Should S1 start with Claude Code in GitHub Actions as the coordinator, before the Foundry setup?
 - **SQ5** A custom MCP server for tools the Azure MCP Server doesn't cover, which Claude Code and other clients could also use. It stays open, with one limit: it exposes read tools and `propose_change` or `propose_playbook_run` only, never a direct write.
 - **SQ8** Where do transcripts live (Cosmos DB, Blob), and is 90 days the right retention for what Improve needs?
+- **SQ9** The topic vocabulary for C8: start from the agents' areas and the brain's check categories, or derive it from the first months of transcripts?
 - **SQ6** Language for the tools: PowerShell to match the landing zone and the brain, or another language where an SDK or the MCP server is stronger?
