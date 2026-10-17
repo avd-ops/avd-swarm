@@ -7,7 +7,7 @@ Approval of each plan (decision 0001) stops a bad change. It doesn't catch the p
 
 ## Decision
 - **Governance gate:** deterministic checks on every plan (allowlist, scope, blast radius, rate, time window, budget, switch position, observer verdict), with the policy in Git as a protected path. No model decides.
-- **External observer hook:** every step is sent as a signed event to registered observers outside avd-swarm's trust boundary. Observers can deny plans that require their verdict, and trip the kill switch. They can't reset it. A silent required observer moves the switch to `halt-actions`.
+- **External observer hook:** change-workflow and security events, never conversation text, are sent signed to registered observers outside avd-swarm's trust boundary. They watch for the system being turned against itself and for runaway failure. Observers can deny plans that require their verdict, and trip the kill switch. They can't reset it. A silent required observer moves the switch to `halt-actions`.
 - **Kill switch:** four positions, from `run` to `halt-all`, enforced in layers (flag, deleted federated credential, removed roles, stopped front end) by a separate Logic App with its own identity. People, observers and the watchdog can trip it. Only a person can reset it, through one workflow.
 
 ## Alternatives considered

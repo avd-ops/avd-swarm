@@ -7,6 +7,12 @@
 
 Approval of each plan (spec §5) stops a bad change from running. It doesn't stop the platform itself from misbehaving: agents looping and burning tokens, a write identity used outside an approved plan, a flood of plans that wears the approver down, or a compromised component. The failsafe mechanism catches those, from outside the part that's failing, and fails closed.
 
+It guards against two threats:
+- **The system turned against itself:** prompt injection through logs or tool output, a compromised identity or component, or tampering with the guardrails, so that avd-swarm proposes or makes changes nobody intended.
+- **Runaway failure:** loops, floods of plans or actions, cascading changes, or a cost spiral, with no attacker involved.
+
+The observer watches the change workflow and the security signals for both. It doesn't need the conversation to do that, so it never receives conversation text.
+
 ## 2. Three parts
 
 ```
@@ -50,11 +56,16 @@ A refusal tells the operator which rule refused and why. Changing a rule is a PR
 
 An observer is any system outside avd-swarm's trust boundary that watches what the platform does and can stop it. avd-swarm doesn't run it, can't change its configuration, and can't silence it.
 
-**What avd-swarm sends.** Every step goes out as a signed event (CloudEvents, JSON) to each registered observer, before the next step starts:
-- `conversation.turn`: operator, agent, tools called, token counts. No message text unless the observer is set to receive it.
-- `plan.proposed`, `plan.gated` (with each rule's result), `plan.approved`, `plan.rejected`, `plan.expired`
-- `action.started`, `action.verified`, `action.failed`, `action.rolled-back`
-- `switch.changed`, `heartbeat` (every 5 minutes)
+**What avd-swarm sends.** Change-workflow and security events only, each signed (CloudEvents, JSON), sent before the next step starts. **No conversation text, no prompts, no model output**, so a prompt injection can't reach the observer either.
+
+| Group | Events | What they carry |
+|---|---|---|
+| Change workflow | `plan.proposed`, `plan.gated` (each rule's result), `plan.approved`, `plan.rejected`, `plan.expired`, `action.started`, `action.verified`, `action.failed`, `action.rolled-back` | Plan ID and hash, action, targets as resource IDs, parameters, who approved, timings, outcome |
+| Security | `identity.token-issued` (write identity), `write.observed` (any write by a swarm identity, from the Activity Log), `role.changed`, `credential.changed`, `guardrail.changed` (`governance/`, prompts, allowlists, the action catalog), `gate.refused` | Identity, scope, the matching plan ID or "none" |
+| Activity counters | `agents.activity` every 5 minutes | Tool calls, plans proposed and token use per agent, as counts only |
+| Liveness | `switch.changed`, `heartbeat` (every 5 minutes) | Switch position, component health |
+
+The counters let an observer see a runaway (an agent calling tools a thousand times an hour) without seeing what it was asked.
 
 **What an observer can do back.** Two calls, both authenticated with the observer's own identity:
 - `verdict(planId, allow | deny, reason)`: required for plans the policy marks `observer: required` (by default: anything touching identities, groups or more than one host). No verdict before the plan expires counts as deny.
@@ -66,7 +77,7 @@ An observer is any system outside avd-swarm's trust boundary that watches what t
 
 **Possible observers**, in the order worth building:
 1. The **watchdog** (§2.4), the minimum and always on.
-2. A **second-opinion model** on a different provider or account from the agents, reviewing each plan against the conversation that produced it. It holds no tools, only `verdict` and `trip`.
+2. A **second-opinion model** on a different provider or account from the agents, reviewing each structured plan against the policy and recent plans. It never sees the conversation, so text that steered the agents can't steer it. It holds no tools, only `verdict` and `trip`.
 3. A **person's channel**: events to email, Teams or a phone notification, with trip links.
 4. A **third-party monitor or SIEM** (Sentinel, a SOAR playbook) that can call `trip`.
 
@@ -112,6 +123,7 @@ When a brain is deployed alongside avd-swarm, each switch also listens to the ot
 
 ## 4. Open questions
 
-- **GQ1** Which events may carry conversation text to an observer, and is the second-opinion observer allowed to see user names?
+- ~~**GQ1** Which events may carry conversation text?~~ **Decided 2026-10-17:** none. Observers get change-workflow and security events only.
+- **GQ4** Do plans that touch users carry user principal names to the observer, or pseudonyms?
 - **GQ2** Is a 15-minute observer silence right for a personally paid tenant where nights are quiet?
 - **GQ3** Should tenant-swarm share one kill switch with avd-swarm, or have its own?
