@@ -1,24 +1,22 @@
-# 0001. Operate the landing zone through chat agents that can only read and propose brain plans
+# 0001. Operate the AVD estate through chat agents that read freely and change nothing without a person's approval
 
 - **Status:** Proposed
 
 ## Context
-The owner wants to run the landing zone, and eventually the whole tenant, from a chat window on any device instead of the Azure portal. The operations brain ([avd-landing-zone decision 0012](https://github.com/nickprignano/avd-landing-zone/blob/master/docs/decisions/0012-second-brain.md)) already defines agents in Foundry Agent Service, read-only tools in PowerShell, and one write path: a plan a person approves in a GitHub Environment. Its Concierge agent answers operator questions but has no front end. Details: [spec.md](../spec.md).
+The owner wants to run AVD estates, and eventually the whole tenant, from a chat window on any device instead of the Azure, Entra and Microsoft 365 portals. The second brain ([avd-landing-zone decision 0012](https://github.com/nickprignano/avd-landing-zone/blob/master/docs/decisions/0012-second-brain.md)) already watches a landing zone and heals it through approved playbooks, but its scope is deliberately narrow: no Graph, no deployments, no users. avd-swarm needs all of those. Details: [spec.md](../spec.md).
 
 ## Decision
-- Build **avd-swarm**, in its own private repository, as the brain's Concierge grown into a coordinator with specialist agents (cost, hosts, images, access), behind a chat page on Static Web Apps with Entra sign-in.
-- Opt-in through `AVD_SWARM=true`, which requires brain Tier 3 and reuses its Functions app, Foundry project and identities.
-- Agents read through the brain's allowlisted tools (Azure MCP Server read operations and the AVD-LZ PowerShell Functions). They change Azure only through `propose_playbook_run`, which a person approves in a GitHub Environment.
-- No Microsoft Graph. Tenant-wide management (Entra, Microsoft 365) belongs to **tenant-swarm**, a separate private repository, which adopts this pattern once it has proven itself here.
+- Build **avd-swarm** in its own private repository: a coordinator with specialist agents (readiness, deploy, hosts, images, users, cost) behind a chat page on Static Web Apps with Entra sign-in.
+- It connects to the brain but doesn't depend on it. When a brain is deployed, avd-swarm reads its episodes and proposes its playbooks. Otherwise, it uses its own plan-and-approve path.
+- Agents read through allowlisted tools, including Graph for AVD-related objects. Every change is a plan a person approves in the GitHub Environment `approve`, the only place a write identity gets a token.
+- Tenant-wide administration that isn't about AVD belongs to **tenant-swarm**, which adopts this pattern once it has proven itself here.
 
 ## Alternatives considered
-- **A confirmation token in the chat as the write path:** simpler to start, but it creates a second write path that the brain's approval, audit and kill switch don't cover. Rejected.
-- **A custom MCP server for tools:** not rejected. It stays open (spec SQ5) as long as it carries read tools and `propose_playbook_run` only.
-- **Building it straight into tenant-swarm:** no public, testable estate to prove it against, and Graph permissions from day one.
-- **Claude Code in GitHub Actions as the only agent:** works for Tiers 1 and 2 but has no interactive surface; kept as a fallback for phase S1 (spec SQ4).
+- **avd-swarm as the brain's Concierge agent with a front end:** keeps one write path, but it would be limited to the brain's scope and wait on brain Tier 3.
+- **A confirmation button in the chat as the write path:** simpler, but nothing outside the chat enforces it. Rejected.
+- **A custom MCP server for tools:** open (spec SQ5), as long as it carries no direct writes.
 
 ## Consequences
-- One write path, one audit trail, one kill switch for both the brain and the chat.
-- The chat is only as capable as the playbook catalog: a fix with no playbook becomes a Cloud Shell block, not an action.
-- Waits on brain Tier 3 unless SQ4 decides otherwise.
-- A new eval set for conversational questions, alongside the brain's episode evals.
+- Two write paths (brain playbooks and `approve` actions), both enforced by Azure through federated credentials. Both need audit records that read the same way.
+- Graph read permissions add surface; they are limited to the Users agent.
+- A new eval set for conversational questions.
