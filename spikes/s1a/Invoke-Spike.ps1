@@ -221,7 +221,7 @@ try {
         $lines = Invoke-Native 'Q6: the ten eval questions' @((Join-Path $Kit 'tools/run_evals.py'),
             '--project-endpoint', $s.projectEndpoint, '--out', "$Spike/evals.jsonl",
             '--only', 'q01,q02,q03,q04,q05,q06,q07,q08,q09,q10') -OkExitCodes 0, 2
-        if ($LASTEXITCODE -eq 2) { throw 'STOP: past the 4M input token stop rule.' }
+        if ($LASTEXITCODE -eq 2) { throw 'STOP: past the 2M input token stop rule.' }
         Save-SpikeResult 'Q6-agent' (Get-LastJson $lines 'run-evals')
     }
 
