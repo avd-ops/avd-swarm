@@ -121,6 +121,21 @@ try {
 
     if ($TeardownOnly) { Invoke-Teardown; return }
 
+    # The deployment registers the MCP server's Entra app, and Q2 assigns its app role to the agents.
+    # Both need an Entra role; check before the spend run opens, not halfway through the deploy.
+    if ('deploy' -notin (Get-SpikeProgress).done) {
+        $needed = 'Global Administrator', 'Application Administrator', 'Cloud Application Administrator'
+        $roles = @(az rest --method get --url 'https://graph.microsoft.com/v1.0/me/transitiveMemberOf/microsoft.graph.directoryRole?$select=displayName' `
+                --query 'value[].displayName' -o tsv 2>&1)
+        if ($LASTEXITCODE) { throw "Could not read your Entra roles: $($roles -join ' ')" }
+        if (-not ($roles | Where-Object { $_ -in $needed })) {
+            throw "$($account.user.name) has none of: $($needed -join ', ') (has: $(if ($roles) { $roles -join ', ' } else { 'no Entra roles' })). " +
+                'The spike creates an Entra app for the MCP server and assigns its app role to the agents. ' +
+                'Sign in to Cloud Shell as an account with one of those roles, or assign Cloud Application Administrator to this one for the run. Nothing was deployed.'
+        }
+        Write-Host "Entra role for the app registration: $(@($roles | Where-Object { $_ -in $needed }) -join ', ')"
+    }
+
     $progress = Get-SpikeProgress
     if ($progress.done.Count -eq 0) {
         $answer = Read-Host "Run the S1a spike in this subscription (sandbox '$Sandbox', run cap $RunCap)? [y/N]"
