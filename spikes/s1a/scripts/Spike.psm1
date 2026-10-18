@@ -29,7 +29,7 @@ function Invoke-SpikeAz {
         Remove-Item -LiteralPath $stderrFile.FullName -ErrorAction SilentlyContinue
     }
     if ($exitCode -ne 0) {
-        if ($AllowNotFound -and $stderr -match '(ResourceNotFound|NotFound|\b404\b|PolicyAssignmentNotFound)') { return $null }
+        if ($AllowNotFound -and $stderr -match '(ResourceNotFound|NotFound|\b404\b|PolicyAssignmentNotFound|does not exist or one of its queried reference-property objects are not present)') { return $null }
         throw "[$Step] az exited $exitCode`n$stderr"
     }
     $text = ($output -join "`n").Trim()

@@ -136,6 +136,11 @@ $picks = @(@{ Model = $CoordinatorModel; Version = $CoordinatorVersion }, @{ Mod
     @($CompareModels | Where-Object { $_ -notin @($CoordinatorModel, $HostsModel) } | ForEach-Object { @{ Model = $_; Version = $null } })
 foreach ($pick in $picks) {
     $candidates = @($models | Where-Object { $_.name -eq $pick.Model -and (-not $pick.Version -or $_.version -eq $pick.Version) })
+    if (-not $pick.Version -and $candidates.Count -gt 1) {
+        # Foundry offers several versions of one model (for example 1 and 2); without a pinned version take the newest.
+        $candidates = @($candidates | Sort-Object { [long]($_.version -replace '\D', '') } -Descending | Select-Object -First 1)
+        Write-Host "$($pick.Model): several versions offered, using the newest ($($candidates[0].version))"
+    }
     if ($candidates.Count -ne 1) {
         $similar = $models | Where-Object { $_.name -match 'claude' } | ForEach-Object { "$($_.name) $($_.version) ($($_.format))" }
         throw "Model $($pick.Model): $($candidates.Count) matches. Claude models offered here: $(@($similar) -join '; ')`nIf none are offered, Q1 is answered: this subscription can't deploy Claude in Foundry (README, 'If Q1 fails')."
