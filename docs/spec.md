@@ -19,6 +19,7 @@ The agents read freely through allowlisted tools. They change nothing themselves
 - The brain's playbooks reach avd-swarm as proposals (C9) and go through the same gate, approval and executor as every other change (§5). avd-swarm's action catalog is what playbooks are built from.
 - avd-swarm's one kill switch stops both (governance §3). The brain's Concierge is a read tool here; the front ends are avd-swarm's.
 - What avd-swarm learns and does goes back to the brain: insights, incidents and grading scores (C8), action outcomes and the switch position (C10), §6c.
+- Facts about an estate come through the brain, redacted, never straight from their sources: its current state from avd-current-state (C11), and measured performance and sizing from avd-readiness-stratusphere when a question needs it (C12), §6d.
 - avd-swarm still runs without a brain, with its own actions and evals; a brain without avd-swarm only advises.
 
 It is also the development version of **tenant-swarm**, a private project for the whole tenant. What proves itself here moves there; see §8.
@@ -73,7 +74,7 @@ avd-swarm deploys into its own resource group (`rg-<prefix>-<env>-swarm`) and do
 | Agent | Answers | Reads | Proposes |
 |---|---|---|---|
 | **Coordinator** | Anything; routes to a specialist and merges the answers with citations | Catalogs only; hands off to specialists in the workflow | Nothing |
-| **Readiness** | Is this environment ready for AVD, what's in the current estate | avd-readiness-stratusphere and avd-current-state outputs | Nothing |
+| **Readiness** | Is this environment ready for AVD, what's in the current estate, how it performs | Current-state (C11) and forensic (C12) facts through the brain (§6d) | A forensic collection, as a plan (§6d) |
 | **Deploy** | What's deployed where, what a redeploy would change, preflight results | Deployment history, what-if, preflight state line, Well-Architected review | A PR to avd-landing-zone's parameters, which that repo's own `deploy.yml` runs. Never an `approve` action (red team R8) |
 | **Hosts** | Health, sessions, drain state, agent version, failed checks | Resource Graph, KQL (`WVDAgentHealthStatus`, `WVDErrors`, ...), brain episodes | Host actions (drain, restart agent, recycle, re-register) |
 | **Images** | Current and candidate image versions, which hosts run what | Compute Gallery, image pipeline state (decision 0013) | Promotion, as a PR (decision 0013) |
@@ -162,6 +163,29 @@ What avd-swarm learns also feeds [avd-second-brain](https://github.com/nickprign
 Both sides count: what went well and what people wanted shapes features, and what went wrong shapes the guardrails every future estate starts with. Examples of what an insight can become: a runbook for a question operators keep asking, a rule change when a sizing answer keeps getting rejected, a catalog note when an app keeps coming up in profile problems, a default governance limit after a runaway, a new watchdog rule after an injection attempt.
 
 The contract has to change in pairs (avd-second-brain's rule): `docs/contracts.md`, `contracts/schemas/swarm-insights.schema.json` and a test in `tests/Connectors.Tests.ps1` land together in avd-second-brain, and Improve's exporter here follows.
+
+### 6d. Facts from avd-current-state
+
+[avd-current-state](https://github.com/nickprignano/avd-current-state)'s collector and validator are the estate's offline sensors: read-only, run by a person in Cloud Shell or on a schedule, with no swarm identity involved. Their packages hold tenant data and go to the customer's private vault (brain C1). What the swarm/brain system works from is a redacted **facts snapshot**, `avd-current-state-facts/v1` (brain contract **C11**): counts, booleans, public Azure values and keyed pseudonyms (`hp-3fa2c1d0`), with no names, IDs, IPs, tags or free text. It is the fact collection layer of the system.
+
+| Step | Who | What |
+|---|---|---|
+| Collect | A person (collector, validator) | Evidence packages, kept in the vault |
+| Redact | avd-current-state `avd_current_state_facts.ps1`, offline, with the estate's key | One snapshot per tenant, refused if anything that looks like an ID or address gets through |
+| File | The brain's `Import-CurrentStateFacts.ps1` | Checked again by the brain's guard, filed in the vault under `facts/<estate>/` |
+| Reason | The brain's agents (Diagnose, Critic, the Concierge) | Diagnoses, answers and C9 proposals that cite the snapshot by estate and time |
+| Act | avd-swarm | Only on a C9 proposal or an operator's request, through §5; never on a snapshot alone |
+
+What that means here:
+- **avd-swarm doesn't consume snapshots.** No agent, tool or allowlist reads a package, a vault or a snapshot file. The Readiness agent and the coordinator get current-state facts by asking the brain (the Concierge read tool), and a C9 proposal carries them as evidence.
+- **Facts propose, live reads decide.** A snapshot is evidence of when it was collected. The gate treats it as a reason to propose, never as the target list: `propose_change` and `propose_playbook_run` resolve every target live, and the gate refuses a proposal whose only evidence is a snapshot older than the freshness limit in `governance/` (7 days to start, [governance](governance.md) §2.1).
+- **Pseudonyms stay pseudonyms in the chat.** An answer quotes `hp-3fa2c1d0` from the brain; the plan shows the real target the tool resolved live, rendered from the plan store (§5).
+- **No new identity or spend.** The collector and validator already run read-only as the operator, and the facts script and the importer are offline. Nothing here needs an Azure resource.
+- **It changes in three places.** C11 lives in avd-second-brain's `docs/contracts.md` and schema, its producer in avd-current-state, and the gate rule here. A change to one is three linked PRs.
+
+**The forensic tier: avd-readiness-stratusphere (C12).** C11 says what is configured. When a question needs what users actually do (sizing, a size change, a performance complaint with no ARM-side cause, a migration), the next level is Stratusphere UX telemetry from [avd-readiness-stratusphere](https://github.com/nickprignano/avd-readiness-stratusphere): concurrency by hour, p95 demand per user and per host, logon time, UX score, profile size and latency, measured over 2 to 4 weeks. The factory pseudonymizes it at ingest and hands the brain `avd-forensic-facts/v1` (brain contract **C12**, specified): aggregates per host pool or persona, at least 5 users per group, never a user or a machine, keyed with the same estate key so a host pool's `hp-` pseudonym matches C11.
+- **Same path as C11.** avd-swarm reads it only through the brain; a size-change or sizing proposal cites it by window, and the gate refuses one whose only evidence is a C12 window that ended more than 90 days ago, or one marked `low-confidence` by the factory's quality gate.
+- **Collecting it is an action, not a read.** It deploys the Hub appliance (and optionally Database and Collectors) and needs a license for the window. When the brain says a question needs forensic data, the Readiness agent proposes the collection as a plan: `Deploy-Stratusphere.ps1` and `Deploy-CidKey.ps1` as catalog actions, with the spend block priced for the whole window (spend.md), the approval in §5, and teardown evidence at the end. Until those actions are in the catalog, the agent offers the Cloud Shell blocks instead (§5).
 
 ## 7. Cost
 
