@@ -8,6 +8,17 @@ Both repos are private, so the first block signs the GitHub CLI in once (device 
 
 **Stop rule:** if a block says `STOP`, or the run is past 6 hours, go straight to block 9.
 
+## One command
+
+```powershell
+if (Test-Path ~/avd-swarm) { git -C ~/avd-swarm pull -q } else { git clone -q https://github.com/nickprignano/avd-swarm ~/avd-swarm }
+& ~/avd-swarm/spikes/s1a/Invoke-Spike.ps1
+```
+
+`Invoke-Spike.ps1` runs blocks 1 to 9 in order. It asks twice: before opening the spend run (after showing the estimate) and before teardown, so you can do the Q5 portal steps while the agent exists. It picks the Hosts agent's allowlist from the Q3 tool list (the read-only host pool and session host tools; override with `-AllowedTools`). If a step fails it tears down and closes the run; `-KeepOnFailure` leaves it up. After a disconnect, run the same command again and it resumes. `-TeardownOnly` just cleans up. Everything it prints is saved as `~/clouddrive/avdswarm-spike/transcript-*.txt`.
+
+The blocks below are the same steps one at a time, for when you want to stop between them.
+
 ## 1. Price it and open the spend run
 
 ```powershell

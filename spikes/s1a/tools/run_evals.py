@@ -65,7 +65,7 @@ def main() -> None:
             total_in += record["inputTokens"] or 0
             total_out += record["outputTokens"] or 0
             if total_in > STOP_INPUT_TOKENS:
-                print(f"STOP: {total_in} input tokens is past the plan's stop rule; tear down (README step 10).")
+                print(f"STOP: {total_in} input tokens is past the plan's stop rule; tear down (README block 9).")
                 sys.exit(2)
 
     print(json.dumps({"step": "run-evals", "questions": len(questions), "inputTokens": total_in, "outputTokens": total_out}))

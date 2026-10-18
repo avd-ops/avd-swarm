@@ -68,4 +68,4 @@ if ($leftovers.Count -gt 0) {
     Write-Host "RESULT teardown FAIL: $($leftovers -join '; ')"
     exit 1
 }
-Write-Host 'RESULT teardown PASS. Also delete the report-only Conditional Access policy from step 8 if you made one. Next: Stop-SpendRun.ps1.'
+Write-Host 'RESULT teardown PASS. Also delete the report-only Conditional Access policy from step 6 if you made one. Next: Stop-SpendRun.ps1.'
