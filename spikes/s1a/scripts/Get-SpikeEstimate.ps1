@@ -13,7 +13,7 @@ never a guess. Tokens are priced from Anthropic's list prices, which Claude on F
 param(
     [string] $Region = 'eastus2',
     [double] $Hours = 6,
-    [double] $TokenUpperBound = 20.00
+    [double] $TokenUpperBound = 10.00
 )
 $ErrorActionPreference = 'Stop'
 

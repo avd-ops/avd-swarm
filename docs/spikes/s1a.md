@@ -45,16 +45,16 @@ The agents' identities get **Reader on this resource group only**. Nothing reads
 
 A spike isn't an AVD deployment, so it uses `-Kind other -ManualAmount` with a note, per tenant-swarm's spend.md.
 
-**Model tokens**, priced at Anthropic's list prices, which Claude on Foundry bills at through the Marketplace (Opus 5.5: $4 / $20 per million input / output tokens; Haiku 5.5: $0.10 / $0.50). Assumption: 40 conversations (about 20 while building, 10 eval questions, and 10 for the Q4 and Q5 checks).
+**Model tokens**, priced at Anthropic's list prices, which Claude on Foundry bills at through the Marketplace (Opus 5.5: $4 / $20 per million input / output tokens; Haiku 5.5: $0.10 / $0.50). Assumption: 20 conversations. `Invoke-Spike.ps1` asks 13 questions (q01, the two Q4 probes, and the ten evals); the rest is room for a rerun after a failed step. Each Hosts conversation reads about 40k input tokens: the system prompt, the MCP tool definitions, and the tool output, sent again on every turn of the tool loop.
 
 | Line | Quantity | Amount |
 |---|---|---|
-| Opus 5.5 input (Hosts specialist) | 40 × 40k = 1.6M tokens | $6.40 |
-| Opus 5.5 output, thinking included | 40 × 4k = 160k tokens | $3.20 |
-| Haiku 5.5 input (coordinator) | 40 × 10k = 400k tokens | $0.04 |
-| Haiku 5.5 output | 40 × 1k = 40k tokens | $0.02 |
-| **Tokens, expected** | | **$9.66** |
-| **Tokens, upper bound** (tool output twice as large as assumed) | | **$20.00** |
+| Opus 5.5 input (Hosts specialist) | 20 × 40k = 800k tokens | $3.20 |
+| Opus 5.5 output, thinking included | 20 × 4k = 80k tokens | $1.60 |
+| Haiku 5.5 input (coordinator) | 20 × 10k = 200k tokens | $0.02 |
+| Haiku 5.5 output | 20 × 1k = 20k tokens | $0.01 |
+| **Tokens, expected** | | **$4.83** |
+| **Tokens, upper bound** (tool output twice as large as assumed) | | **$10.00** |
 
 **Azure lines: unpriced until the start block prices them.** I couldn't reach the retail prices API from here, and the rule is never to guess a price. Step 1 below prints the matching meters, and the run starts only once each line has exactly one meter or is written down as unpriced.
 
@@ -65,9 +65,9 @@ A spike isn't an AVD deployment, so it uses `-Kind other -ManualAmount` with a n
 | Log Analytics ingestion | Under 0.5 GB (the workspace's daily cap) |
 | Foundry resource | Check whether it has any fixed charge |
 
-**Proposed caps:** run cap **$25**, so the token upper bound plus a few dollars of Azure compute fits and anything larger is refused. If you'd like a lower cap, the first thing to cut is the number of building conversations.
+**Proposed caps:** run cap **$15**, so the token upper bound plus about $2 of Azure fits and anything larger is refused. (The first estimate assumed 40 conversations with hand-run building; the one-command script needs about half, revised 2026-10-18.)
 
-**Stop rule while it runs:** if the Foundry metrics show more than 4M input tokens (about 2.5× plan), stop, tear down, and write down why.
+**Stop rule while it runs:** if the Foundry metrics show more than 2M input tokens (about 2.5× plan), stop, tear down, and write down why.
 
 **If it's not torn down:** the hosted agent and the Container App scale to zero, so per day it's close to the Log Analytics retention and any Foundry fixed charge. Teardown is still required the same day.
 
@@ -75,7 +75,7 @@ A spike isn't an AVD deployment, so it uses `-Kind other -ManualAmount` with a n
 
 The runbook is [spikes/s1a/README.md](../../spikes/s1a/README.md): nine self-contained Cloud Shell (PowerShell) blocks, run as you in the sandbox subscription.
 
-1. **Price and open the run:** `Get-SpikeEstimate.ps1` prices the Azure lines from the retail prices API (exactly one meter per line, or it reports what it saw), then tenant-swarm's `Start-SpendRun.ps1 -Kind other -ManualAmount ... -RunCap 25`. A refusal stops the spike.
+1. **Price and open the run:** `Get-SpikeEstimate.ps1` prices the Azure lines from the retail prices API (exactly one meter per line, or it reports what it saw), then tenant-swarm's `Start-SpendRun.ps1 -Kind other -ManualAmount ... -RunCap 15`. A refusal stops the spike.
 2. **Deploy and Q1:** `Start-Spike.ps1` creates the resource group and the exemption, deploys `infra/main.bicep`, gives you Foundry User and Foundry Project Manager on the Foundry resource, and deploys the two Claude models by the names and versions the resource actually offers. `test_models.py` calls each with an Entra token.
 3. **Q3:** `list_mcp_tools.py` lists every tool the MCP server exposes with its read-only and destructive hints, as you (the server's Entra app pre-authorizes the Azure CLI).
 4. **Q2:** `deploy_agent.py` creates the hosted agent from code (`spikes/s1a/agent`), routes traffic to it and prints its agent identity; `Connect-SpikeAgent.ps1` gives that identity the MCP server's app role; the first eval question checks the handoff end to end.

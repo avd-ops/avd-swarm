@@ -20,7 +20,7 @@ from azure.identity import AzureCliCredential
 from openai import APIStatusError
 
 QUESTIONS = Path(__file__).resolve().parent.parent / "evals" / "questions.json"
-STOP_INPUT_TOKENS = 4_000_000  # the plan's stop rule (docs/spikes/s1a.md section 3)
+STOP_INPUT_TOKENS = 2_000_000  # docs/spikes/s1a.md section 3 stop rule
 
 
 def main() -> None:

@@ -23,7 +23,7 @@ Everything it prints is also saved as a transcript next to the evidence.
 [CmdletBinding()]
 param(
     [string] $Sandbox = 'personal',
-    [double] $RunCap = 25,
+    [double] $RunCap = 15,
     [double] $MonthlyCap = 150,
     [string] $Funding = 'personal-card',
     # Comma-separated MCP tool names for the Hosts agent. Default: the read-only host pool and session host tools found in Q3.
