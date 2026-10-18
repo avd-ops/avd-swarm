@@ -3,7 +3,7 @@
 - **Status:** Proposed ([decision 0001](decisions/0001-avd-swarm.md))
 - **Visibility:** public, MIT. It follows avd-landing-zone's rules: no IDs, no secrets, American English.
 - **Operates:** [avd-landing-zone](https://github.com/nickprignano/avd-landing-zone). Decision and lesson numbers without a repo name are that repo's.
-- **Connects to:** the second brain ([avd-second-brain](https://github.com/nickprignano/avd-second-brain), [operations spec](https://github.com/nickprignano/avd-second-brain/blob/main/docs/operations-spec.md)). Section references like "brain §4.5" point there.
+- **Connects to:** the second brain ([avd-second-brain](https://github.com/nickprignano/avd-second-brain), [operations spec](https://github.com/nickprignano/avd-second-brain/blob/main/docs/operations-spec.md)), its intelligence layer ([decision 0003](decisions/0003-swarm-acts-brain-thinks.md)). Section references like "brain §4.5" point there.
 
 ## 1. Summary
 
@@ -15,9 +15,11 @@ The agents read freely through allowlisted tools. They change nothing themselves
 
 **Where the value is** ([prior art](prior-art.md)). Chat over Azure and read tools are becoming commodity: Azure Copilot, Azure SRE Agent, the Azure MCP Server. None of them combines per-plan approval outside the chat, no standing write credential, a deterministic gate, an external observer and a layered kill switch. That governed write path is what avd-swarm builds; for chat and reads it reuses what exists. If Azure SRE Agent adds AVD and out-of-band approval, revisit the build-or-reuse choice for the read side.
 
-**Scope compared with the second brain.** The brain watches a deployed landing zone and heals it through tested playbooks. avd-swarm is wider: it is the interface for everything an AVD operator does, including the parts the brain deliberately leaves out, like users, groups, licenses and deployments. The two connect where they overlap:
-- When a brain is deployed, avd-swarm reads its episodes and proposes its playbooks, so the brain's guardrails and audit apply to those changes.
-- Without a brain, or for changes the brain doesn't cover, avd-swarm uses its own plan-and-approve path (§5), which follows the same rule: a person approves the exact change before any identity can make it.
+**avd-swarm acts, the second brain thinks** ([decision 0003](decisions/0003-swarm-acts-brain-thinks.md)). The brain senses, remembers, diagnoses, critiques and learns; avd-swarm is the actor and control layer and the only thing that changes an estate. They change together:
+- The brain's playbooks reach avd-swarm as proposals (C9) and go through the same gate, approval and executor as every other change (§5). avd-swarm's action catalog is what playbooks are built from.
+- avd-swarm's one kill switch stops both (governance §3). The brain's Concierge is a read tool here; the front ends are avd-swarm's.
+- What avd-swarm learns and does goes back to the brain: insights, incidents and grading scores (C8), action outcomes and the switch position (C10), §6c.
+- avd-swarm still runs without a brain, with its own actions and evals; a brain without avd-swarm only advises.
 
 It is also the development version of **tenant-swarm**, a private project for the whole tenant. What proves itself here moves there; see §8.
 
@@ -48,15 +50,15 @@ Foundry Agent Service: hosted agent running an Agent Framework workflow
    coordinator ──► readiness · deploy · hosts · images · users · cost   (handoffs)
    │  tool calls, per-agent allowlist
    ▼
-Read tools                                     Write paths (both approved by a person)
-  Azure MCP Server (--read-only, namespaces       Brain deployed and a playbook fits:
-    incl. virtualdesktop, allowed_tools per agent)  propose_playbook_run → brain plan
-  ARM MCP server cost read tools (forecast_costs)
-  Graph (read, AVD-related objects only)           → brain approval → brain executor
-  avd-landing-zone scripts: preflight state      Otherwise:
-    line, -WhatIf, Well-Architected review         propose_change → avd-swarm plan
-  Brain tools, when a brain is deployed            → GitHub Environment `approve`
-  Custom MCP server, if needed (SQ5)               → job with a federated token → verify
+Read tools                                     One write path (a person approves each plan)
+  Azure MCP Server (--read-only, namespaces       propose_change (an action from the catalog)
+    incl. virtualdesktop, allowed_tools per agent)  or a brain playbook proposal (C9)
+  ARM MCP server cost read tools (forecast_costs)  → plan store → governance gate
+  Graph (read, AVD-related objects only)           → GitHub Environment `approve`
+  avd-landing-zone scripts: preflight state        → job with a federated token
+    line, -WhatIf, Well-Architected review         → verify → outcome to the brain (C10)
+  Brain tools (Concierge, episodes), if deployed
+  Custom MCP server, if needed (SQ5)
 ```
 
 avd-swarm deploys into its own resource group (`rg-<prefix>-<env>-swarm`) and doesn't require any brain tier. When a brain is present, it reuses the brain's Foundry project if one exists.
@@ -83,7 +85,7 @@ Adding an agent is a PR with its prompt, its tool allowlist and its eval questio
 ## 5. Write path
 
 1. The operator asks for a change ("drain host 3 and restart its agent", "add Sam to the AVD users group").
-2. The specialist calls `propose_playbook_run` if a brain is deployed and a playbook fits; otherwise it calls `propose_change`.
+2. The specialist calls `propose_change` with an action from the catalog. When a brain is deployed and its playbook fits, the brain's proposal (C9) arrives instead through `propose_playbook_run`, with the playbook's hash and bound parameters; from here on both are the same kind of plan.
 3. `propose_change` builds the plan without the model's help with the details: targets resolved by the tool, parameters validated against the action's schema, the expected effect, the rollback, and an expiry. The plan gets a hash and goes into the **plan store**. Only the `propose_change` function's own identity can write there; agents can't (R2).
 4. avd-buddy shows the plan rendered from the plan store, in a fixed layout set apart from agent text. Agent text never describes what a plan does (R4).
 5. A GitHub App limited to `actions:write` on this repo dispatches the approve workflow with **the plan ID only** (R2). Its first job, outside the environment, re-runs the gate and renders the plan into the run summary: targets, diff, blast radius, gate results, rollback (R3). avd-buddy links straight to that summary.
@@ -151,10 +153,11 @@ What avd-swarm learns also feeds [avd-second-brain](https://github.com/nickprign
 
 | Flow | What goes | Form | Brain side |
 |---|---|---|---|
-| **Insights** | Monthly aggregates from the Improve workflow: question themes per area, unanswered and badly answered topics, missing actions and tools, action outcomes (verified, failed, rolled back, rejected with the reason's category), UX signal averages | `avd-swarm-insights/v1`: counts and topics from a fixed vocabulary, with no free-text field and no field for a name, ID or resource | Proposed contract **C8**, read by the `harvest` skill into rules, runbooks and catalog entries by PR |
+| **Insights** | Monthly aggregates from the Improve workflow: question themes per area, unanswered and badly answered topics, missing actions and tools, action outcomes (verified, failed, rolled back, rejected with the reason's category), UX signal averages | `avd-swarm-insights/v1`: counts and topics from a fixed vocabulary, with no free-text field and no field for a name, ID or resource | Contract **C8**, read by the `harvest` skill into rules, runbooks and catalog entries by PR |
 | **Incidents** (the negative side) | Every kill switch trip and its trigger, observer denials, gate refusals by rule, writes with no matching plan, guardrail tampering, suspected prompt injection, runaway patterns (loops, plan floods, cost spikes), failed verifications and rollbacks, and what stopped each one | The same `avd-swarm-insights/v1` document, in an `incidents` section: counts by category, trigger and outcome, with no free text. Each incident also gets a lesson in this repo's `docs/lessons/`, written like avd-landing-zone's | C8 for the counts; the lessons through C7. The harvest turns them into rules and guardrail defaults, for example a lower rate limit or a new watchdog trigger that other estates start with |
-| **Lessons and decisions** | Lessons from real runs and this repo's decisions | Markdown in `docs/` | Searched in place through C7 (needs read access to this private repo) |
-| **Back the other way** | Rules, runbooks and the app catalog, cited in answers | Knowledge files at a pinned commit | C6, as the landing zone does |
+| **Lessons and decisions** | Lessons from real runs and this repo's decisions | Markdown in `docs/` | Searched in place through C7 (avd-swarm is a connected source of the brain) |
+| **Action outcomes** | Each plan's outcome (verified, failed, rolled back, rejected with a reason category) and every kill switch position change | Events | Contract **C10**: the brain closes its episodes with them and halts its own proposals and model calls with the switch |
+| **Back the other way** | Rules, runbooks and the app catalog, cited in answers; playbook run proposals | Knowledge files at a pinned commit; C9 proposals | C6, as the landing zone does; **C9** |
 
 Both sides count: what went well and what people wanted shapes features, and what went wrong shapes the guardrails every future estate starts with. Examples of what an insight can become: a runbook for a question operators keep asking, a rule change when a sizing answer keeps getting rejected, a catalog note when an app keeps coming up in profile problems, a default governance limit after a runaway, a new watchdog rule after an injection attempt.
 
