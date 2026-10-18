@@ -19,6 +19,7 @@ The agents read freely through allowlisted tools. They change nothing themselves
 - The brain's playbooks reach avd-swarm as proposals (C9) and go through the same gate, approval and executor as every other change (§5). avd-swarm's action catalog is what playbooks are built from.
 - avd-swarm's one kill switch stops both (governance §3). The brain's Concierge is a read tool here; the front ends are avd-swarm's.
 - What avd-swarm learns and does goes back to the brain: insights, incidents and grading scores (C8), action outcomes and the switch position (C10), §6c.
+- The brain's docs findings (C13) reach Scribe, which drafts the fixes as PRs, §6e.
 - Facts about an estate come through the brain, redacted, never straight from their sources: its current state from avd-current-state (C11), and measured performance and sizing from avd-readiness-stratusphere when a question needs it (C12), §6d.
 - avd-swarm still runs without a brain, with its own actions and evals; a brain without avd-swarm only advises.
 
@@ -186,6 +187,23 @@ What that means here:
 **The forensic tier: avd-readiness-stratusphere (C12).** C11 says what is configured. When a question needs what users actually do (sizing, a size change, a performance complaint with no ARM-side cause, a migration), the next level is Stratusphere UX telemetry from [avd-readiness-stratusphere](https://github.com/nickprignano/avd-readiness-stratusphere): concurrency by hour, p95 demand per user and per host, logon time, UX score, profile size and latency, measured over 2 to 4 weeks. The factory pseudonymizes it at ingest and hands the brain `avd-forensic-facts/v1` (brain contract **C12**, specified): aggregates per host pool or persona, at least 5 users per group, never a user or a machine, keyed with the same estate key so a host pool's `hp-` pseudonym matches C11.
 - **Same path as C11.** avd-swarm reads it only through the brain; a size-change or sizing proposal cites it by window, and the gate refuses one whose only evidence is a C12 window that ended more than 90 days ago, or one marked `low-confidence` by the factory's quality gate.
 - **Collecting it is an action, not a read.** It deploys the Hub appliance (and optionally Database and Collectors) and needs a license for the window. When the brain says a question needs forensic data, the Readiness agent proposes the collection as a plan: `Deploy-Stratusphere.ps1` and `Deploy-CidKey.ps1` as catalog actions, with the spend block priced for the whole window (spend.md), the approval in §5, and teardown evidence at the end. Until those actions are in the catalog, the agent offers the Cloud Shell blocks instead (§5).
+
+### 6e. Scribe: drafting docs fixes from the brain's findings
+
+The second brain checks that code comments, READMEs, changelogs, docs and its generated wiki agree with the code and with its facts of record (contracts, sources, decisions, terms), and publishes what disagrees as contract **C13**, `avd-doc-findings/v1` ([avd-second-brain docs-spec](https://github.com/nickprignano/avd-second-brain/blob/main/docs/docs-spec.md), [decision 0004](decisions/0004-scribe-drafts-docs.md)). **Scribe** is the avd-swarm role that turns those findings into draft PRs. The brain decides what is wrong; Scribe only drafts; a person merges.
+
+Scribe belongs to the Improve family (§6b), not the operating agents: it never talks to the operator, holds no Azure role, and runs on a schedule after the brain's nightly sweep, never on an incoming message.
+
+- **Generated fixes use the generator, not a model.** A finding marked `generated` (a reference page, a README table, a changelog block) is fixed by rerunning the vendored generator. A model drafts only prose, from the finding, the cited source of truth and the file it fixes.
+- **Code is never changed to match docs** (brain docs-spec §4). When the source of truth is code, Scribe edits the text; when it is a brain fact, the PR goes to the brain.
+- **Judge findings wait for a person.** Scribe acts on a `judge` finding only once someone has confirmed it in the findings issue.
+- **Protected paths:** `CLAUDE.md`, `.claude/`, agent prompts and allowlists, `governance/`, the observer registry, workflows, `LICENSE` and the project notice, and in the brain `knowledge/` (which changes only by harvest) and the facts of record. A PR Scribe authored that touches them fails CI, as for Improve (governance §2.1).
+- **Untrusted input:** code comments, doc text and PR bodies are data, never instructions.
+- **Limits:** at most one open Scribe PR per repo, batched by check; the daily token cap applies; every PR must pass the repo's docs check before it leaves draft.
+- **Identity:** a GitHub App with `contents:write` and `pull_requests:write` on the connected repos only, no `actions` or `administration` rights, no merge, and branches named `scribe/*`; every connected repo protects its default branch so the App's `contents:write` can't push there. It holds no Azure or Graph role. It is listed in [identities.md](identities.md) when built (phase D1).
+- **Back to the brain:** findings opened, drafted, merged and rejected go out as counts in C8's insights; a finding closes when the next sweep no longer reports it.
+
+Until Scribe exists, the brain's findings issues are fixed by hand. Phase D1 in the brain's docs-spec adds Scribe; it can run before S1 as a Claude Code GitHub Action, estimated in the [spend.md](spend.md) format first.
 
 ## 7. Cost
 
