@@ -10,7 +10,7 @@ The owner asked on 2026-10-18 for a repo or swarm function that builds a wiki an
 ## Decision
 - **No new repo.** The deterministic check, the facts of record, the generator and the wiki live in avd-second-brain ([docs-spec](https://github.com/nickprignano/avd-second-brain/blob/main/docs/docs-spec.md), [red team](https://github.com/nickprignano/avd-second-brain/blob/main/docs/docs-redteam.md)).
 - **avd-swarm gets Scribe** ([spec §6e](../spec.md)), a scheduled role in the Improve family that turns the brain's findings (contract C13, `avd-doc-findings/v1`) into draft PRs. It never merges, never changes code to match docs, and can't touch `CLAUDE.md`, prompts, governance, workflows or the notice.
-- **This repo is also a checked repo:** it gains the vendored docs check under `scripts/docs/`, `docs/reference/`, generated README blocks and a `CHANGELOG.md` in the brain's phase D0.
+- **This repo is also a checked repo:** it calls the brain's shared `docs-check.yml` workflow, pinned by SHA, and gains `docs/reference/`, generated README blocks and a `CHANGELOG.md` in the brain's phase D0.
 
 ## Consequences
 - One more draft-PR identity (a GitHub App scoped to the connected repos, no Azure role), added to identities.md when built.
