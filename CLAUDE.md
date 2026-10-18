@@ -3,8 +3,9 @@
 Public (MIT) development repo for avd-swarm. Read [docs/spec.md](docs/spec.md) first; it connects to the second brain (avd-second-brain) and follows avd-landing-zone's CLAUDE.md rules where they apply.
 
 ## Rules
-- **avd-swarm acts, the second brain thinks, and they change together** (decision 0003). avd-swarm is the only write path and holds the one kill switch; the brain never holds a write credential. A change here to a contract (C8–C10), the action catalog, an agent's role, grading, models, identity or governance comes with the matching avd-second-brain PR, and each links the other.
+- **avd-swarm acts, the second brain thinks, and they change together** (decision 0003). avd-swarm is the only write path and holds the one kill switch; the brain never holds a write credential. A change here to a contract (C8–C11), the action catalog, an agent's role, grading, models, identity or governance comes with the matching avd-second-brain PR, and each links the other.
 - Agents read and propose; they never write. Every change, a brain playbook included, is a plan a person approves in the `approve` environment (spec §5).
+- avd-swarm never reads avd-current-state packages, a vault or a facts snapshot file. Current-state facts reach it only from the brain, as cited C11 evidence, and the gate re-reads live state before any change (spec §6d).
 - Graph reads only for AVD-related objects, and only for the Users agent. Tenant-wide work belongs in tenant-swarm.
 - Never commit a tenant, subscription, object or client ID; run `scripts/check-no-ids.sh` before pushing. Public Microsoft IDs go in `scripts/public-ids.txt` with a comment.
 - No secrets: OIDC federated credentials and managed identities only.
