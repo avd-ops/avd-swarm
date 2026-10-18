@@ -159,7 +159,7 @@ try {
         if ($estimate.unpricedLines -gt 0 -and -not $AllowUnpriced) {
             throw "$($estimate.unpricedLines) line(s) unpriced (warnings above). Nothing is deployed. Rerun with -AllowUnpriced to open the run anyway."
         }
-        $answer = Read-Host "Open the spend run with these Azure lines plus the token estimate, run cap $RunCap? [y/N]"
+        $answer = Read-Host "Open the spend run with these Azure lines plus the token estimate, run cap ${RunCap}? [y/N]"
         if ($answer -notmatch '^(y|yes)$') { throw 'Stopped at the estimate; nothing is deployed.' }
         $env:AZURE_SUBSCRIPTION_ID = $account.id
         $spendArgs = @{
