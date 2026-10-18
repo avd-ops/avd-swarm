@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import time
 from pathlib import Path
@@ -41,7 +42,7 @@ def main() -> None:
     out = Path(args.out).expanduser()
     out.parent.mkdir(parents=True, exist_ok=True)
 
-    total_in = total_out = 0
+    total_in = total_out = passed = 0
     with out.open("a") as log:
         for question in questions:
             print(f"Asking {question['id']}: {question['text']}", flush=True)
@@ -55,20 +56,30 @@ def main() -> None:
                 print(json.dumps(record))
                 continue
             usage = response.usage
+            answer = response.output_text or ""
+            # A rough first check, not a grade: every expected pattern appears in the answer. Read the answers too.
+            missing = [p for p in question.get("expect", []) if not re.search(p, answer, re.IGNORECASE)]
             record = {
-                "id": question["id"], "kind": question["kind"], "seconds": round(time.monotonic() - started, 1),
+                "id": question["id"], "kind": question["kind"], "agent": args.agent_name,
+                "seconds": round(time.monotonic() - started, 1),
                 "inputTokens": getattr(usage, "input_tokens", None), "outputTokens": getattr(usage, "output_tokens", None),
-                "status": response.status, "answer": response.output_text,
+                # Everything the platform reports, including cached input tokens if it passes them through.
+                "usage": usage.model_dump() if usage is not None else None,
+                "expectMet": not missing if "expect" in question else None, "expectMissing": missing,
+                "status": response.status, "answer": answer,
             }
             log.write(json.dumps(record) + "\n")
-            print(f"  {record['seconds']}s, {record['inputTokens']} in / {record['outputTokens']} out\n  {record['answer'][:400]}")
+            check = "" if record["expectMet"] is None else (" PASS" if record["expectMet"] else f" CHECK (missing {missing})")
+            print(f"  {record['seconds']}s, {record['inputTokens']} in / {record['outputTokens']} out{check}\n  {answer[:400]}")
+            passed += bool(record["expectMet"])
             total_in += record["inputTokens"] or 0
             total_out += record["outputTokens"] or 0
             if total_in > STOP_INPUT_TOKENS:
                 print(f"STOP: {total_in} input tokens is past the plan's stop rule; tear down (README block 9).")
                 sys.exit(2)
 
-    print(json.dumps({"step": "run-evals", "questions": len(questions), "inputTokens": total_in, "outputTokens": total_out}))
+    print(json.dumps({"step": "run-evals", "agent": args.agent_name, "questions": len(questions), "expectMet": passed,
+                      "inputTokens": total_in, "outputTokens": total_out}))
 
 
 if __name__ == "__main__":

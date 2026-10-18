@@ -17,6 +17,8 @@ Each item ends **confirmed** (with evidence) or **replaced** (with what S1 uses 
 | Q5 | Do the agents get **Entra Agent ID** identities, and can Conditional Access block them? | The hosted agent's tool calls show up under an agent identity in the sign-in logs; a report-only CA policy targeting it records a match | Note what's missing; governance §2.3 layer 4 stays a design item |
 | Q6 | What does a question cost, and which model should the Hosts specialist use? | Token counts and answers for the 10 eval questions with the Hosts agent on each of Opus 5.5, Sonnet 5.5 and Haiku 5.5 (one hosted agent per model, same code and allowlist), from the run log and the Foundry metrics | Can't fail; it's a measurement. It sets S1's specialist model and daily token cap (spec §7) |
 
+**Cost levers measured, not assumed (Q6).** Every agent runs with automatic prompt caching on (tool definitions and instructions are resent on each tool-loop step; cache reads bill at a fraction of input), an explicit effort (coordinator low, Hosts medium), and a tool allowlist that keeps tool definitions small. Each answer's full usage, including cached tokens when the platform reports them, goes into `evals*.jsonl`, with a rough expected-facts check per question so a cheaper model's answers can be compared, not just its price.
+
 Not in scope: avd-buddy, the plan store, `approve`, the observer, the kill switch, Graph, and the other specialists.
 
 ## 2. What it deploys

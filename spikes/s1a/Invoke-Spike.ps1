@@ -251,6 +251,18 @@ try {
         & (Join-Path $Kit 'scripts/Get-SpikeToken.ps1') -FoundryName $s.foundryName | Select-Object -Last 1 | Set-Content "$Spike/tokens.json"
     }
 
+    # ---------- Q6 summary: the same ten questions per Hosts model ----------
+    Write-Phase 'Q6: per model (caching on, Hosts effort medium; read the answers before trusting the checks)'
+    (Get-SpikeProgress).results.GetEnumerator() | Where-Object { $_.Key -like 'Q6-*' } | ForEach-Object {
+        $r = $_.Value
+        [pscustomobject]@{
+            hosts          = $_.Key -replace '^Q6-', ''
+            checksPassed   = "$($r.expectMet)/$($r.questions)"
+            inputPerQ      = [math]::Round($r.inputTokens / [math]::Max(1, $r.questions))
+            outputPerQ     = [math]::Round($r.outputTokens / [math]::Max(1, $r.questions))
+        }
+    } | Format-Table -AutoSize | Out-String | Write-Host
+
     # ---------- Q5: portal steps while the agent still exists ----------
     if (-not $NoPause) {
         Write-Phase 'Q5: identity evidence (portal steps, optional)'

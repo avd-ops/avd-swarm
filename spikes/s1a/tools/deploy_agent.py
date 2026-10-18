@@ -64,6 +64,7 @@ def main() -> None:
     parser.add_argument("--allowed-tools", required=True)
     parser.add_argument("--agent-name", default="avdswarm-spike")
     parser.add_argument("--runtime", default="python_3_13")
+    parser.add_argument("--hosts-effort", default="medium", choices=["low", "medium", "high"])
     args = parser.parse_args()
 
     project = AIProjectClient(endpoint=args.project_endpoint, credential=AzureCliCredential(), allow_preview=True)
@@ -81,6 +82,8 @@ def main() -> None:
             "MCP_URL": args.mcp_url,
             "MCP_SCOPE": f"api://{args.mcp_app_id}/.default",
             "HOSTS_ALLOWED_TOOLS": args.allowed_tools,
+            "HOSTS_EFFORT": args.hosts_effort,
+            "COORDINATOR_EFFORT": "low",
         },
     )
 
