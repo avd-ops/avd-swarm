@@ -27,7 +27,9 @@ param(
     [string] $OrganizationName,
     [ValidatePattern('^([A-Z]{2})?$')][string] $CountryCode,
     [ValidateSet('technology', 'finance', 'healthcare', 'education', 'retail', 'manufacturing', 'government', 'media', 'other')]
-    [string] $Industry = 'technology'
+    [string] $Industry = 'technology',
+    # Thousands of tokens per minute per deployment. 1 is too small: one agent call with tool results exceeds it.
+    [ValidateRange(1, 1000)][int] $Capacity = 50
 )
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'Spike.psm1') -Force
@@ -165,7 +167,7 @@ foreach ($pick in $picks) {
     $bodyFile = New-TemporaryFile
     try {
         Set-Content -LiteralPath $bodyFile.FullName -Value (@{
-            sku        = @{ name = 'GlobalStandard'; capacity = 1 }
+            sku        = @{ name = 'GlobalStandard'; capacity = $Capacity }
             properties = @{
                 model             = @{ format = $model.format; name = $model.name; version = $model.version }
                 modelProviderData = @{ organizationName = $OrganizationName; countryCode = $CountryCode; industry = $Industry }

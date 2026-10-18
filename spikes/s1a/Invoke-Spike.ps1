@@ -136,7 +136,7 @@ try {
         Write-Host "Entra role for the app registration: $(@($roles | Where-Object { $_ -in $needed }) -join ', ')"
     }
 
-    # Each Claude deployment needs 1 (thousand tokens per minute) of the subscription's quota in eastus2,
+    # Each Claude deployment needs 50 (thousand tokens per minute; Start-Spike.ps1 -Capacity) of the subscription's quota in eastus2,
     # and new subscriptions can start at 0. Check before the spend run opens.
     if ('deploy' -notin (Get-SpikeProgress).done) {
         Write-Host 'Reading the subscription''s Claude quota in eastus2 ...'
@@ -149,10 +149,10 @@ try {
             $label = ($m -replace '^claude-(\w+)-(\d+)-(\d+)$', 'Claude $1 $2.$3')
             $lines = @($claudeQuota | Where-Object { $_.name.localizedValue -match "$([regex]::Escape($label))$" })
             if (-not $lines) { Write-Warning "No quota line found for $label; the deploy will tell." }
-            elseif (-not ($lines | Where-Object { ($_.limit - $_.currentValue) -ge 1 })) { $label }
+            elseif (-not ($lines | Where-Object { ($_.limit - $_.currentValue) -ge 50 })) { $label }
         }
         if ($short) {
-            throw "No Claude quota left in eastus2 for: $(@($short) -join ', '). Request Tokens Per Minute quota for them in the Foundry portal (Quota page, eastus2, Global Standard; 1 thousand TPM each is enough for the spike), then rerun. Nothing was deployed and no spend run was opened."
+            throw "Less than 50 thousand TPM of Claude quota left in eastus2 for: $(@($short) -join ', '). Request Tokens Per Minute quota for them in the Foundry portal (Quota page, eastus2, Global Standard; 50 thousand TPM each), then rerun. Nothing was deployed and no spend run was opened."
         }
     }
 
