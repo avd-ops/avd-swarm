@@ -158,6 +158,7 @@ The contract has to change in pairs (avd-second-brain's rule): `docs/contracts.m
 - Static Web Apps needs the Standard plan for the sign-in in §6, a small fixed monthly fee. Functions on Flex Consumption scale to zero. A hosted agent is billed for its container compute while it runs, and scales to zero; tokens are the main cost.
 - A daily token budget and a resource-group budget cap the spend. Crossing either disables the agents until a person resets it.
 - The deploy step prices the setup from the meters (decision 0010). This spec doesn't estimate it.
+- **Context compression is measured, not assumed.** After S1a sets the baseline (prompt caching on, explicit effort, small allowlists), one extra run asks the same 10 eval questions with [Headroom](https://pypi.org/project/headroom-ai/) in library mode (`compress(messages)` before each call) and compares cost per question and how many answers still meet their expected facts. It's adopted only if it saves money without losing facts, and first for large tool outputs (big estates, long logs). Not the proxy mode: the Anthropic SDK's workload identity federation exchanges its token at the same https address as the model calls, so a local http proxy breaks the keyless sign-in. Tool output is evidence the agents quote, so compression never applies to what a plan or an audit record cites.
 
 ## 7a. Spend control (placeholder)
 
