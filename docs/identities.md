@@ -21,6 +21,7 @@ Written after the S1a spike's first real run, where creating an Entra app throug
 
 - **Operator Cloud Shell runs keep a dedicated public-client app.** One device-code sign-in per Cloud Shell session, with the app's name in the sign-in logs and a Conditional Access policy that can target it (for example phishing-resistant MFA). Unattended work never uses it: anything scheduled or approved runs through GitHub Actions OIDC.
 - **The spike (S1a) keeps using the Azure CLI** until the setup script exists; its MCP app is registered with `az rest` against Graph as the operator.
+- **Claude through Anthropic's API uses workload identity federation, never an API key.** When the provider setting (spec §6) is Anthropic's API, the agents' managed identity is federated to an Anthropic service account through a rule that matches its object ID; the S1a fallback proves it ([spikes/s1a.md](spikes/s1a.md) §7).
 - **Nothing gets a Graph write permission.** The only Graph writes are group membership changes, through an administrative-unit-scoped role on the write identity.
 
 ## 3. Setup script (to build, S1)

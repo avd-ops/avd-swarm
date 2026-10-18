@@ -194,11 +194,11 @@ param operatorObjectId string = ''
 @description('anthropic only: base URL of agent_api/ at the pushed commit (raw.githubusercontent.com); the container installs and runs it.')
 param agentCodeUrl string = ''
 
-@description('anthropic only: the Anthropic API key, kept as a Container App secret. The fallback\'s one secret.')
-@secure()
-param anthropicApiKey string = ''
+@description('anthropic only: client ID of the app registration Entra issues Claude API tokens for (workload identity federation, Start-Spike.ps1 creates it).')
+param claudeAudienceAppId string = ''
 
-// The blueprint's credential: a federated identity credential with this identity as its subject.
+// Two jobs, both without a secret: the blueprint's federated credential (FIC subject), and the identity
+// Anthropic's workload identity federation rule matches (oid) to let this app call Claude.
 resource agentsIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = if (provider == 'anthropic') {
   name: 'id-avdswarm-agents-${suffix}'
   location: location
@@ -217,7 +217,6 @@ resource agentsApp 'Microsoft.App/containerApps@2024-03-01' = if (provider == 'a
     managedEnvironmentId: mcpEnvironment.id
     configuration: {
       activeRevisionsMode: 'Single'
-      secrets: [{ name: 'anthropic-api-key', value: anthropicApiKey }]
       ingress: {
         external: true
         targetPort: 8080
@@ -237,7 +236,8 @@ resource agentsApp 'Microsoft.App/containerApps@2024-03-01' = if (provider == 'a
           ]
           resources: { cpu: json('0.5'), memory: '1Gi' }
           env: [
-            { name: 'ANTHROPIC_API_KEY', secretRef: 'anthropic-api-key' }
+            { name: 'CLAUDE_AUDIENCE_APP_ID', value: claudeAudienceAppId }
+            // Anthropic federation IDs (organization, service account, rule, workspace): not secrets, set by Invoke-Spike.ps1 once the rule exists
             { name: 'AZURE_TENANT_ID', value: tenant().tenantId }
             { name: 'BLUEPRINT_APP_ID', value: blueprintAppId }
             { name: 'UAMI_CLIENT_ID', value: provider == 'anthropic' ? agentsIdentity!.properties.clientId : '' }

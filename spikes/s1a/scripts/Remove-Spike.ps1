@@ -62,6 +62,14 @@ else {
 }
 
 if ($Provider -eq 'Anthropic') {
+    $claudeAppId = @((Invoke-SpikeGraph -Step 'find-claude-app' -Method get -Path "/applications?`$filter=uniqueName eq 'avdswarm-spike-claude-$RunId'").value | Where-Object { $_ })[0].appId
+    if ($claudeAppId) {
+        Write-SpikeStep "Deleting the Claude API audience app $claudeAppId"
+        if ($PSCmdlet.ShouldProcess($claudeAppId, 'delete Entra app')) {
+            $null = Invoke-SpikeAz -Step 'delete-claude-app' -AllowNotFound -Arguments @('ad', 'app', 'delete', '--id', $claudeAppId)
+        }
+        if (Invoke-SpikeAz -Step 'check-claude-app' -AllowNotFound -Arguments @('ad', 'app', 'show', '--id', $claudeAppId)) { $leftovers.Add("Entra app $claudeAppId") }
+    }
     Connect-SpikeAgentGraph -TenantId $context.TenantId
     $identityName = "avdswarm-spike-hosts-$RunId"
     $blueprintName = "avdswarm-spike-agents-$RunId"
@@ -99,3 +107,6 @@ if ($leftovers.Count -gt 0) {
     exit 1
 }
 Write-Host 'RESULT teardown PASS. Also delete the report-only Conditional Access policy from step 6 if you made one. Next: Stop-SpendRun.ps1.'
+if ($Provider -eq 'Anthropic') {
+    Write-Host "Claude Console > Settings > Workload identity: delete (or disable) the federation rule for run $RunId. Its managed identity and audience app are gone, so it can't match anything, but it shouldn't linger."
+}

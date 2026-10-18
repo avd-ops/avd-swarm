@@ -21,7 +21,8 @@ Everything it prints is also saved as a transcript next to the evidence.
 .EXAMPLE
 & ~/avd-swarm/spikes/s1a/Invoke-Spike.ps1 -Provider Anthropic
 The fallback while Foundry has no Claude quota: Anthropic's API from a Container App, and Entra Agent ID
-through Graph instead of Foundry. Asks for an Anthropic API key (kept in this session and the app's secret only).
+through Graph instead of Foundry. No API key: after the deploy it shows the values for a workload identity
+federation rule in the Claude Console, asks for the rule's IDs, and checks the token exchange before any question.
 #>
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '', Justification = 'Used inside the step script blocks.')]
 [CmdletBinding()]
@@ -189,14 +190,6 @@ try {
         }
     }
 
-    # The fallback's one secret, asked for before anything is spent. Never written to disk: it lives in this
-    # session's environment and goes to the agents Container App as a secret through a deleted-after parameters file.
-    if ($Provider -eq 'Anthropic' -and 'deploy' -notin (Get-SpikeProgress).done -and -not $env:SPIKE_ANTHROPIC_API_KEY) {
-        $secure = Read-Host 'Anthropic API key for the spike (console.anthropic.com > API keys; set a spend limit on its workspace)' -AsSecureString
-        $env:SPIKE_ANTHROPIC_API_KEY = [System.Net.NetworkCredential]::new('', $secure).Password
-        if (-not $env:SPIKE_ANTHROPIC_API_KEY.StartsWith('sk-ant-')) { throw 'That does not look like an Anthropic API key (sk-ant-...). Nothing was done.' }
-    }
-
     $progress = Get-SpikeProgress
     if ($progress.done.Count -eq 0) {
         $answer = Read-Host "Run the S1a spike in this subscription (sandbox '$Sandbox', run cap $RunCap)? [y/N]"
@@ -253,7 +246,53 @@ try {
         }
     }
     $s = Get-Content "$Spike/state.json" | ConvertFrom-Json
-    if ($Provider -eq 'Anthropic') { Save-SpikeResult 'Q1' 'not tested: no Claude quota in Foundry; fallback to Anthropic''s API' }
+    if ($Provider -eq 'Anthropic') {
+        Save-SpikeResult 'Q1' 'not tested: no Claude quota in Foundry; fallback to Anthropic''s API'
+
+        # ---------- Anthropic workload identity federation: Claude without an API key ----------
+        Invoke-Step 'anthropic-federation' {
+            Write-Host @"
+Claude Console (platform.claude.com) > Settings > Workload identity > Connect workload > Microsoft Entra.
+Use a workspace just for the spike, with a spend limit (about `$20). Enter:
+  Token issuer     v2.0 (login.microsoftonline.com): https://login.microsoftonline.com/$($s.tenantId)/v2.0
+  Service account  a new one, for example avdswarm-spike
+  Rule audience    $($s.claudeAudienceAppId)
+  Rule claims      oid = $($s.agentsIdentityPrincipalId)   tid = $($s.tenantId)
+Then Issuers tab: edit the issuer and set the maximum JWT lifetime to 86400 seconds (Azure managed identity
+tokens live up to 24 hours; the wizard's 7500 rejects them).
+None of these IDs is a secret; they're saved in $Spike/anthropic.json, not in any repo.
+"@
+            $federation = [ordered]@{
+                ANTHROPIC_ORGANIZATION_ID    = Read-Host 'Organization ID (Console > Settings > Organization, a GUID)'
+                ANTHROPIC_FEDERATION_RULE_ID = Read-Host 'Federation rule ID'
+                ANTHROPIC_SERVICE_ACCOUNT_ID = Read-Host 'Service account ID (svac_...)'
+                ANTHROPIC_WORKSPACE_ID       = Read-Host 'Workspace ID (wrkspc_..., or Enter if the rule has one workspace)'
+            }
+            if ($federation.ANTHROPIC_ORGANIZATION_ID -notmatch '^[0-9a-fA-F-]{36}$' -or -not $federation.ANTHROPIC_FEDERATION_RULE_ID) {
+                throw 'The organization ID is a GUID and the rule ID is required. Run the same command again to re-enter them.'
+            }
+            $federation | ConvertTo-Json | Set-Content "$Spike/anthropic.json"
+            Write-Host 'Setting them on the agents app (a new revision; it reinstalls, a minute or two).'
+            $null = Invoke-NativeAz (@('containerapp', 'update', '-g', $s.resourceGroup, '-n', $s.agentsAppName, '--set-env-vars') +
+                @($federation.GetEnumerator() | Where-Object Value | ForEach-Object { "$($_.Key)=$($_.Value)" }))
+            for ($i = 0; $i -lt 60; $i++) {
+                try { if ((Invoke-RestMethod -Uri "$($s.agentsUrl)/healthz" -TimeoutSec 10).claudeConfigured) { break } }
+                catch { Write-Verbose "not up yet: $($_.Exception.Message)" }
+                Start-Sleep -Seconds 10
+            }
+            $operatorToken = az account get-access-token --scope "api://$($s.mcpAppId)/Mcp.Tools.ReadWrite" --query accessToken -o tsv
+            for ($try = 1; ; $try++) {
+                Write-Host 'Checking the token exchange with Anthropic (no model call, no tokens spent)'
+                $check = Invoke-WebRequest -Uri "$($s.agentsUrl)/claude-check" -Method Post -SkipHttpErrorCheck -Headers @{ Authorization = "Bearer $operatorToken" }
+                Write-Host "  $($check.StatusCode): $($check.Content)"
+                if ($check.StatusCode -eq 200) { break }
+                if ($try -ge 3) { throw 'The Anthropic token exchange still fails (above). Console > Workload identity > History shows the deny reason.' }
+                Write-Host 'A 401 is usually the rule not matching the claims above, or the issuer''s maximum JWT lifetime still under 86400. Console > Workload identity > History shows the reason.'
+                $null = Read-Host 'Fix it in the Console, then press Enter to check again'
+            }
+            Save-SpikeResult 'Federation' 'confirmed: the managed identity''s Entra token exchanged for an Anthropic access token, no API key'
+        }
+    }
 
     if ($Provider -eq 'Foundry') {
         Invoke-Step 'q1-models' {

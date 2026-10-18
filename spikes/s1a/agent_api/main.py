@@ -6,10 +6,13 @@ What it still tests: Entra Agent ID without Foundry (Q2, Q5). The Container App'
 managed identity is the credential of an agent identity blueprint; the blueprint creates an agent
 identity, and the Hosts agent calls the MCP server with that agent identity's own token
 (Entra's autonomous agent flow: managed identity token -> blueprint exchange token -> agent token).
-The Anthropic API key is the one secret: a Container App secret, never logged or returned.
+No secret anywhere: Claude is called with Anthropic workload identity federation. The same managed
+identity gets an Entra token for the Claude audience app, and the SDK exchanges it for a short-lived
+Anthropic access token under a federation rule that matches the identity's object ID.
 
 Endpoints, all requiring the operator's Entra token (audience: the MCP server's app, the operator's oid):
   POST /setup             create the agent identity (the blueprint's token does it)
+  POST /claude-check      one token exchange with Anthropic, no model call (proves the federation rule)
   POST /ask               start one question, returns a job ID (Container Apps ingress times out at 240 s)
   GET  /ask/{id}          the job's status and, when done, the answer, usage and identity evidence
 """
@@ -28,6 +31,7 @@ import anthropic
 import httpx
 import jwt
 import uvicorn
+from azure.identity import ManagedIdentityCredential as SyncManagedIdentityCredential
 from azure.identity.aio import ManagedIdentityCredential
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
@@ -71,8 +75,31 @@ HANDOFF_TOOL = {
     "input_schema": {"type": "object", "properties": {}, "additionalProperties": False, "required": []},
 }
 
-claude = anthropic.AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"], max_retries=4)
 managed_identity = ManagedIdentityCredential(client_id=UAMI_CLIENT_ID)
+CLAUDE_AUDIENCE_APP_ID = os.environ.get("CLAUDE_AUDIENCE_APP_ID", "")
+# Anthropic workload identity federation: IDs from the Claude Console, set once the rule exists. Not secrets.
+FEDERATION = {k: os.environ.get(f"ANTHROPIC_{k.upper()}", "") for k in
+              ("organization_id", "service_account_id", "federation_rule_id", "workspace_id")}
+CLAUDE_CONFIGURED = bool(CLAUDE_AUDIENCE_APP_ID and FEDERATION["organization_id"] and FEDERATION["federation_rule_id"])
+sync_identity = SyncManagedIdentityCredential(client_id=UAMI_CLIENT_ID)
+
+
+def entra_token_for_claude() -> str:
+    """The managed identity's Entra token for the Claude audience app; the SDK exchanges it at /v1/oauth/token."""
+    return sync_identity.get_token(f"api://{CLAUDE_AUDIENCE_APP_ID}/.default").token
+
+
+def claude_credentials() -> anthropic.WorkloadIdentityCredentials:
+    return anthropic.WorkloadIdentityCredentials(
+        identity_token_provider=entra_token_for_claude,
+        federation_rule_id=FEDERATION["federation_rule_id"],
+        organization_id=FEDERATION["organization_id"],
+        service_account_id=FEDERATION["service_account_id"] or None,
+        workspace_id=FEDERATION["workspace_id"] or None,
+    )
+
+
+claude = anthropic.AsyncAnthropic(credentials=claude_credentials(), max_retries=4) if CLAUDE_CONFIGURED else None
 jwks = jwt.PyJWKClient(f"{LOGIN}/discovery/v2.0/keys")
 jobs: dict[str, dict] = {}
 
@@ -149,6 +176,9 @@ async def setup(request: Request) -> JSONResponse:
     body = await request.json()
     try:
         graph = await blueprint_token("https://graph.microsoft.com/.default")
+    except anthropic.WorkloadIdentityError as error:
+        jobs[job_id].update(status="failed", error={"step": "anthropic-exchange", "status": error.status_code,
+                                                    "body": error.body, "requestId": error.request_id, "message": str(error)})
     except TokenError as error:
         return JSONResponse({"error": json.loads(str(error))}, status_code=502)
     async with httpx.AsyncClient(timeout=30) as http:
@@ -266,6 +296,8 @@ async def run_job(job_id: str, question: str, model: str, identity_app_id: str) 
 
 async def ask(request: Request) -> JSONResponse:
     body = await request.json()
+    if not CLAUDE_CONFIGURED:
+        return JSONResponse({"error": "Anthropic federation IDs aren't set on the app yet (Invoke-Spike.ps1 sets them)."}, status_code=409)
     if not HOSTS_ALLOWED_TOOLS:
         return JSONResponse({"error": "HOSTS_ALLOWED_TOOLS is empty: set it from list_mcp_tools.py's output."}, status_code=409)
     if body.get("model") not in MODELS:
@@ -276,18 +308,36 @@ async def ask(request: Request) -> JSONResponse:
     return JSONResponse({"id": job_id}, status_code=202)
 
 
+async def claude_check(_request: Request) -> JSONResponse:
+    """One token exchange with Anthropic and nothing else: proves the federation rule without spending tokens."""
+    if not CLAUDE_CONFIGURED:
+        return JSONResponse({"error": "Anthropic federation IDs aren't set on the app yet."}, status_code=409)
+    try:
+        entra = await asyncio.to_thread(entra_token_for_claude)
+    except Exception as error:  # the full error (lesson 0012)
+        return JSONResponse({"step": "entra-token", "type": type(error).__name__, "message": str(error)}, status_code=502)
+    evidence = {k: v for k, v in claims_of(entra).items() if k in ("aud", "oid", "azp", "idtyp")}
+    try:
+        exchanged = await asyncio.to_thread(lambda: claude_credentials().for_base_url("https://api.anthropic.com")())
+    except anthropic.WorkloadIdentityError as error:
+        return JSONResponse({"step": "anthropic-exchange", "status": error.status_code, "body": error.body,
+                             "requestId": error.request_id, "message": str(error), "entraClaims": evidence}, status_code=502)
+    return JSONResponse({"ok": True, "expiresAt": exchanged.expires_at, "entraClaims": evidence})
+
+
 async def ask_status(request: Request) -> JSONResponse:
     job = jobs.get(request.path_params["job_id"])
     return JSONResponse(job) if job else JSONResponse({"error": "unknown job"}, status_code=404)
 
 
 async def health(_request: Request) -> JSONResponse:
-    return JSONResponse({"ok": True, "allowedTools": HOSTS_ALLOWED_TOOLS})
+    return JSONResponse({"ok": True, "allowedTools": HOSTS_ALLOWED_TOOLS, "claudeConfigured": CLAUDE_CONFIGURED})
 
 
 app = Starlette(routes=[
     Route("/healthz", health),
     Route("/setup", guarded(setup), methods=["POST"]),
+    Route("/claude-check", guarded(claude_check), methods=["POST"]),
     Route("/ask", guarded(ask), methods=["POST"]),
     Route("/ask/{job_id}", guarded(ask_status)),
 ])

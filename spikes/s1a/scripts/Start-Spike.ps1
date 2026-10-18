@@ -31,7 +31,7 @@ param(
     # Thousands of tokens per minute per deployment. 1 is too small: one agent call with tool results exceeds it.
     [ValidateRange(1, 1000)][int] $Capacity = 50,
     # Anthropic: the fallback without Foundry (Anthropic's API from a Container App, Entra Agent ID through Graph).
-    # Its API key comes from $env:SPIKE_ANTHROPIC_API_KEY, set in this session only by Invoke-Spike.ps1.
+    # No API key: the agents app calls Claude with Anthropic workload identity federation (its managed identity).
     [ValidateSet('Foundry', 'Anthropic')][string] $Provider = 'Foundry'
 )
 $ErrorActionPreference = 'Stop'
@@ -128,7 +128,26 @@ Write-Host "MCP app $($app.appId), service principal $($appSp.id)"
 
 # ---- Fallback: Anthropic's API, and Entra Agent ID without Foundry ----
 if ($Provider -eq 'Anthropic') {
-    if (-not $env:SPIKE_ANTHROPIC_API_KEY) { throw 'No Anthropic API key in this session ($env:SPIKE_ANTHROPIC_API_KEY); run it through Invoke-Spike.ps1 -Provider Anthropic.' }
+    # The audience Entra issues Claude API tokens for (Anthropic workload identity federation, no API key).
+    # v2.0 tokens, identifier URI api://<appId>, and a service principal so the audience resolves in the tenant.
+    $claudeUniqueName = "avdswarm-spike-claude-$RunId"
+    Write-SpikeStep "Registering the Claude API audience app $claudeUniqueName (workload identity federation)"
+    $claudeApp = @((Invoke-SpikeGraph -Step 'find-claude-app' -Method get -Path "/applications?`$filter=uniqueName eq '$claudeUniqueName'").value | Where-Object { $_ })[0]
+    if (-not $claudeApp -and $PSCmdlet.ShouldProcess($claudeUniqueName, 'create Entra app')) {
+        $claudeApp = Invoke-SpikeGraph -Step 'create-claude-app' -Method post -Path '/applications' -Body @{
+            uniqueName = $claudeUniqueName; displayName = "avdswarm spike Claude API audience ($RunId)"; signInAudience = 'AzureADMyOrg'
+            api = @{ requestedAccessTokenVersion = 2 }
+        }
+    }
+    if ($PSCmdlet.ShouldProcess($claudeUniqueName, 'set identifier URI')) {
+        $null = Invoke-SpikeGraph -Step 'update-claude-app' -Method patch -Path "/applications/$($claudeApp.id)" -Body @{ identifierUris = @("api://$($claudeApp.appId)") }
+    }
+    $claudeSp = @((Invoke-SpikeGraph -Step 'find-claude-sp' -Method get -Path "/servicePrincipals?`$filter=appId eq '$($claudeApp.appId)'").value | Where-Object { $_ })[0]
+    if (-not $claudeSp -and $PSCmdlet.ShouldProcess($claudeApp.appId, 'create service principal')) {
+        $null = Invoke-SpikeGraph -Step 'create-claude-sp' -Method post -Path '/servicePrincipals' -Body @{ appId = $claudeApp.appId }
+    }
+    Write-Host "Claude API audience app $($claudeApp.appId)"
+
     Connect-SpikeAgentGraph -TenantId $context.TenantId
 
     # The blueprint: an app registration of the agent identity blueprint type, with you as sponsor and owner.
@@ -167,21 +186,10 @@ if ($Provider -eq 'Anthropic') {
     $commit = git -C $PSScriptRoot rev-parse HEAD
     $agentCodeUrl = "https://raw.githubusercontent.com/nickprignano/avd-swarm/$commit/spikes/s1a/agent_api"
     Write-SpikeStep "Deploying infra/main.bicep (MCP server, agents Container App, logs, empty host pool) with agent code at $commit; this takes several minutes"
-    # The API key goes in a parameters file that only this step reads and that's deleted right after.
-    $paramsFile = New-TemporaryFile
-    try {
-        @{
-            '$schema' = 'https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#'; contentVersion = '1.0.0.0'
-            parameters = @{
-                location = @{ value = $Location }; runId = @{ value = $RunId }; mcpAppId = @{ value = $app.appId }; provider = @{ value = 'anthropic' }
-                blueprintAppId = @{ value = $blueprint.appId }; operatorObjectId = @{ value = $context.UserId }
-                agentCodeUrl = @{ value = $agentCodeUrl }; anthropicApiKey = @{ value = $env:SPIKE_ANTHROPIC_API_KEY }
-            }
-        } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $paramsFile.FullName
-        $deployment = Invoke-SpikeAz -Step 'deploy' -Arguments @('deployment', 'group', 'create', '-g', $SpikeResourceGroup,
-            '-n', "avdswarm-spike-$RunId", '-f', (Join-Path $PSScriptRoot '..' 'infra' 'main.bicep'), '-p', "@$($paramsFile.FullName)")
-    }
-    finally { Remove-Item -LiteralPath $paramsFile.FullName -ErrorAction SilentlyContinue }
+    $deployment = Invoke-SpikeAz -Step 'deploy' -Arguments @('deployment', 'group', 'create', '-g', $SpikeResourceGroup,
+        '-n', "avdswarm-spike-$RunId", '-f', (Join-Path $PSScriptRoot '..' 'infra' 'main.bicep'),
+        '-p', "location=$Location", "runId=$RunId", "mcpAppId=$($app.appId)", 'provider=anthropic', "blueprintAppId=$($blueprint.appId)",
+        "operatorObjectId=$($context.UserId)", "agentCodeUrl=$agentCodeUrl", "claudeAudienceAppId=$($claudeApp.appId)")
     $out = $deployment.properties.outputs
 
     Write-SpikeStep "Making the agents' managed identity the blueprint's credential (federated identity credential)"
@@ -228,6 +236,9 @@ if ($Provider -eq 'Anthropic') {
         mcpAppRoleId          = $appRoleId
         agentsUrl             = $agentsUrl
         agentsAppName         = $out.agentsAppName.value
+        agentsIdentityPrincipalId = $out.agentsIdentityPrincipalId.value
+        claudeAudienceAppId   = $claudeApp.appId
+        tenantId              = $context.TenantId
         blueprintAppId        = $blueprint.appId
         agentIdentityId       = $identity.id
         agentIdentityAppId    = $identity.appId

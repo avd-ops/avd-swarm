@@ -24,7 +24,7 @@ if (Test-Path ~/avd-swarm) { git -C ~/avd-swarm pull -q } else { git clone -q ht
 & ~/avd-swarm/spikes/s1a/Invoke-Spike.ps1 -Provider Anthropic
 ```
 
-The same run, with Claude called through Anthropic's API from a Container App and the Hosts agent's Entra Agent ID created through Graph (blueprint, managed identity credential, agent identity). Everything stays in North Central US, so there's no policy exemption. It asks for an Anthropic API key (hidden prompt, kept only in the session's memory and the Container App's secret) and a device code sign-in to Microsoft Graph PowerShell, where you consent for the organization. Q1 and Foundry hosting aren't tested; Q2 to Q6 are. Why and what it costs: [docs/spikes/s1a.md](../../docs/spikes/s1a.md) §7. The numbered blocks below are the Foundry path only.
+The same run, with Claude called through Anthropic's API from a Container App and the Hosts agent's Entra Agent ID created through Graph (blueprint, managed identity credential, agent identity). Everything stays in North Central US, so there's no policy exemption. There's no API key: the agents app calls Claude with Anthropic workload identity federation. After the deploy it prints the values for a federation rule (Claude Console > Settings > Workload identity > Connect workload > Microsoft Entra), asks for the rule's IDs, and checks the token exchange before any question. It also asks for a device code sign-in to Microsoft Graph PowerShell, where you consent for the organization. Q1 and Foundry hosting aren't tested; Q2 to Q6 are. Why and what it costs: [docs/spikes/s1a.md](../../docs/spikes/s1a.md) §7. The numbered blocks below are the Foundry path only.
 
 The blocks below are the same steps one at a time, for when you want to stop between them.
 
