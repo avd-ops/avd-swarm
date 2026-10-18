@@ -19,7 +19,7 @@ The agents read freely through allowlisted tools. They change nothing themselves
 - The brain's playbooks reach avd-swarm as proposals (C9) and go through the same gate, approval and executor as every other change (§5). avd-swarm's action catalog is what playbooks are built from.
 - avd-swarm's one kill switch stops both (governance §3). The brain's Concierge is a read tool here; the front ends are avd-swarm's.
 - What avd-swarm learns and does goes back to the brain: insights, incidents and grading scores (C8), action outcomes and the switch position (C10), §6c.
-- Facts about an estate's current state come from avd-current-state through the brain, redacted (C11), never straight from the packages, §6d.
+- Facts about an estate come through the brain, redacted, never straight from their sources: its current state from avd-current-state (C11), and measured performance and sizing from avd-readiness-stratusphere when a question needs it (C12), §6d.
 - avd-swarm still runs without a brain, with its own actions and evals; a brain without avd-swarm only advises.
 
 It is also the development version of **tenant-swarm**, a private project for the whole tenant. What proves itself here moves there; see §8.
@@ -74,7 +74,7 @@ avd-swarm deploys into its own resource group (`rg-<prefix>-<env>-swarm`) and do
 | Agent | Answers | Reads | Proposes |
 |---|---|---|---|
 | **Coordinator** | Anything; routes to a specialist and merges the answers with citations | Catalogs only; hands off to specialists in the workflow | Nothing |
-| **Readiness** | Is this environment ready for AVD, what's in the current estate | avd-readiness-stratusphere outputs; avd-current-state facts through the brain (C11, §6d) | Nothing |
+| **Readiness** | Is this environment ready for AVD, what's in the current estate, how it performs | Current-state (C11) and forensic (C12) facts through the brain (§6d) | A forensic collection, as a plan (§6d) |
 | **Deploy** | What's deployed where, what a redeploy would change, preflight results | Deployment history, what-if, preflight state line, Well-Architected review | A PR to avd-landing-zone's parameters, which that repo's own `deploy.yml` runs. Never an `approve` action (red team R8) |
 | **Hosts** | Health, sessions, drain state, agent version, failed checks | Resource Graph, KQL (`WVDAgentHealthStatus`, `WVDErrors`, ...), brain episodes | Host actions (drain, restart agent, recycle, re-register) |
 | **Images** | Current and candidate image versions, which hosts run what | Compute Gallery, image pipeline state (decision 0013) | Promotion, as a PR (decision 0013) |
@@ -182,6 +182,10 @@ What that means here:
 - **Pseudonyms stay pseudonyms in the chat.** An answer quotes `hp-3fa2c1d0` from the brain; the plan shows the real target the tool resolved live, rendered from the plan store (§5).
 - **No new identity or spend.** The collector and validator already run read-only as the operator, and the facts script and the importer are offline. Nothing here needs an Azure resource.
 - **It changes in three places.** C11 lives in avd-second-brain's `docs/contracts.md` and schema, its producer in avd-current-state, and the gate rule here. A change to one is three linked PRs.
+
+**The forensic tier: avd-readiness-stratusphere (C12).** C11 says what is configured. When a question needs what users actually do (sizing, a size change, a performance complaint with no ARM-side cause, a migration), the next level is Stratusphere UX telemetry from [avd-readiness-stratusphere](https://github.com/nickprignano/avd-readiness-stratusphere): concurrency by hour, p95 demand per user and per host, logon time, UX score, profile size and latency, measured over 2 to 4 weeks. The factory pseudonymizes it at ingest and hands the brain `avd-forensic-facts/v1` (brain contract **C12**, specified): aggregates per host pool or persona, at least 5 users per group, never a user or a machine, keyed with the same estate key so a host pool's `hp-` pseudonym matches C11.
+- **Same path as C11.** avd-swarm reads it only through the brain; a size-change or sizing proposal cites it by window, and the gate refuses one whose only evidence is a C12 window that ended more than 90 days ago, or one marked `low-confidence` by the factory's quality gate.
+- **Collecting it is an action, not a read.** It deploys the Hub appliance (and optionally Database and Collectors) and needs a license for the window. When the brain says a question needs forensic data, the Readiness agent proposes the collection as a plan: `Deploy-Stratusphere.ps1` and `Deploy-CidKey.ps1` as catalog actions, with the spend block priced for the whole window (spend.md), the approval in §5, and teardown evidence at the end. Until those actions are in the catalog, the agent offers the Cloud Shell blocks instead (§5).
 
 ## 7. Cost
 
