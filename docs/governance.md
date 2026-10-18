@@ -136,7 +136,7 @@ Deterministic triggers, evaluated by Azure Monitor alerts and the switch's Logic
 
 ## 3. Relationship to the second brain
 
-When a brain is deployed alongside avd-swarm, each switch also listens to the other: a brain trip to `halt-actions` or `halt-all` moves avd-swarm to `halt-actions`, so no brain playbook can be proposed while the brain is stopped. avd-swarm tripping doesn't stop the brain's cost safeties (EX-0001, EX-0002). Each resume clears only its own switch; while the brain is still halted, avd-swarm stays at `halt-actions` and avd-buddy says why (R16).
+There is **one kill switch, this one** ([decision 0003](decisions/0003-swarm-acts-brain-thinks.md)). The brain's own switch and watchdog (brain EX-0004) move here, since the brain no longer acts. The brain reads the position through contract C10 and obeys it: at `halt-actions` it stops proposing playbook runs, at `halt-agents` and `halt-all` it stops its model calls. It keeps sensing and recording at every position, so a halted estate still has its evidence. The brain's watchdog triggers that are about acting (a write with no matching plan, a write outside the landing zone, failed verifications) are rules in §2.4. The cost safeties (EX-0001, EX-0002) stay outside the switch, as [spend.md](spend.md) §3.3 already requires.
 
 ## 4. Open questions
 
