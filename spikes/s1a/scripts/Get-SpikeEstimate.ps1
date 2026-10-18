@@ -15,7 +15,9 @@ param(
     [double] $Hours = 6,
     [double] $TokenUpperBound = 13.00,
     # One hosted agent per model the Hosts agent is compared on (Opus, Sonnet, Haiku).
-    [int] $Agents = 3
+    [int] $Agents = 3,
+    # Anthropic: the fallback. No hosted agents; one more Container App (the agents), and tokens billed by Anthropic.
+    [ValidateSet('Foundry', 'Anthropic')][string] $Provider = 'Foundry'
 )
 $ErrorActionPreference = 'Stop'
 
@@ -46,9 +48,19 @@ $lines = @(
        Filter = "armRegionName eq '$Region' and contains(productName, 'Foundry')"; Match = { $_.meterName -match 'Hosted' -and $_.meterName -match 'Memory' } }
 )
 
+if ($Provider -eq 'Anthropic') {
+    $lines = @($lines | Where-Object { $_.Name -notmatch 'Foundry hosted agent' }) + @(
+        @{ Name = 'Container Apps vCPU (agents)'; Quantity = 0.5 * $Hours * 3600; Unit = 'vCPU-seconds'
+           Filter = "serviceName eq 'Azure Container Apps' and armRegionName eq '$Region'"; Match = { $_.meterName -match 'vCPU' -and $_.meterName -match 'Active' -and $_.skuName -match 'Consumption|Standard' } }
+        @{ Name = 'Container Apps memory (agents)'; Quantity = 1 * $Hours * 3600; Unit = 'GiB-seconds'
+           Filter = "serviceName eq 'Azure Container Apps' and armRegionName eq '$Region'"; Match = { $_.meterName -match 'Memory' -and $_.meterName -match 'Active' -and $_.skuName -match 'Consumption|Standard' } }
+    )
+}
+
 $total = $TokenUpperBound
 $note = [System.Collections.Generic.List[string]]::new()
-$note.Add("Tokens upper bound $('{0:N2}' -f $TokenUpperBound) (Opus 5.5 4/20, Sonnet 5.5 2/10, Haiku 5.5 0.10/0.50 per 1M; docs/spikes/s1a.md section 3)")
+$billedBy = if ($Provider -eq 'Anthropic') { 'billed by Anthropic, not Azure' } else { 'billed through Azure' }
+$note.Add("Tokens upper bound $('{0:N2}' -f $TokenUpperBound) ($billedBy; Opus 5.5 4/20, Sonnet 5.5 2/10, Haiku 5.5 0.10/0.50 per 1M; docs/spikes/s1a.md section 3)")
 $unpriced = 0
 foreach ($line in $lines) {
     Write-Host "Pricing $($line.Name) in $Region..."

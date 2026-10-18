@@ -17,6 +17,15 @@ if (Test-Path ~/avd-swarm) { git -C ~/avd-swarm pull -q } else { git clone -q ht
 
 `Invoke-Spike.ps1` runs blocks 1 to 9 in order. It asks twice: before opening the spend run (after showing the estimate) and before teardown, so you can do the Q5 portal steps while the agent exists. It picks the Hosts agent's allowlist from the Q3 tool list (the read-only host pool and session host tools; override with `-AllowedTools`). If a step fails it tears down and closes the run; `-KeepOnFailure` leaves it up. After a disconnect, run the same command again and it resumes. `-TeardownOnly` just cleans up. Everything it prints is saved as `~/clouddrive/avdswarm-spike/transcript-*.txt`.
 
+### Without Foundry quota: `-Provider Anthropic`
+
+```powershell
+if (Test-Path ~/avd-swarm) { git -C ~/avd-swarm pull -q } else { git clone -q https://github.com/nickprignano/avd-swarm ~/avd-swarm }
+& ~/avd-swarm/spikes/s1a/Invoke-Spike.ps1 -Provider Anthropic
+```
+
+The same run, with Claude called through Anthropic's API from a Container App and the Hosts agent's Entra Agent ID created through Graph (blueprint, managed identity credential, agent identity). Everything stays in North Central US, so there's no policy exemption. It asks for an Anthropic API key (hidden prompt, kept only in the session's memory and the Container App's secret) and a device code sign-in to Microsoft Graph PowerShell, where you consent for the organization. Q1 and Foundry hosting aren't tested; Q2 to Q6 are. Why and what it costs: [docs/spikes/s1a.md](../../docs/spikes/s1a.md) §7. The numbered blocks below are the Foundry path only.
+
 The blocks below are the same steps one at a time, for when you want to stop between them.
 
 ## 1. Price it and open the spend run

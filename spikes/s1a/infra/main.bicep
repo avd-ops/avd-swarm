@@ -2,6 +2,9 @@
 //
 // Everything the spike needs except the model deployments (deployed by name from what the region
 // offers, README step 4) and the hosted agent (deployed from code, README step 6).
+// provider 'anthropic' is the fallback without Foundry: no Foundry resource; the agents run in a
+// Container App that calls Anthropic's API, with a user-assigned managed identity as the credential
+// of an Entra agent identity blueprint (Start-Spike.ps1 creates the blueprint through Graph).
 // The Azure MCP Server part follows the setup in Azure-Samples/azmcp-foundry-aca-mi, with the
 // virtualdesktop namespace and scale to zero.
 
@@ -16,6 +19,10 @@ param avdLocation string = resourceGroup().location
 @description('Spend run ID, tagged on every resource (tenant-swarm docs/spend.md).')
 param runId string
 
+@description('foundry: Claude in Foundry and hosted agents. anthropic: the fallback, Anthropic\'s API from a Container App.')
+@allowed(['foundry', 'anthropic'])
+param provider string = 'foundry'
+
 @description('Short unique suffix for globally unique names.')
 param suffix string = take(uniqueString(resourceGroup().id), 6)
 
@@ -26,7 +33,7 @@ var tags = {
 var desktopVirtualizationReaderRoleId = '49a72310-ab8d-41df-bbb0-79b649203868'
 
 // ---------- Foundry ----------
-resource foundry 'Microsoft.CognitiveServices/accounts@2025-06-01' = {
+resource foundry 'Microsoft.CognitiveServices/accounts@2025-06-01' = if (provider == 'foundry') {
   name: 'avdswarm-spike-${suffix}'
   location: location
   tags: tags
@@ -41,7 +48,7 @@ resource foundry 'Microsoft.CognitiveServices/accounts@2025-06-01' = {
   }
 }
 
-resource project 'Microsoft.CognitiveServices/accounts/projects@2025-06-01' = {
+resource project 'Microsoft.CognitiveServices/accounts/projects@2025-06-01' = if (provider == 'foundry') {
   parent: foundry
   name: 'spike'
   location: location
@@ -177,7 +184,85 @@ resource workspace 'Microsoft.DesktopVirtualization/workspaces@2024-04-03' = {
   }
 }
 
-output foundryName string = foundry.name
-output projectEndpoint string = 'https://${foundry.properties.customSubDomainName}.services.ai.azure.com/api/projects/${project.name}'
+// ---------- Fallback: the agents in a Container App, calling Anthropic's API ----------
+@description('anthropic only: client ID of the agent identity blueprint (Start-Spike.ps1 creates it).')
+param blueprintAppId string = ''
+
+@description('anthropic only: object ID of the person running the spike; the only caller the agent service accepts.')
+param operatorObjectId string = ''
+
+@description('anthropic only: base URL of agent_api/ at the pushed commit (raw.githubusercontent.com); the container installs and runs it.')
+param agentCodeUrl string = ''
+
+@description('anthropic only: the Anthropic API key, kept as a Container App secret. The fallback\'s one secret.')
+@secure()
+param anthropicApiKey string = ''
+
+// The blueprint's credential: a federated identity credential with this identity as its subject.
+resource agentsIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = if (provider == 'anthropic') {
+  name: 'id-avdswarm-agents-${suffix}'
+  location: location
+  tags: tags
+}
+
+resource agentsApp 'Microsoft.App/containerApps@2024-03-01' = if (provider == 'anthropic') {
+  name: 'ca-avdswarm-agents-${suffix}'
+  location: location
+  tags: tags
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: { '${agentsIdentity.id}': {} }
+  }
+  properties: {
+    managedEnvironmentId: mcpEnvironment.id
+    configuration: {
+      activeRevisionsMode: 'Single'
+      secrets: [{ name: 'anthropic-api-key', value: anthropicApiKey }]
+      ingress: {
+        external: true
+        targetPort: 8080
+        allowInsecure: false
+        transport: 'http'
+      }
+    }
+    template: {
+      containers: [
+        {
+          name: 'agents'
+          image: 'docker.io/library/python:3.13-slim'
+          command: ['sh', '-c']
+          // No image build: install the pinned requirements and fetch main.py from the pushed commit, then run it.
+          args: [
+            'pip install --no-cache-dir -q -r ${agentCodeUrl}/requirements.txt && python -c "import urllib.request; urllib.request.urlretrieve(\'${agentCodeUrl}/main.py\', \'/tmp/main.py\')" && exec python /tmp/main.py'
+          ]
+          resources: { cpu: json('0.5'), memory: '1Gi' }
+          env: [
+            { name: 'ANTHROPIC_API_KEY', secretRef: 'anthropic-api-key' }
+            { name: 'AZURE_TENANT_ID', value: tenant().tenantId }
+            { name: 'BLUEPRINT_APP_ID', value: blueprintAppId }
+            { name: 'UAMI_CLIENT_ID', value: provider == 'anthropic' ? agentsIdentity!.properties.clientId : '' }
+            { name: 'MCP_APP_ID', value: mcpAppId }
+            { name: 'MCP_URL', value: 'https://${mcpServer.properties.configuration.ingress.fqdn}' }
+            { name: 'OPERATOR_OID', value: operatorObjectId }
+            { name: 'HOSTS_ALLOWED_TOOLS', value: '' } // set after Q3
+            { name: 'HOSTS_EFFORT', value: 'medium' }
+            { name: 'COORDINATOR_EFFORT', value: 'low' }
+          ]
+        }
+      ]
+      // One replica that stays up for the run: jobs live in memory, and installing at start takes a minute.
+      scale: {
+        minReplicas: 1
+        maxReplicas: 1
+      }
+    }
+  }
+}
+
+output foundryName string = provider == 'foundry' ? foundry!.name : ''
+output projectEndpoint string = provider == 'foundry' ? 'https://${foundry!.properties.customSubDomainName}.services.ai.azure.com/api/projects/${project!.name}' : ''
+output agentsUrl string = provider == 'anthropic' ? 'https://${agentsApp!.properties.configuration.ingress.fqdn}' : ''
+output agentsAppName string = provider == 'anthropic' ? agentsApp!.name : ''
+output agentsIdentityPrincipalId string = provider == 'anthropic' ? agentsIdentity!.properties.principalId : ''
 output mcpUrl string = 'https://${mcpServer.properties.configuration.ingress.fqdn}'
 output mcpAppId string = mcpAppId

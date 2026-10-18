@@ -29,7 +29,10 @@ param(
     [ValidateSet('technology', 'finance', 'healthcare', 'education', 'retail', 'manufacturing', 'government', 'media', 'other')]
     [string] $Industry = 'technology',
     # Thousands of tokens per minute per deployment. 1 is too small: one agent call with tool results exceeds it.
-    [ValidateRange(1, 1000)][int] $Capacity = 50
+    [ValidateRange(1, 1000)][int] $Capacity = 50,
+    # Anthropic: the fallback without Foundry (Anthropic's API from a Container App, Entra Agent ID through Graph).
+    # Its API key comes from $env:SPIKE_ANTHROPIC_API_KEY, set in this session only by Invoke-Spike.ps1.
+    [ValidateSet('Foundry', 'Anthropic')][string] $Provider = 'Foundry'
 )
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'Spike.psm1') -Force
@@ -48,7 +51,10 @@ if ($PSCmdlet.ShouldProcess($SpikeResourceGroup, 'create resource group')) {
 Write-SpikeStep "Looking for the landing zone's location policy ($ExemptedAssignment)"
 $assignment = Invoke-SpikeAz -Step 'get-assignment' -AllowNotFound -Arguments @('rest', '--method', 'get', '--url',
     "https://management.azure.com/subscriptions/$($context.SubscriptionId)/providers/Microsoft.Authorization/policyAssignments/$($ExemptedAssignment)?api-version=2023-04-01")
-if ($assignment) {
+if ($assignment -and $Location -eq $ResourceGroupLocation) {
+    Write-Host "Everything deploys in $Location, which the policy allows; no exemption needed."
+}
+elseif ($assignment) {
     $expires = [datetime]::UtcNow.Date.AddDays(1).ToString('yyyy-MM-ddTHH:mm:ssZ')
     $exemptionName = "avdswarm-spike-$RunId"
     Write-SpikeStep "Exempting $SpikeResourceGroup only from $ExemptedAssignment until $expires"
@@ -119,6 +125,118 @@ if (-not $appSp -and $PSCmdlet.ShouldProcess($app.appId, 'create service princip
     $appSp = Invoke-SpikeGraph -Step 'create-sp' -Method post -Path '/servicePrincipals' -Body @{ appId = $app.appId }
 }
 Write-Host "MCP app $($app.appId), service principal $($appSp.id)"
+
+# ---- Fallback: Anthropic's API, and Entra Agent ID without Foundry ----
+if ($Provider -eq 'Anthropic') {
+    if (-not $env:SPIKE_ANTHROPIC_API_KEY) { throw 'No Anthropic API key in this session ($env:SPIKE_ANTHROPIC_API_KEY); run it through Invoke-Spike.ps1 -Provider Anthropic.' }
+    Connect-SpikeAgentGraph -TenantId $context.TenantId
+
+    # The blueprint: an app registration of the agent identity blueprint type, with you as sponsor and owner.
+    $blueprintName = "avdswarm-spike-agents-$RunId"
+    Write-SpikeStep "Creating the agent identity blueprint $blueprintName"
+    $blueprint = @((Invoke-SpikeAgentGraph -Step 'find-blueprint' -Method GET -Path "/v1.0/applications?`$filter=displayName eq '$blueprintName'").value)[0]
+    if (-not $blueprint -and $PSCmdlet.ShouldProcess($blueprintName, 'create agent identity blueprint')) {
+        $me = "https://graph.microsoft.com/v1.0/users/$($context.UserId)"
+        $blueprint = Invoke-SpikeAgentGraph -Step 'create-blueprint' -Method POST -Path '/v1.0/applications/' -Body @{
+            '@odata.type' = 'Microsoft.Graph.AgentIdentityBlueprint'; displayName = $blueprintName
+            'sponsors@odata.bind' = @($me); 'owners@odata.bind' = @($me)
+        }
+    }
+    $blueprintSp = @((Invoke-SpikeAgentGraph -Step 'find-blueprint-principal' -Method GET -Path "/v1.0/servicePrincipals?`$filter=appId eq '$($blueprint.appId)'").value)[0]
+    if (-not $blueprintSp -and $PSCmdlet.ShouldProcess($blueprint.appId, 'create blueprint principal')) {
+        $blueprintSp = Invoke-SpikeAgentGraph -Step 'create-blueprint-principal' -Method POST `
+            -Path '/v1.0/serviceprincipals/microsoft.graph.agentIdentityBlueprintPrincipal' -Body @{ appId = $blueprint.appId }
+    }
+    Write-Host "Blueprint $($blueprint.appId), principal $($blueprintSp.id)"
+
+    # Blueprints create agent identities with AgentIdentity.CreateAsManager. Entra stops granting it automatically in
+    # November 2026 (message center MC1506728), so grant it explicitly; until then a failure here only warns.
+    Write-SpikeStep 'Granting the blueprint AgentIdentity.CreateAsManager on Microsoft Graph'
+    $graphSp = @((Invoke-SpikeAgentGraph -Step 'find-graph' -Method GET -Path "/v1.0/servicePrincipals?`$filter=appId eq '00000003-0000-0000-c000-000000000000'&`$select=id,appRoles").value)[0]
+    $createRole = @($graphSp.appRoles | Where-Object { $_.value -eq 'AgentIdentity.CreateAsManager' })[0]
+    if (-not $createRole) { Write-Warning 'Microsoft Graph has no AgentIdentity.CreateAsManager app role here yet; relying on the automatic grant.' }
+    elseif ($PSCmdlet.ShouldProcess($blueprintSp.id, 'grant AgentIdentity.CreateAsManager')) {
+        try {
+            $null = Invoke-SpikeAgentGraph -Step 'grant-create-as-manager' -Method POST -Path "/v1.0/servicePrincipals/$($blueprintSp.id)/appRoleAssignments" `
+                -Body @{ principalId = $blueprintSp.id; resourceId = $graphSp.id; appRoleId = $createRole.id }
+        }
+        catch { Write-Warning "Grant failed; relying on the automatic grant until November 2026. $($_.Exception.Message)" }
+    }
+
+    # The agent code comes from the pushed commit; the container installs and runs it.
+    $commit = git -C $PSScriptRoot rev-parse HEAD
+    $agentCodeUrl = "https://raw.githubusercontent.com/nickprignano/avd-swarm/$commit/spikes/s1a/agent_api"
+    Write-SpikeStep "Deploying infra/main.bicep (MCP server, agents Container App, logs, empty host pool) with agent code at $commit; this takes several minutes"
+    # The API key goes in a parameters file that only this step reads and that's deleted right after.
+    $paramsFile = New-TemporaryFile
+    try {
+        @{
+            '$schema' = 'https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#'; contentVersion = '1.0.0.0'
+            parameters = @{
+                location = @{ value = $Location }; runId = @{ value = $RunId }; mcpAppId = @{ value = $app.appId }; provider = @{ value = 'anthropic' }
+                blueprintAppId = @{ value = $blueprint.appId }; operatorObjectId = @{ value = $context.UserId }
+                agentCodeUrl = @{ value = $agentCodeUrl }; anthropicApiKey = @{ value = $env:SPIKE_ANTHROPIC_API_KEY }
+            }
+        } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $paramsFile.FullName
+        $deployment = Invoke-SpikeAz -Step 'deploy' -Arguments @('deployment', 'group', 'create', '-g', $SpikeResourceGroup,
+            '-n', "avdswarm-spike-$RunId", '-f', (Join-Path $PSScriptRoot '..' 'infra' 'main.bicep'), '-p', "@$($paramsFile.FullName)")
+    }
+    finally { Remove-Item -LiteralPath $paramsFile.FullName -ErrorAction SilentlyContinue }
+    $out = $deployment.properties.outputs
+
+    Write-SpikeStep "Making the agents' managed identity the blueprint's credential (federated identity credential)"
+    $fics = @((Invoke-SpikeAgentGraph -Step 'list-fic' -Method GET -Path "/v1.0/applications/$($blueprint.id)/federatedIdentityCredentials").value)
+    if (-not ($fics | Where-Object { $_.subject -eq $out.agentsIdentityPrincipalId.value }) -and $PSCmdlet.ShouldProcess($blueprint.appId, 'add federated identity credential')) {
+        $null = Invoke-SpikeAgentGraph -Step 'add-fic' -Method POST -Path "/v1.0/applications/$($blueprint.id)/federatedIdentityCredentials" -Body @{
+            name = 'agents-managed-identity'; issuer = "https://login.microsoftonline.com/$($context.TenantId)/v2.0"
+            subject = $out.agentsIdentityPrincipalId.value; audiences = @('api://AzureADTokenExchange')
+        }
+    }
+
+    $agentsUrl = $out.agentsUrl.value
+    Write-SpikeStep "Waiting for the agents app to install and start at $agentsUrl (up to 10 minutes)"
+    $healthy = $false
+    for ($i = 0; $i -lt 60 -and -not $healthy; $i++) {
+        try { $healthy = (Invoke-RestMethod -Uri "$agentsUrl/healthz" -TimeoutSec 10).ok -eq $true } catch { Start-Sleep -Seconds 10 }
+    }
+    if (-not $healthy) { throw "The agents app didn't answer $agentsUrl/healthz in 10 minutes. Its logs: az containerapp logs show -g $SpikeResourceGroup -n $($out.agentsAppName.value) --tail 100" }
+
+    # The blueprint creates the agent identity itself (its own token, from the managed identity); a new FIC can take a minute to work.
+    $identityName = "avdswarm-spike-hosts-$RunId"
+    Write-SpikeStep "Asking the blueprint to create the agent identity $identityName"
+    $operatorToken = az account get-access-token --scope "api://$($app.appId)/Mcp.Tools.ReadWrite" --query accessToken -o tsv
+    $identity = @((Invoke-SpikeAgentGraph -Step 'find-agent-identity' -Method GET -Path "/v1.0/servicePrincipals?`$filter=displayName eq '$identityName'").value)[0]
+    for ($i = 0; $i -lt 6 -and -not $identity; $i++) {
+        $response = Invoke-WebRequest -Uri "$agentsUrl/setup" -Method Post -SkipHttpErrorCheck -ContentType 'application/json' `
+            -Headers @{ Authorization = "Bearer $operatorToken" } -Body (@{ displayName = $identityName } | ConvertTo-Json -Compress)
+        if ($response.StatusCode -eq 200) { $identity = $response.Content | ConvertFrom-Json; break }
+        Write-Host "  /setup returned $($response.StatusCode): $($response.Content)"
+        Start-Sleep -Seconds 20
+    }
+    if (-not $identity) { throw 'The blueprint could not create the agent identity (errors above). This is a Q2 finding; the spike tears down next.' }
+    Write-Host "Agent identity $($identity.appId), object $($identity.id)"
+    if ($identity.blueprintTokenClaims) { Write-Host "Blueprint token claims: $($identity.blueprintTokenClaims | ConvertTo-Json -Compress)" }
+
+    [pscustomobject]@{
+        step                  = 'start-spike'
+        provider              = 'anthropic'
+        runId                 = $RunId
+        resourceGroup         = $SpikeResourceGroup
+        mcpUrl                = $out.mcpUrl.value
+        mcpAppId              = $out.mcpAppId.value
+        mcpAppSpId            = $appSp.id
+        mcpAppRoleId          = $appRoleId
+        agentsUrl             = $agentsUrl
+        agentsAppName         = $out.agentsAppName.value
+        blueprintAppId        = $blueprint.appId
+        agentIdentityId       = $identity.id
+        agentIdentityAppId    = $identity.appId
+        coordinatorDeployment = $CoordinatorModel
+        hostsDeployment       = $HostsModel
+        compareDeployments    = @(@($HostsModel) + $CompareModels + @($CoordinatorModel) | Select-Object -Unique)
+    } | ConvertTo-Json -Compress
+    return
+}
 
 # ---- Step 3: deploy ----
 Write-SpikeStep 'Deploying infra/main.bicep (Foundry, MCP server, logs, empty host pool); this takes several minutes'

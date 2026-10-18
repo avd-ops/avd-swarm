@@ -18,6 +18,10 @@ Everything it prints is also saved as a transcript next to the evidence.
 & ~/avd-swarm/spikes/s1a/Invoke-Spike.ps1
 .EXAMPLE
 & ~/avd-swarm/spikes/s1a/Invoke-Spike.ps1 -TeardownOnly
+.EXAMPLE
+& ~/avd-swarm/spikes/s1a/Invoke-Spike.ps1 -Provider Anthropic
+The fallback while Foundry has no Claude quota: Anthropic's API from a Container App, and Entra Agent ID
+through Graph instead of Foundry. Asks for an Anthropic API key (kept in this session and the app's secret only).
 #>
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '', Justification = 'Used inside the step script blocks.')]
 [CmdletBinding()]
@@ -35,7 +39,9 @@ param(
     [switch] $NoPause,
     # Leave the resources up when a step fails, to look at them. Run -TeardownOnly after.
     [switch] $KeepOnFailure,
-    [switch] $TeardownOnly
+    [switch] $TeardownOnly,
+    # Foundry: Claude in Foundry with hosted agents. Anthropic: the fallback (see the third example).
+    [ValidateSet('Foundry', 'Anthropic')][string] $Provider = 'Foundry'
 )
 $ErrorActionPreference = 'Stop'
 
@@ -75,6 +81,28 @@ function Invoke-Native {
     , @($lines)
 }
 
+function Invoke-NativeAz {
+    # az with the full error on failure (lesson 0012).
+    param([string[]] $Arguments)
+    $out = & az @Arguments --only-show-errors -o json 2>&1
+    if ($LASTEXITCODE) { throw "az $($Arguments[0..1] -join ' ') failed: $($out -join "`n")" }
+    $out
+}
+
+function Wait-SpikeAgentsHealthy {
+    # The agents app reinstalls on each revision; wait until it answers with the expected allowlist (at most 10 minutes).
+    param([string] $Url, [string] $Allowed)
+    for ($i = 0; $i -lt 60; $i++) {
+        try {
+            $health = Invoke-RestMethod -Uri "$Url/healthz" -TimeoutSec 10
+            if (($health.allowedTools -join ',') -eq $Allowed) { Write-Host "Agents app is up with allowlist: $Allowed"; return }
+        }
+        catch { Write-Verbose "not up yet: $($_.Exception.Message)" }
+        Start-Sleep -Seconds 10
+    }
+    throw "The agents app didn't come back with the new allowlist in 10 minutes ($Url/healthz)."
+}
+
 function Invoke-Step {
     param([string] $Name, [scriptblock] $Body)
     $progress = Get-SpikeProgress
@@ -97,14 +125,15 @@ function Invoke-Teardown {
     $runId = if (Test-Path "$Spike/run-id") { Get-Content "$Spike/run-id" } else { $null }
     if (-not $runId) { Write-Host 'No spend run was opened, so nothing was deployed.'; return }
     $env:AZURE_SUBSCRIPTION_ID = az account show --query id -o tsv
-    & (Join-Path $Kit 'scripts/Remove-Spike.ps1') -RunId $runId
+    $runProvider = if (Test-Path "$Spike/provider") { Get-Content "$Spike/provider" } else { $Provider }
+    & (Join-Path $Kit 'scripts/Remove-Spike.ps1') -RunId $runId -Provider $runProvider
     if ($LASTEXITCODE) { throw 'Teardown left something behind (listed above). Clean it up and run -TeardownOnly again.' }
     & (Join-Path $TenantSwarm 'scripts/spend/Stop-SpendRun.ps1') -Sandbox $Sandbox -RunId $runId -LedgerPath $Ledger
     Save-SpikeResult 'teardown' 'clean'
     Write-Host "`nRun $runId closed. Delete the report-only Conditional Access policy if you made one."
     Write-Host "Three days from now the daily check settles the actual cost; commit $Ledger to tenant-swarm's ledger branch."
     Move-Item $ProgressFile "$Spike/progress-$runId.json" -Force
-    Remove-Item "$Spike/run-id" -Force
+    Remove-Item "$Spike/run-id", "$Spike/provider" -Force -ErrorAction SilentlyContinue
 }
 
 Start-Transcript -Path (Join-Path $Spike "transcript-$([datetime]::UtcNow.ToString('yyyyMMdd-HHmmss')).txt") | Out-Null
@@ -120,6 +149,10 @@ try {
     Write-Host "Subscription: $($account.name)  User: $($account.user.name)"
 
     if ($TeardownOnly) { Invoke-Teardown; return }
+    if ((Test-Path "$Spike/provider") -and (Get-Content "$Spike/provider") -ne $Provider) {
+        $Provider = Get-Content "$Spike/provider"
+        Write-Host "Resuming the open run with -Provider $Provider, the provider it was opened with."
+    }
 
     # The deployment registers the MCP server's Entra app, and Q2 assigns its app role to the agents.
     # Both need an Entra role; check before the spend run opens, not halfway through the deploy.
@@ -138,7 +171,7 @@ try {
 
     # Each Claude deployment needs 50 (thousand tokens per minute; Start-Spike.ps1 -Capacity) of the subscription's quota in eastus2,
     # and new subscriptions can start at 0. Check before the spend run opens.
-    if ('deploy' -notin (Get-SpikeProgress).done) {
+    if ($Provider -eq 'Foundry' -and 'deploy' -notin (Get-SpikeProgress).done) {
         Write-Host 'Reading the subscription''s Claude quota in eastus2 ...'
         $usage = @(az cognitiveservices usage list -l eastus2 -o json --only-show-errors 2>&1)
         if ($LASTEXITCODE) { throw "Could not read the Foundry quota in eastus2: $($usage -join ' ')" }
@@ -152,8 +185,16 @@ try {
             elseif (-not ($lines | Where-Object { ($_.limit - $_.currentValue) -ge 50 })) { $label }
         }
         if ($short) {
-            throw "Less than 50 thousand TPM of Claude quota left in eastus2 for: $(@($short) -join ', '). Request Tokens Per Minute quota for them in the Foundry portal (Quota page, eastus2, Global Standard; 50 thousand TPM each), then rerun. Nothing was deployed and no spend run was opened."
+            throw "Less than 50 thousand TPM of Claude quota left in eastus2 for: $(@($short) -join ', '). Request Tokens Per Minute quota for them in the Foundry portal (Quota page, eastus2, Global Standard; 50 thousand TPM each), then rerun, or run the fallback with -Provider Anthropic. Nothing was deployed and no spend run was opened."
         }
+    }
+
+    # The fallback's one secret, asked for before anything is spent. Never written to disk: it lives in this
+    # session's environment and goes to the agents Container App as a secret through a deleted-after parameters file.
+    if ($Provider -eq 'Anthropic' -and 'deploy' -notin (Get-SpikeProgress).done -and -not $env:SPIKE_ANTHROPIC_API_KEY) {
+        $secure = Read-Host 'Anthropic API key for the spike (console.anthropic.com > API keys; set a spend limit on its workspace)' -AsSecureString
+        $env:SPIKE_ANTHROPIC_API_KEY = [System.Net.NetworkCredential]::new('', $secure).Password
+        if (-not $env:SPIKE_ANTHROPIC_API_KEY.StartsWith('sk-ant-')) { throw 'That does not look like an Anthropic API key (sk-ant-...). Nothing was done.' }
     }
 
     $progress = Get-SpikeProgress
@@ -174,7 +215,8 @@ try {
 
     # ---------- Price it and open the spend run ----------
     Invoke-Step 'price-and-open-run' {
-        $estimate = & (Join-Path $Kit 'scripts/Get-SpikeEstimate.ps1') | Select-Object -Last 1 | ConvertFrom-Json
+        $estimateArgs = if ($Provider -eq 'Anthropic') { @{ Provider = 'Anthropic'; Region = 'northcentralus' } } else { @{} }
+        $estimate = & (Join-Path $Kit 'scripts/Get-SpikeEstimate.ps1') @estimateArgs | Select-Object -Last 1 | ConvertFrom-Json
         Write-Host "`nAzure lines: $($estimate.manualAmount) ($($estimate.unpricedLines) unpriced)`n$($estimate.manualNote)"
         if ($estimate.unpricedLines -gt 0 -and -not $AllowUnpriced) {
             throw "$($estimate.unpricedLines) line(s) unpriced (warnings above). Nothing is deployed. Rerun with -AllowUnpriced to open the run anyway."
@@ -183,7 +225,7 @@ try {
         if ($answer -notmatch '^(y|yes)$') { throw 'Stopped at the estimate; nothing is deployed.' }
         $env:AZURE_SUBSCRIPTION_ID = $account.id
         $spendArgs = @{
-            Sandbox = $Sandbox; Kind = 'other'; Purpose = 'avd-swarm S1a spike'; Hours = 6
+            Sandbox = $Sandbox; Kind = 'other'; Purpose = "avd-swarm S1a spike ($Provider)"; Hours = 6
             ManualAmount = $estimate.manualAmount; ManualNote = $estimate.manualNote
             RunCap = $RunCap; MonthlyCap = $MonthlyCap; Funding = $Funding; LedgerPath = $Ledger
         }
@@ -193,21 +235,32 @@ try {
             Select-Object -Last 1 | Get-Content -Raw | ConvertFrom-Json
         if ($run.status -ne 'open') { throw "The spend run was refused: $($run.runId) is $($run.status). Nothing is deployed." }
         $run.runId | Set-Content "$Spike/run-id"
+        $Provider | Set-Content "$Spike/provider"
         Write-Host "Run $($run.runId) is open."
     }
     $RunId = Get-Content "$Spike/run-id"
 
     # ---------- Deploy, Q1 ----------
     Invoke-Step 'deploy' {
-        Write-Host 'Deploying the resource group, Foundry, the MCP server and the host pool; this takes 5 to 10 minutes.'
-        & (Join-Path $Kit 'scripts/Start-Spike.ps1') -RunId $RunId | Select-Object -Last 1 | Set-Content "$Spike/state.json"
+        if ($Provider -eq 'Anthropic') {
+            Write-Host 'Deploying the resource group, the MCP server, the agents app and the host pool, and creating the Agent ID blueprint; 5 to 15 minutes.'
+            & (Join-Path $Kit 'scripts/Start-Spike.ps1') -RunId $RunId -Provider Anthropic -Location northcentralus |
+                Select-Object -Last 1 | Set-Content "$Spike/state.json"
+        }
+        else {
+            Write-Host 'Deploying the resource group, Foundry, the MCP server and the host pool; this takes 5 to 10 minutes.'
+            & (Join-Path $Kit 'scripts/Start-Spike.ps1') -RunId $RunId | Select-Object -Last 1 | Set-Content "$Spike/state.json"
+        }
     }
     $s = Get-Content "$Spike/state.json" | ConvertFrom-Json
+    if ($Provider -eq 'Anthropic') { Save-SpikeResult 'Q1' 'not tested: no Claude quota in Foundry; fallback to Anthropic''s API' }
 
-    Invoke-Step 'q1-models' {
-        $deploymentArgs = @($s.compareDeployments | ForEach-Object { '--deployment', $_ })
-        $null = Invoke-Native 'Q1: call each Claude deployment' (@((Join-Path $Kit 'tools/test_models.py'), '--resource', $s.foundryName) + $deploymentArgs)
-        Save-SpikeResult 'Q1' 'confirmed'
+    if ($Provider -eq 'Foundry') {
+        Invoke-Step 'q1-models' {
+            $deploymentArgs = @($s.compareDeployments | ForEach-Object { '--deployment', $_ })
+            $null = Invoke-Native 'Q1: call each Claude deployment' (@((Join-Path $Kit 'tools/test_models.py'), '--resource', $s.foundryName) + $deploymentArgs)
+            Save-SpikeResult 'Q1' 'confirmed'
+        }
     }
 
     # ---------- Q3: the MCP server's tools ----------
@@ -227,63 +280,97 @@ try {
     }
     $allowed = Get-Content "$Spike/allowed-tools"
 
-    # ---------- Q2: the hosted agent ----------
-    Invoke-Step 'q2-agent' {
-        Write-Host 'Building and starting the hosted agent; the remote build takes several minutes.'
-        $lines = Invoke-Native 'Q2: deploy the hosted agent' @((Join-Path $Kit 'tools/deploy_agent.py'),
-            '--project-endpoint', $s.projectEndpoint, '--resource', $s.foundryName, '--coordinator', $s.coordinatorDeployment,
-            '--hosts', $s.hostsDeployment, '--mcp-url', $s.mcpUrl, '--mcp-app-id', $s.mcpAppId, '--allowed-tools', $allowed,
-            '--runtime', $Runtime)
-        Get-LastJson $lines 'deploy-agent' | ConvertTo-Json -Compress | Set-Content "$Spike/agent.json"
-    }
-    $a = Get-Content "$Spike/agent.json" | ConvertFrom-Json
+    if ($Provider -eq 'Anthropic') {
+        $evalArgs = @('--agent-url', $s.agentsUrl, '--app-id', $s.mcpAppId, '--identity', $s.agentIdentityAppId)
 
-    Invoke-Step 'q2-connect' {
-        & (Join-Path $Kit 'scripts/Connect-SpikeAgent.ps1') -AgentPrincipalId $a.identityPrincipalId -McpAppSpId $s.mcpAppSpId -McpAppRoleId $s.mcpAppRoleId
-        $null = Invoke-Native 'Q2: first question, end to end' @((Join-Path $Kit 'tools/run_evals.py'),
-            '--project-endpoint', $s.projectEndpoint, '--out', "$Spike/evals.jsonl", '--only', 'q01')
-        Save-SpikeResult 'Q2' 'answered q01; check the answer above'
-    }
+        Invoke-Step 'q2-identity' {
+            Write-Host "Setting the Hosts allowlist on the agents app (a new revision; it reinstalls, a minute or two)."
+            $null = Invoke-NativeAz @('containerapp', 'update', '-g', $s.resourceGroup, '-n', $s.agentsAppName,
+                '--set-env-vars', "HOSTS_ALLOWED_TOOLS=$allowed")
+            Wait-SpikeAgentsHealthy $s.agentsUrl $allowed
+            & (Join-Path $Kit 'scripts/Connect-SpikeAgent.ps1') -AgentPrincipalId $s.agentIdentityId -McpAppSpId $s.mcpAppSpId -McpAppRoleId $s.mcpAppRoleId
+            Write-Host 'Waiting a minute for the app role to reach the token service...'
+            Start-Sleep -Seconds 60
+            $null = Invoke-Native 'Q2: first question, end to end, with the agent identity' (@((Join-Path $Kit 'tools/run_evals.py')) + $evalArgs +
+                @('--model', $s.hostsDeployment, '--out', "$Spike/evals.jsonl", '--only', 'q01'))
+            Save-SpikeResult 'Q2' 'fallback: answered q01 with an Agent ID created without Foundry; check the answer and mcpTokenClaims in evals.jsonl'
+        }
 
-    # ---------- Q4: allowlist probes ----------
-    Invoke-Step 'q4-probes' {
-        $null = Invoke-Native 'Q4: allowlist probes' @((Join-Path $Kit 'tools/run_evals.py'),
-            '--project-endpoint', $s.projectEndpoint, '--out', "$Spike/evals.jsonl", '--only', 'p01,p02')
-    }
+        Invoke-Step 'q4-probes' {
+            $null = Invoke-Native 'Q4: allowlist probes' (@((Join-Path $Kit 'tools/run_evals.py')) + $evalArgs +
+                @('--model', $s.hostsDeployment, '--out', "$Spike/evals.jsonl", '--only', 'p01,p02'))
+        }
 
-    # ---------- Q6: eval questions and token counts ----------
-    Invoke-Step 'q6-evals' {
-        $lines = Invoke-Native 'Q6: the ten eval questions' @((Join-Path $Kit 'tools/run_evals.py'),
-            '--project-endpoint', $s.projectEndpoint, '--out', "$Spike/evals.jsonl",
-            '--only', 'q01,q02,q03,q04,q05,q06,q07,q08,q09,q10') -OkExitCodes 0, 2
-        if ($LASTEXITCODE -eq 2) { throw 'STOP: past the 2M input token stop rule.' }
-        Save-SpikeResult "Q6-$($s.hostsDeployment)" (Get-LastJson $lines 'run-evals')
+        # Q6: the ten questions with the Hosts agent on each model; one service, the model chosen per request.
+        foreach ($hostsModel in @($s.compareDeployments)) {
+            Invoke-Step "q6-$hostsModel" {
+                $lines = Invoke-Native "Q6: the ten eval questions on $hostsModel" (@((Join-Path $Kit 'tools/run_evals.py')) + $evalArgs +
+                    @('--model', $hostsModel, '--out', "$Spike/evals-$hostsModel.jsonl", '--only', 'q01,q02,q03,q04,q05,q06,q07,q08,q09,q10')) -OkExitCodes 0, 2
+                if ($LASTEXITCODE -eq 2) { throw 'STOP: past the 2M input token stop rule.' }
+                Save-SpikeResult "Q6-$hostsModel" (Get-LastJson $lines 'run-evals')
+            }
+        }
+        $a = [pscustomobject]@{ identityPrincipalId = $s.agentIdentityId }
     }
-
-    # The same ten questions with the Hosts agent on each other model: one agent per model, so they compare side by side.
-    foreach ($hostsDeployment in @($s.compareDeployments | Where-Object { $_ -ne $s.hostsDeployment })) {
-        $agentName = "avdswarm-spike-$($hostsDeployment -replace '^claude-', '' -replace '[^a-z0-9]+', '-')"
-        Invoke-Step "q6-$hostsDeployment" {
-            Write-Host "Building a second agent, $agentName, with the Hosts agent on $hostsDeployment; several minutes."
-            $lines = Invoke-Native "Q6: deploy $agentName" @((Join-Path $Kit 'tools/deploy_agent.py'),
+    else {
+        # ---------- Q2: the hosted agent ----------
+        Invoke-Step 'q2-agent' {
+            Write-Host 'Building and starting the hosted agent; the remote build takes several minutes.'
+            $lines = Invoke-Native 'Q2: deploy the hosted agent' @((Join-Path $Kit 'tools/deploy_agent.py'),
                 '--project-endpoint', $s.projectEndpoint, '--resource', $s.foundryName, '--coordinator', $s.coordinatorDeployment,
-                '--hosts', $hostsDeployment, '--mcp-url', $s.mcpUrl, '--mcp-app-id', $s.mcpAppId, '--allowed-tools', $allowed,
-                '--runtime', $Runtime, '--agent-name', $agentName)
-            $other = Get-LastJson $lines 'deploy-agent'
-            $other | ConvertTo-Json -Compress | Set-Content "$Spike/agent-$hostsDeployment.json"
-            & (Join-Path $Kit 'scripts/Connect-SpikeAgent.ps1') -AgentPrincipalId $other.identityPrincipalId -McpAppSpId $s.mcpAppSpId -McpAppRoleId $s.mcpAppRoleId
-            $lines = Invoke-Native "Q6: the ten eval questions on $hostsDeployment" @((Join-Path $Kit 'tools/run_evals.py'),
-                '--project-endpoint', $s.projectEndpoint, '--agent-name', $agentName, '--out', "$Spike/evals-$hostsDeployment.jsonl",
+                '--hosts', $s.hostsDeployment, '--mcp-url', $s.mcpUrl, '--mcp-app-id', $s.mcpAppId, '--allowed-tools', $allowed,
+                '--runtime', $Runtime)
+            Get-LastJson $lines 'deploy-agent' | ConvertTo-Json -Compress | Set-Content "$Spike/agent.json"
+        }
+        $a = Get-Content "$Spike/agent.json" | ConvertFrom-Json
+
+        Invoke-Step 'q2-connect' {
+            & (Join-Path $Kit 'scripts/Connect-SpikeAgent.ps1') -AgentPrincipalId $a.identityPrincipalId -McpAppSpId $s.mcpAppSpId -McpAppRoleId $s.mcpAppRoleId
+            $null = Invoke-Native 'Q2: first question, end to end' @((Join-Path $Kit 'tools/run_evals.py'),
+                '--project-endpoint', $s.projectEndpoint, '--out', "$Spike/evals.jsonl", '--only', 'q01')
+            Save-SpikeResult 'Q2' 'answered q01; check the answer above'
+        }
+
+        # ---------- Q4: allowlist probes ----------
+        Invoke-Step 'q4-probes' {
+            $null = Invoke-Native 'Q4: allowlist probes' @((Join-Path $Kit 'tools/run_evals.py'),
+                '--project-endpoint', $s.projectEndpoint, '--out', "$Spike/evals.jsonl", '--only', 'p01,p02')
+        }
+
+        # ---------- Q6: eval questions and token counts ----------
+        Invoke-Step 'q6-evals' {
+            $lines = Invoke-Native 'Q6: the ten eval questions' @((Join-Path $Kit 'tools/run_evals.py'),
+                '--project-endpoint', $s.projectEndpoint, '--out', "$Spike/evals.jsonl",
                 '--only', 'q01,q02,q03,q04,q05,q06,q07,q08,q09,q10') -OkExitCodes 0, 2
             if ($LASTEXITCODE -eq 2) { throw 'STOP: past the 2M input token stop rule.' }
-            Save-SpikeResult "Q6-$hostsDeployment" (Get-LastJson $lines 'run-evals')
+            Save-SpikeResult "Q6-$($s.hostsDeployment)" (Get-LastJson $lines 'run-evals')
         }
-    }
 
-    Invoke-Step 'q6-metrics' {
-        Write-Host 'Waiting 5 minutes for Azure Monitor to catch up with the token metrics...'
-        Start-Sleep -Seconds 300
-        & (Join-Path $Kit 'scripts/Get-SpikeToken.ps1') -FoundryName $s.foundryName | Select-Object -Last 1 | Set-Content "$Spike/tokens.json"
+        # The same ten questions with the Hosts agent on each other model: one agent per model, so they compare side by side.
+        foreach ($hostsDeployment in @($s.compareDeployments | Where-Object { $_ -ne $s.hostsDeployment })) {
+            $agentName = "avdswarm-spike-$($hostsDeployment -replace '^claude-', '' -replace '[^a-z0-9]+', '-')"
+            Invoke-Step "q6-$hostsDeployment" {
+                Write-Host "Building a second agent, $agentName, with the Hosts agent on $hostsDeployment; several minutes."
+                $lines = Invoke-Native "Q6: deploy $agentName" @((Join-Path $Kit 'tools/deploy_agent.py'),
+                    '--project-endpoint', $s.projectEndpoint, '--resource', $s.foundryName, '--coordinator', $s.coordinatorDeployment,
+                    '--hosts', $hostsDeployment, '--mcp-url', $s.mcpUrl, '--mcp-app-id', $s.mcpAppId, '--allowed-tools', $allowed,
+                    '--runtime', $Runtime, '--agent-name', $agentName)
+                $other = Get-LastJson $lines 'deploy-agent'
+                $other | ConvertTo-Json -Compress | Set-Content "$Spike/agent-$hostsDeployment.json"
+                & (Join-Path $Kit 'scripts/Connect-SpikeAgent.ps1') -AgentPrincipalId $other.identityPrincipalId -McpAppSpId $s.mcpAppSpId -McpAppRoleId $s.mcpAppRoleId
+                $lines = Invoke-Native "Q6: the ten eval questions on $hostsDeployment" @((Join-Path $Kit 'tools/run_evals.py'),
+                    '--project-endpoint', $s.projectEndpoint, '--agent-name', $agentName, '--out', "$Spike/evals-$hostsDeployment.jsonl",
+                    '--only', 'q01,q02,q03,q04,q05,q06,q07,q08,q09,q10') -OkExitCodes 0, 2
+                if ($LASTEXITCODE -eq 2) { throw 'STOP: past the 2M input token stop rule.' }
+                Save-SpikeResult "Q6-$hostsDeployment" (Get-LastJson $lines 'run-evals')
+            }
+        }
+
+        Invoke-Step 'q6-metrics' {
+            Write-Host 'Waiting 5 minutes for Azure Monitor to catch up with the token metrics...'
+            Start-Sleep -Seconds 300
+            & (Join-Path $Kit 'scripts/Get-SpikeToken.ps1') -FoundryName $s.foundryName | Select-Object -Last 1 | Set-Content "$Spike/tokens.json"
+        }
     }
 
     # ---------- Q6 summary: the same ten questions per Hosts model ----------
@@ -295,11 +382,24 @@ try {
             checksPassed   = "$($r.expectMet)/$($r.questions)"
             inputPerQ      = [math]::Round($r.inputTokens / [math]::Max(1, $r.questions))
             outputPerQ     = [math]::Round($r.outputTokens / [math]::Max(1, $r.questions))
+            costUsd        = $r.costUsd
         }
     } | Format-Table -AutoSize | Out-String | Write-Host
 
     # ---------- Q5: portal steps while the agent still exists ----------
-    if (-not $NoPause) {
+    if (-not $NoPause -and $Provider -eq 'Anthropic') {
+        Write-Phase 'Q5: identity evidence (portal steps, optional)'
+        Write-Host @"
+The agent identity's object ID is $($s.agentIdentityId); its blueprint is $($s.blueprintAppId) (both in $Spike/state.json).
+1. evals.jsonl: each answer's evidence.mcpTokenClaims shows the token the Hosts agent called the MCP server with.
+2. Entra admin center > Agent ID > Agent identities: open avdswarm-spike-hosts-$RunId, then its sign-in logs.
+3. Optional: a report-only Conditional Access policy targeting it, then ask one more question and check the Report-only tab:
+   & `$Py $Kit/tools/run_evals.py --agent-url $($s.agentsUrl) --app-id $($s.mcpAppId) --identity $($s.agentIdentityAppId) --model $($s.hostsDeployment) --out $Spike/evals.jsonl --only q01
+   Delete the policy after.
+"@
+        $null = Read-Host 'Press Enter to tear down (or Ctrl+C to keep it up; run -TeardownOnly later)'
+    }
+    elseif (-not $NoPause) {
         Write-Phase 'Q5: identity evidence (portal steps, optional)'
         Write-Host @"
 The agent identity's object ID is $($a.identityPrincipalId) (also in $Spike/agent.json).

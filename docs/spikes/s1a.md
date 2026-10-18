@@ -105,3 +105,23 @@ Spec §3, §6, §7 and §9 change to match the results in the same PR.
 - If the subscription has the landing zone's guardrails, the exemption in §2 is part of the run.
 - The GitHub CLI signed in once in Cloud Shell, because both repos are private (block 1 does it).
 - Quota for Claude in Foundry in East US 2 (block 2 reports it if it's missing).
+
+## 7. Fallback without Foundry (`-Provider Anthropic`)
+
+Added 2026-10-18, when the subscription had no Claude quota in Foundry (0 TPM for every Claude model in East US 2; requested through Microsoft's quota form). It answers what it can while the request is open; the Foundry run still follows when quota arrives.
+
+**What runs.** `agent_api/main.py` in a Container App (North Central US, one replica): the coordinator (Haiku 5.5) gets one tool, a handoff; the Hosts agent gets the MCP server's tools, filtered to the allowlist in code. Claude is called through Anthropic's Messages API with automatic prompt caching and explicit effort (coordinator low, Hosts medium), as on Foundry. The agent identity is made through Graph without Foundry: an agent identity **blueprint** (you as sponsor and owner), the Container App's user-assigned managed identity as the blueprint's federated credential, and an **agent identity** the blueprint creates with its own token. The Hosts agent calls the MCP server with the agent identity's token (managed identity token, then blueprint token for the agent identity, then the agent identity's token for the MCP app). Questions run as jobs the eval script polls, because Container Apps ingress ends requests after 240 seconds.
+
+| # | Answered? |
+|---|---|
+| Q1 | No: Foundry isn't used. Stays open until the quota request is answered |
+| Q2 | Partly: the handoff runs as plain code in a Container App (the "if not" column), and it shows whether an Agent ID can be created and used without Foundry |
+| Q3 | Yes, unchanged |
+| Q4 | Partly: the allowlist is enforced in code, not by the platform; the probes still run |
+| Q5 | Yes for the agent identity: the MCP token's claims are recorded per question, and its calls show in Entra's sign-in logs under the agent identity |
+| Q6 | Yes, with Anthropic's list prices; the three Hosts models are compared the same way |
+
+**The one secret.** Anthropic's API has no Entra or federated sign-in, so this path needs an API key. It's an accepted exception to the no-secrets rule for this spike only: typed into a hidden prompt, held in the PowerShell session and the Container App's secret, passed to the deployment through a parameters file that's deleted right after, never written to the state folder or a repo, and gone with the resource group. Create a key just for the spike, with a spend limit on the Anthropic workspace, and delete it after teardown.
+
+**Cost.** Azure: the Container Apps and logs, under $1 for a few hours. Tokens are billed by Anthropic, not Azure, so they're outside the Azure spend check: the 12 eval questions on three Hosts models are expected around $8, and the 2M input token stop rule caps them near $15. Record Anthropic's charge for the run (Console, Usage) in the spend run when you close it.
+

@@ -34,3 +34,4 @@ Written after the S1a spike's first real run, where creating an Entra app throug
 5. Is idempotent (finds each object by a unique name first) and has a matching `-Remove`.
 
 Agent identities aren't created by the script: Foundry creates them with each hosted agent. The script assigns their roles and the MCP app role after a deploy.
+Without Foundry, a blueprint can create them through Graph instead; the S1a fallback tests that ([spikes/s1a.md](spikes/s1a.md) §7).

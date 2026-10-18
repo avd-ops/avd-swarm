@@ -79,4 +79,52 @@ function Invoke-SpikeGraph {
     finally { if ($bodyFile) { Remove-Item -LiteralPath $bodyFile.FullName -ErrorAction SilentlyContinue } }
 }
 
-Export-ModuleMember -Function Write-SpikeStep, Invoke-SpikeAz, Get-SpikeContext, Get-SpikeRoleId, Invoke-SpikeGraph -Variable SpikeResourceGroup, ExemptedAssignment
+# Entra Agent ID needs delegated Graph scopes the Azure CLI's token doesn't carry, so the fallback's
+# blueprint and agent identity calls go through Microsoft Graph PowerShell, consented once by the admin running it.
+$script:AgentGraphScopes = @(
+    'AgentIdentityBlueprint.Create', 'AgentIdentityBlueprint.AddRemoveCreds.All', 'AgentIdentityBlueprint.ReadWrite.All',
+    'AgentIdentityBlueprintPrincipal.Create', 'AgentIdentityBlueprint.DeleteRestore.All', 'AgentIdentity.DeleteRestore.All',
+    'AppRoleAssignment.ReadWrite.All', 'Application.Read.All'
+)
+
+function Connect-SpikeAgentGraph {
+    <# Signs in to Graph PowerShell with the Agent ID scopes (device code in Cloud Shell) and proves it with a real request (lesson 0007). #>
+    param([Parameter(Mandatory)][string] $TenantId)
+    if (-not (Get-Module -ListAvailable Microsoft.Graph.Authentication)) {
+        Write-SpikeStep 'Installing Microsoft.Graph.Authentication for your user (a minute)'
+        Install-Module Microsoft.Graph.Authentication -Scope CurrentUser -Force
+    }
+    $context = Get-MgContext
+    $missing = @($script:AgentGraphScopes | Where-Object { -not $context -or $_ -notin $context.Scopes })
+    if ($missing) {
+        Write-SpikeStep "Signing in to Microsoft Graph PowerShell for Entra Agent ID (scopes: $($script:AgentGraphScopes -join ', ')). Follow the device code prompt; as an admin, consent for the organization."
+        Connect-MgGraph -TenantId $TenantId -Scopes $script:AgentGraphScopes -UseDeviceCode -NoWelcome
+    }
+    $me = Invoke-MgGraphRequest -Method GET -Uri 'https://graph.microsoft.com/v1.0/me?$select=userPrincipalName' -OutputType PSObject
+    $granted = (Get-MgContext).Scopes
+    Write-Host "Graph PowerShell signed in as $($me.userPrincipalName); scopes: $($granted -join ', ')"
+    $stillMissing = @($script:AgentGraphScopes | Where-Object { $_ -notin $granted })
+    if ($stillMissing) { Write-Warning "Not granted: $($stillMissing -join ', '). The step that needs one will fail and show Graph's error." }
+}
+
+function Invoke-SpikeAgentGraph {
+    <# One Graph call through Graph PowerShell, with the OData-Version header Agent ID needs; full error on failure (lesson 0012). #>
+    param(
+        [Parameter(Mandatory)][string] $Step,
+        [Parameter(Mandatory)][ValidateSet('GET', 'POST', 'PATCH', 'DELETE')][string] $Method,
+        # Starts with /v1.0/ or /beta/
+        [Parameter(Mandatory)][string] $Path,
+        [object] $Body,
+        [switch] $AllowNotFound
+    )
+    $request = @{ Method = $Method; Uri = "https://graph.microsoft.com$Path"; Headers = @{ 'OData-Version' = '4.0' }; OutputType = 'PSObject' }
+    if ($null -ne $Body) { $request.Body = ($Body | ConvertTo-Json -Depth 20 -Compress); $request.ContentType = 'application/json' }
+    try { Invoke-MgGraphRequest @request }
+    catch {
+        $detail = if ($_.ErrorDetails) { $_.ErrorDetails.Message } else { '' }
+        if ($AllowNotFound -and "$($_.Exception.Message) $detail" -match '(NotFound|\b404\b|does not exist)') { return $null }
+        throw "[$Step] Graph $Method $Path failed: $($_.Exception.Message)`n$detail"
+    }
+}
+
+Export-ModuleMember -Function Write-SpikeStep, Invoke-SpikeAz, Get-SpikeContext, Get-SpikeRoleId, Invoke-SpikeGraph, Connect-SpikeAgentGraph, Invoke-SpikeAgentGraph -Variable SpikeResourceGroup, ExemptedAssignment

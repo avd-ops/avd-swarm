@@ -9,7 +9,9 @@ spend ledger's resource check can't see. Run tenant-swarm's Stop-SpendRun.ps1 af
 param(
     [Parameter(Mandatory)][string] $RunId,
     [string] $Location = 'eastus2',
-    [string] $McpAppId
+    [string] $McpAppId,
+    # Anthropic: also delete the fallback's agent identity and blueprint (found by name, through Graph PowerShell).
+    [ValidateSet('Foundry', 'Anthropic')][string] $Provider = 'Foundry'
 )
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'Spike.psm1') -Force
@@ -57,6 +59,30 @@ if ($McpAppId) {
 }
 else {
     Write-Host "No MCP server app is registered for run $RunId."
+}
+
+if ($Provider -eq 'Anthropic') {
+    Connect-SpikeAgentGraph -TenantId $context.TenantId
+    $identityName = "avdswarm-spike-hosts-$RunId"
+    $blueprintName = "avdswarm-spike-agents-$RunId"
+    foreach ($identity in @((Invoke-SpikeAgentGraph -Step 'find-agent-identity' -Method GET -Path "/v1.0/servicePrincipals?`$filter=displayName eq '$identityName'").value | Where-Object { $_ })) {
+        Write-SpikeStep "Deleting the agent identity $($identity.appId)"
+        if ($PSCmdlet.ShouldProcess($identity.id, 'delete agent identity')) {
+            $null = Invoke-SpikeAgentGraph -Step 'delete-agent-identity' -Method DELETE -Path "/beta/serviceprincipals/$($identity.id)" -AllowNotFound
+        }
+    }
+    foreach ($blueprint in @((Invoke-SpikeAgentGraph -Step 'find-blueprint' -Method GET -Path "/v1.0/applications?`$filter=displayName eq '$blueprintName'").value | Where-Object { $_ })) {
+        Write-SpikeStep "Deleting the agent identity blueprint $($blueprint.appId) (its principal goes with it)"
+        if ($PSCmdlet.ShouldProcess($blueprint.id, 'delete blueprint')) {
+            $null = Invoke-SpikeAgentGraph -Step 'delete-blueprint' -Method DELETE -Path "/v1.0/applications/$($blueprint.id)" -AllowNotFound
+        }
+    }
+    if (@((Invoke-SpikeAgentGraph -Step 'check-agent-identity' -Method GET -Path "/v1.0/servicePrincipals?`$filter=displayName eq '$identityName'").value | Where-Object { $_ }).Count) {
+        $leftovers.Add("agent identity $identityName")
+    }
+    if (@((Invoke-SpikeAgentGraph -Step 'check-blueprint' -Method GET -Path "/v1.0/applications?`$filter=displayName eq '$blueprintName'").value | Where-Object { $_ }).Count) {
+        $leftovers.Add("agent identity blueprint $blueprintName")
+    }
 }
 
 Write-SpikeStep 'Checking what is left'

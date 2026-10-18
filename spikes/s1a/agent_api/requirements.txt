@@ -1,0 +1,4 @@
+anthropic==1.15.0
+azure-identity==1.26.0
+mcp==1.30.0
+pyjwt[crypto]==2.15.1
