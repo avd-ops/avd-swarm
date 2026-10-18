@@ -64,11 +64,59 @@ else {
     Write-Host 'No landing zone location policy here; no exemption needed.'
 }
 
+# ---- MCP server's Entra app (Graph, through the Azure CLI) ----
+# Registered here rather than with the Bicep Graph extension, which a real run denied in Cloud Shell
+# (Authorization_RequestDenied for a Global Administrator, 2026-10-18).
+$appUniqueName = "avdswarm-spike-mcp-$RunId"
+$azureCliAppId = '04b07795-8ddb-461a-bbee-02f9e1bf7b46'  # Microsoft Azure CLI (first-party): lets you list tools as yourself
+Write-SpikeStep "Registering the MCP server's Entra app $appUniqueName"
+$app = @((Invoke-SpikeGraph -Step 'find-app' -Method get -Path "/applications?`$filter=uniqueName eq '$appUniqueName'").value)[0]
+if (-not $app) {
+    $roleId = [guid]::NewGuid().Guid
+    $scopeId = [guid]::NewGuid().Guid
+    if ($PSCmdlet.ShouldProcess($appUniqueName, 'create Entra app')) {
+        $app = Invoke-SpikeGraph -Step 'create-app' -Method post -Path '/applications' -Body @{
+            uniqueName     = $appUniqueName
+            displayName    = "avdswarm spike Azure MCP Server ($RunId)"
+            signInAudience = 'AzureADMyOrg'
+            appRoles       = @(@{
+                    id = $roleId; value = 'Mcp.Tools.ReadWrite.All'; displayName = 'Azure MCP tools'; isEnabled = $true
+                    description = 'Call the spike Azure MCP Server (read-only tools only)'; allowedMemberTypes = @('Application')
+                })
+            api            = @{
+                requestedAccessTokenVersion = 2
+                oauth2PermissionScopes      = @(@{
+                        id = $scopeId; value = 'Mcp.Tools.ReadWrite'; type = 'User'; isEnabled = $true
+                        adminConsentDisplayName = 'Azure MCP tools'; adminConsentDescription = 'Call the spike Azure MCP Server as the signed-in user'
+                        userConsentDisplayName = 'Azure MCP tools'; userConsentDescription = 'Call the spike Azure MCP Server as you'
+                    })
+            }
+        }
+    }
+}
+$appRoleId = @($app.appRoles | Where-Object { $_.value -eq 'Mcp.Tools.ReadWrite.All' })[0].id
+$scope = @($app.api.oauth2PermissionScopes | Where-Object { $_.value -eq 'Mcp.Tools.ReadWrite' })[0]
+if ($PSCmdlet.ShouldProcess($appUniqueName, 'set identifier URI and pre-authorize the Azure CLI')) {
+    $null = Invoke-SpikeGraph -Step 'update-app' -Method patch -Path "/applications/$($app.id)" -Body @{
+        identifierUris = @("api://$($app.appId)")
+        api            = @{
+            requestedAccessTokenVersion = 2
+            oauth2PermissionScopes      = @($app.api.oauth2PermissionScopes)
+            preAuthorizedApplications   = @(@{ appId = $azureCliAppId; delegatedPermissionIds = @($scope.id) })
+        }
+    }
+}
+$appSp = @((Invoke-SpikeGraph -Step 'find-sp' -Method get -Path "/servicePrincipals?`$filter=appId eq '$($app.appId)'").value)[0]
+if (-not $appSp -and $PSCmdlet.ShouldProcess($app.appId, 'create service principal')) {
+    $appSp = Invoke-SpikeGraph -Step 'create-sp' -Method post -Path '/servicePrincipals' -Body @{ appId = $app.appId }
+}
+Write-Host "MCP app $($app.appId), service principal $($appSp.id)"
+
 # ---- Step 3: deploy ----
 Write-SpikeStep 'Deploying infra/main.bicep (Foundry, MCP server, logs, empty host pool); this takes several minutes'
 $deployment = Invoke-SpikeAz -Step 'deploy' -Arguments @('deployment', 'group', 'create', '-g', $SpikeResourceGroup,
     '-n', "avdswarm-spike-$RunId", '-f', (Join-Path $PSScriptRoot '..' 'infra' 'main.bicep'),
-    '-p', "location=$Location", "runId=$RunId")
+    '-p', "location=$Location", "runId=$RunId", "mcpAppId=$($app.appId)")
 $out = $deployment.properties.outputs
 $foundryName = $out.foundryName.value
 $foundryId = "$rgId/providers/Microsoft.CognitiveServices/accounts/$foundryName"
@@ -108,8 +156,8 @@ foreach ($pick in $picks) {
     projectEndpoint       = $out.projectEndpoint.value
     mcpUrl                = $out.mcpUrl.value
     mcpAppId              = $out.mcpAppId.value
-    mcpAppSpId            = $out.mcpAppSpId.value
-    mcpAppRoleId          = $out.mcpAppRoleId.value
+    mcpAppSpId            = $appSp.id
+    mcpAppRoleId          = $appRoleId
     coordinatorDeployment = $deployed[$CoordinatorModel]
     hostsDeployment       = $deployed[$HostsModel]
     # Every model the Hosts agent runs on in Q6: the main one first, then the comparisons and the coordinator's model.

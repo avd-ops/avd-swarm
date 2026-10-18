@@ -3,9 +3,7 @@
 // Everything the spike needs except the model deployments (deployed by name from what the region
 // offers, README step 4) and the hosted agent (deployed from code, README step 6).
 // The Azure MCP Server part follows the setup in Azure-Samples/azmcp-foundry-aca-mi, with the
-// virtualdesktop namespace, scale to zero, and Azure CLI pre-authorized so the operator can list tools.
-
-extension microsoftGraphV1
+// virtualdesktop namespace and scale to zero.
 
 targetScope = 'resourceGroup'
 
@@ -26,8 +24,6 @@ var tags = {
   'spend-run': runId
 }
 var desktopVirtualizationReaderRoleId = '49a72310-ab8d-41df-bbb0-79b649203868'
-// Microsoft Azure CLI, a first-party app: lets the operator get a delegated token to list tools.
-var azureCliAppId = '04b07795-8ddb-461a-bbee-02f9e1bf7b46'
 
 // ---------- Foundry ----------
 resource foundry 'Microsoft.CognitiveServices/accounts@2025-06-01' = {
@@ -67,65 +63,10 @@ resource logs 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
 }
 
 // ---------- Azure MCP Server ----------
-var mcpRoleValue = 'Mcp.Tools.ReadWrite.All'
-var mcpRoleId = guid(resourceGroup().id, mcpRoleValue)
-var mcpScopeValue = 'Mcp.Tools.ReadWrite'
-var mcpScopeId = guid(resourceGroup().id, mcpScopeValue)
-var mcpAppUniqueName = 'avdswarm-spike-mcp-${suffix}'
-
-resource mcpApp 'Microsoft.Graph/applications@v1.0' = {
-  uniqueName: mcpAppUniqueName
-  displayName: 'avdswarm spike Azure MCP Server (${runId})'
-  signInAudience: 'AzureADMyOrg'
-  appRoles: [
-    {
-      id: mcpRoleId
-      value: mcpRoleValue
-      displayName: 'Azure MCP tools'
-      description: 'Call the spike Azure MCP Server (read-only tools only)'
-      isEnabled: true
-      allowedMemberTypes: ['Application']
-    }
-  ]
-  api: {
-    requestedAccessTokenVersion: 2
-    oauth2PermissionScopes: [
-      {
-        id: mcpScopeId
-        value: mcpScopeValue
-        type: 'User'
-        adminConsentDisplayName: 'Azure MCP tools'
-        adminConsentDescription: 'Call the spike Azure MCP Server as the signed-in user'
-        userConsentDisplayName: 'Azure MCP tools'
-        userConsentDescription: 'Call the spike Azure MCP Server as you'
-        isEnabled: true
-      }
-    ]
-  }
-}
-
-// The identifier URI and pre-authorization need the app ID, so they are a second write of the same app.
-resource mcpAppUpdate 'Microsoft.Graph/applications@v1.0' = {
-  uniqueName: mcpAppUniqueName
-  displayName: mcpApp.displayName
-  signInAudience: 'AzureADMyOrg'
-  appRoles: mcpApp.appRoles
-  identifierUris: ['api://${mcpApp.appId}']
-  api: {
-    requestedAccessTokenVersion: 2
-    oauth2PermissionScopes: mcpApp.api.oauth2PermissionScopes
-    preAuthorizedApplications: [
-      {
-        appId: azureCliAppId
-        delegatedPermissionIds: [mcpScopeId]
-      }
-    ]
-  }
-}
-
-resource mcpAppSp 'Microsoft.Graph/servicePrincipals@v1.0' = {
-  appId: mcpApp.appId
-}
+// The server's Entra app is registered by Start-Spike.ps1 through the Azure CLI, not the Bicep Graph extension:
+// a real run (2026-10-18) got Authorization_RequestDenied from the extension in Cloud Shell for a Global Administrator.
+@description('Client ID of the MCP server\'s Entra app (Start-Spike.ps1 registers it).')
+param mcpAppId string
 
 resource mcpEnvironment 'Microsoft.App/managedEnvironments@2024-03-01' = {
   name: 'cae-avdswarm-spike-${suffix}'
@@ -179,7 +120,7 @@ resource mcpServer 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'AZURE_MCP_COLLECT_TELEMETRY', value: 'false' }
             { name: 'AzureAd__Instance', value: environment().authentication.loginEndpoint }
             { name: 'AzureAd__TenantId', value: tenant().tenantId }
-            { name: 'AzureAd__ClientId', value: mcpApp.appId }
+            { name: 'AzureAd__ClientId', value: mcpAppId }
             // HTTPS ends at the Container Apps ingress; inside the pod it's HTTP (same as the sample).
             { name: 'AZURE_MCP_DANGEROUSLY_DISABLE_HTTPS_REDIRECTION', value: 'true' }
           ]
@@ -239,6 +180,4 @@ resource workspace 'Microsoft.DesktopVirtualization/workspaces@2024-04-03' = {
 output foundryName string = foundry.name
 output projectEndpoint string = 'https://${foundry.properties.customSubDomainName}.services.ai.azure.com/api/projects/${project.name}'
 output mcpUrl string = 'https://${mcpServer.properties.configuration.ingress.fqdn}'
-output mcpAppId string = mcpApp.appId
-output mcpAppSpId string = mcpAppSp.id
-output mcpAppRoleId string = mcpRoleId
+output mcpAppId string = mcpAppId

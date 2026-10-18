@@ -44,6 +44,10 @@ foreach ($name in @($foundryNames | Where-Object { $_ })) {
     }
 }
 
+if (-not $McpAppId) {
+    # Registered by Start-Spike.ps1 with a uniqueName per run, so it can be found after the group is gone.
+    $McpAppId = @((Invoke-SpikeGraph -Step 'find-app' -Method get -Path "/applications?`$filter=uniqueName eq 'avdswarm-spike-mcp-$RunId'").value)[0].appId
+}
 if ($McpAppId) {
     Write-SpikeStep "Deleting the MCP server's Entra app $McpAppId"
     if ($PSCmdlet.ShouldProcess($McpAppId, 'delete Entra app')) {
@@ -52,7 +56,7 @@ if ($McpAppId) {
     if (Invoke-SpikeAz -Step 'check-app' -AllowNotFound -Arguments @('ad', 'app', 'show', '--id', $McpAppId)) { $leftovers.Add("Entra app $McpAppId") }
 }
 else {
-    Write-Warning 'No MCP app ID found; check Entra app registrations for "avdswarm spike Azure MCP Server" by hand.'
+    Write-Host "No MCP server app is registered for run $RunId."
 }
 
 Write-SpikeStep 'Checking what is left'
