@@ -36,8 +36,12 @@ $lines = @(
        Filter = "serviceName eq 'Azure Container Apps' and armRegionName eq '$Region'"; Match = { $_.meterName -match 'Memory' -and $_.meterName -match 'Active' -and $_.skuName -match 'Consumption|Standard' } }
     @{ Name = 'Log Analytics ingestion'; Quantity = 0.5; Unit = 'GB'
        Filter = "serviceName eq 'Log Analytics' and armRegionName eq '$Region'"; Match = { $_.meterName -match 'Data Ingestion' -and $_.meterName -notmatch 'Basic|Auxiliary|Commitment' } }
-    @{ Name = 'Foundry hosted agent compute'; Quantity = $Hours; Unit = 'hours of one 0.5 vCPU session'
-       Filter = "armRegionName eq '$Region' and contains(productName, 'Foundry')"; Match = { $_.meterName -match 'Hosted' -or $_.productName -match 'Hosted Agent' } }
+    # Hosted agents bill vCPU and memory separately, like Container Apps (seen 2026-10-18: 'Hosted vCPU Usage' and
+    # 'Hosted Memory Usage', per hour). The agent runs at 0.5 vCPU / 1 GiB (tools/deploy_agent.py).
+    @{ Name = 'Foundry hosted agent vCPU'; Quantity = 0.5 * $Hours; Unit = 'vCPU-hours'
+       Filter = "armRegionName eq '$Region' and contains(productName, 'Foundry')"; Match = { $_.meterName -match 'Hosted' -and $_.meterName -match 'vCPU' } }
+    @{ Name = 'Foundry hosted agent memory'; Quantity = 1 * $Hours; Unit = 'GiB-hours'
+       Filter = "armRegionName eq '$Region' and contains(productName, 'Foundry')"; Match = { $_.meterName -match 'Hosted' -and $_.meterName -match 'Memory' } }
 )
 
 $total = $TokenUpperBound
