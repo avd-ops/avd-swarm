@@ -21,7 +21,13 @@ param(
     [string] $CoordinatorVersion,
     [string] $HostsVersion,
     # Also deployed so Q6 can run the Hosts agent on each model. The coordinator's model is reused, not deployed twice.
-    [string[]] $CompareModels = @('claude-sonnet-5-5')
+    [string[]] $CompareModels = @('claude-sonnet-5-5'),
+    # Foundry sends these to Anthropic with every Claude deployment (modelProviderData). Empty means the tenant's
+    # own organization name and country from Graph.
+    [string] $OrganizationName,
+    [ValidatePattern('^([A-Z]{2})?$')][string] $CountryCode,
+    [ValidateSet('technology', 'finance', 'healthcare', 'education', 'retail', 'manufacturing', 'government', 'media', 'other')]
+    [string] $Industry = 'technology'
 )
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'Spike.psm1') -Force
@@ -132,6 +138,13 @@ foreach ($names in @(@('Foundry User', 'Azure AI User'), @('Foundry Project Mana
 Write-SpikeStep "Listing the models the Foundry resource offers"
 $models = @(Invoke-SpikeAz -Step 'list-models' -Arguments @('cognitiveservices', 'account', 'list-models', '-g', $SpikeResourceGroup, '-n', $foundryName))
 $deployed = @{}
+if (-not $OrganizationName -or -not $CountryCode) {
+    $org = @((Invoke-SpikeGraph -Step 'read-organization' -Method get -Path '/organization?$select=displayName,countryLetterCode').value)[0]
+    if (-not $OrganizationName) { $OrganizationName = $org.displayName }
+    if (-not $CountryCode) { $CountryCode = $org.countryLetterCode }
+}
+if (-not $OrganizationName -or -not $CountryCode) { throw 'Claude deployments need an organization name and country; pass -OrganizationName and -CountryCode.' }
+Write-Host "Claude deployments register organization '$OrganizationName', country $CountryCode, industry $Industry (Foundry passes these to Anthropic)"
 $picks = @(@{ Model = $CoordinatorModel; Version = $CoordinatorVersion }, @{ Model = $HostsModel; Version = $HostsVersion }) +
     @($CompareModels | Where-Object { $_ -notin @($CoordinatorModel, $HostsModel) } | ForEach-Object { @{ Model = $_; Version = $null } })
 foreach ($pick in $picks) {
@@ -147,9 +160,29 @@ foreach ($pick in $picks) {
     }
     $model = $candidates[0]
     Write-SpikeStep "Deploying $($model.name) $($model.version) ($($model.format)), Global Standard"
-    $null = Invoke-SpikeAz -Step "deploy-$($model.name)" -Arguments @('cognitiveservices', 'account', 'deployment', 'create',
-        '-g', $SpikeResourceGroup, '-n', $foundryName, '--deployment-name', $model.name, '--model-name', $model.name,
-        '--model-version', $model.version, '--model-format', $model.format, '--sku-name', 'GlobalStandard', '--sku-capacity', '1')
+    # REST, because az cognitiveservices account deployment create can't pass modelProviderData.
+    $deploymentUrl = "https://management.azure.com$rgId/providers/Microsoft.CognitiveServices/accounts/$foundryName/deployments/$($model.name)?api-version=2025-10-01-preview"
+    $bodyFile = New-TemporaryFile
+    try {
+        Set-Content -LiteralPath $bodyFile.FullName -Value (@{
+            sku        = @{ name = 'GlobalStandard'; capacity = 1 }
+            properties = @{
+                model             = @{ format = $model.format; name = $model.name; version = $model.version }
+                modelProviderData = @{ organizationName = $OrganizationName; countryCode = $CountryCode; industry = $Industry }
+            }
+        } | ConvertTo-Json -Depth 10 -Compress)
+        $null = Invoke-SpikeAz -Step "deploy-$($model.name)" -Arguments @('rest', '--method', 'put', '--url', $deploymentUrl,
+            '--body', "@$($bodyFile.FullName)", '--headers', 'Content-Type=application/json')
+    }
+    finally { Remove-Item -LiteralPath $bodyFile.FullName -ErrorAction SilentlyContinue }
+    # The PUT returns while the deployment is still Creating; wait for it, at most 10 minutes.
+    $state = $null
+    for ($i = 0; $i -lt 60; $i++) {
+        $state = (Invoke-SpikeAz -Step "check-$($model.name)" -Arguments @('rest', '--method', 'get', '--url', $deploymentUrl)).properties.provisioningState
+        if ($state -in @('Succeeded', 'Failed', 'Canceled')) { break }
+        Start-Sleep -Seconds 10
+    }
+    if ($state -ne 'Succeeded') { throw "Deployment $($model.name) ended in state '$state'. Check it in the Foundry portal; the spike tears down next." }
     $deployed[$pick.Model] = $model.name
 }
 

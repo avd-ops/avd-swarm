@@ -67,6 +67,8 @@ $s = Get-Content "$Spike/state.json" | ConvertFrom-Json
 ~/avdswarm-spike-venv/bin/python ~/avd-swarm/spikes/s1a/tools/test_models.py --resource $s.foundryName --deployment $s.coordinatorDeployment --deployment $s.hostsDeployment
 ```
 
+Every Claude deployment carries `modelProviderData` (organization name, country, industry), which Foundry passes to Anthropic. Start-Spike.ps1 reads the name and country from the tenant's organization in Graph and uses industry `technology`; pass `-OrganizationName`, `-CountryCode` or `-Industry` to change them.
+
 **If Q1 fails** (no Claude models offered, a Marketplace or subscription-type error): record the message in the plan's result table, go to block 9, and S1 uses the Anthropic API directly.
 
 ## 3. Q3: list the MCP server's tools
