@@ -41,7 +41,7 @@ $Spike = "$HOME/clouddrive/avdswarm-spike"
 $env:AZURE_SUBSCRIPTION_ID = az account show --query id -o tsv
 $estimate = & ~/avd-swarm/spikes/s1a/scripts/Get-SpikeEstimate.ps1 | Select-Object -Last 1 | ConvertFrom-Json
 & ~/tenant-swarm/scripts/spend/Start-SpendRun.ps1 -Sandbox personal -Kind other -Purpose 'avd-swarm S1a spike' -Hours 6 `
-  -ManualAmount $estimate.manualAmount -ManualNote $estimate.manualNote -RunCap 15 -MonthlyCap 150 -Funding personal-card `
+  -ManualAmount $estimate.manualAmount -ManualNote $estimate.manualNote -RunCap 20 -MonthlyCap 150 -Funding personal-card `
   -LedgerPath ~/clouddrive/spend-ledger
 $run = Get-ChildItem ~/clouddrive/spend-ledger/personal -Recurse -Filter *.json | Sort-Object LastWriteTime | Select-Object -Last 1 | Get-Content -Raw | ConvertFrom-Json
 if ($run.status -ne 'open') { throw "No open run: $($run.runId) is $($run.status)" }

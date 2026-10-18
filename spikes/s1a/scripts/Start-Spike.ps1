@@ -2,7 +2,8 @@
 <#
 .SYNOPSIS
 Steps 2 to 4 of the spike runbook: resource group and same-day policy exemption, the Bicep
-deployment, your Foundry roles, and the two Claude deployments. Prints one JSON line with
+deployment, your Foundry roles, and the Claude deployments (coordinator, Hosts, and the extra
+models the Hosts agent is compared on). Prints one JSON line with
 everything the later steps need.
 
 .DESCRIPTION
@@ -18,7 +19,9 @@ param(
     [string] $CoordinatorModel = 'claude-haiku-5-5',
     [string] $HostsModel = 'claude-opus-5-5',
     [string] $CoordinatorVersion,
-    [string] $HostsVersion
+    [string] $HostsVersion,
+    # Also deployed so Q6 can run the Hosts agent on each model. The coordinator's model is reused, not deployed twice.
+    [string[]] $CompareModels = @('claude-sonnet-5-5')
 )
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'Spike.psm1') -Force
@@ -81,7 +84,9 @@ foreach ($names in @(@('Foundry User', 'Azure AI User'), @('Foundry Project Mana
 Write-SpikeStep "Listing the models the Foundry resource offers"
 $models = @(Invoke-SpikeAz -Step 'list-models' -Arguments @('cognitiveservices', 'account', 'list-models', '-g', $SpikeResourceGroup, '-n', $foundryName))
 $deployed = @{}
-foreach ($pick in @(@{ Model = $CoordinatorModel; Version = $CoordinatorVersion }, @{ Model = $HostsModel; Version = $HostsVersion })) {
+$picks = @(@{ Model = $CoordinatorModel; Version = $CoordinatorVersion }, @{ Model = $HostsModel; Version = $HostsVersion }) +
+    @($CompareModels | Where-Object { $_ -notin @($CoordinatorModel, $HostsModel) } | ForEach-Object { @{ Model = $_; Version = $null } })
+foreach ($pick in $picks) {
     $candidates = @($models | Where-Object { $_.name -eq $pick.Model -and (-not $pick.Version -or $_.version -eq $pick.Version) })
     if ($candidates.Count -ne 1) {
         $similar = $models | Where-Object { $_.name -match 'claude' } | ForEach-Object { "$($_.name) $($_.version) ($($_.format))" }
@@ -107,4 +112,6 @@ foreach ($pick in @(@{ Model = $CoordinatorModel; Version = $CoordinatorVersion 
     mcpAppRoleId          = $out.mcpAppRoleId.value
     coordinatorDeployment = $deployed[$CoordinatorModel]
     hostsDeployment       = $deployed[$HostsModel]
+    # Every model the Hosts agent runs on in Q6: the main one first, then the comparisons and the coordinator's model.
+    compareDeployments    = @(@($HostsModel) + $CompareModels + @($CoordinatorModel) | Select-Object -Unique | ForEach-Object { $deployed[$_] })
 } | ConvertTo-Json -Compress

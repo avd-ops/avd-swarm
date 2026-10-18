@@ -23,7 +23,7 @@ Everything it prints is also saved as a transcript next to the evidence.
 [CmdletBinding()]
 param(
     [string] $Sandbox = 'personal',
-    [double] $RunCap = 15,
+    [double] $RunCap = 20,
     [double] $MonthlyCap = 150,
     [string] $Funding = 'personal-card',
     # Comma-separated MCP tool names for the Hosts agent. Default: the read-only host pool and session host tools found in Q3.
@@ -170,8 +170,8 @@ try {
     $s = Get-Content "$Spike/state.json" | ConvertFrom-Json
 
     Invoke-Step 'q1-models' {
-        $null = Invoke-Native 'Q1: call each Claude deployment' @((Join-Path $Kit 'tools/test_models.py'),
-            '--resource', $s.foundryName, '--deployment', $s.coordinatorDeployment, '--deployment', $s.hostsDeployment)
+        $deploymentArgs = @($s.compareDeployments | ForEach-Object { '--deployment', $_ })
+        $null = Invoke-Native 'Q1: call each Claude deployment' (@((Join-Path $Kit 'tools/test_models.py'), '--resource', $s.foundryName) + $deploymentArgs)
         Save-SpikeResult 'Q1' 'confirmed'
     }
 
@@ -222,7 +222,27 @@ try {
             '--project-endpoint', $s.projectEndpoint, '--out', "$Spike/evals.jsonl",
             '--only', 'q01,q02,q03,q04,q05,q06,q07,q08,q09,q10') -OkExitCodes 0, 2
         if ($LASTEXITCODE -eq 2) { throw 'STOP: past the 2M input token stop rule.' }
-        Save-SpikeResult 'Q6-agent' (Get-LastJson $lines 'run-evals')
+        Save-SpikeResult "Q6-$($s.hostsDeployment)" (Get-LastJson $lines 'run-evals')
+    }
+
+    # The same ten questions with the Hosts agent on each other model: one agent per model, so they compare side by side.
+    foreach ($hostsDeployment in @($s.compareDeployments | Where-Object { $_ -ne $s.hostsDeployment })) {
+        $agentName = "avdswarm-spike-$($hostsDeployment -replace '^claude-', '' -replace '[^a-z0-9]+', '-')"
+        Invoke-Step "q6-$hostsDeployment" {
+            Write-Host "Building a second agent, $agentName, with the Hosts agent on $hostsDeployment; several minutes."
+            $lines = Invoke-Native "Q6: deploy $agentName" @((Join-Path $Kit 'tools/deploy_agent.py'),
+                '--project-endpoint', $s.projectEndpoint, '--resource', $s.foundryName, '--coordinator', $s.coordinatorDeployment,
+                '--hosts', $hostsDeployment, '--mcp-url', $s.mcpUrl, '--mcp-app-id', $s.mcpAppId, '--allowed-tools', $allowed,
+                '--runtime', $Runtime, '--agent-name', $agentName)
+            $other = Get-LastJson $lines 'deploy-agent'
+            $other | ConvertTo-Json -Compress | Set-Content "$Spike/agent-$hostsDeployment.json"
+            & (Join-Path $Kit 'scripts/Connect-SpikeAgent.ps1') -AgentPrincipalId $other.identityPrincipalId -McpAppSpId $s.mcpAppSpId -McpAppRoleId $s.mcpAppRoleId
+            $lines = Invoke-Native "Q6: the ten eval questions on $hostsDeployment" @((Join-Path $Kit 'tools/run_evals.py'),
+                '--project-endpoint', $s.projectEndpoint, '--agent-name', $agentName, '--out', "$Spike/evals-$hostsDeployment.jsonl",
+                '--only', 'q01,q02,q03,q04,q05,q06,q07,q08,q09,q10') -OkExitCodes 0, 2
+            if ($LASTEXITCODE -eq 2) { throw 'STOP: past the 2M input token stop rule.' }
+            Save-SpikeResult "Q6-$hostsDeployment" (Get-LastJson $lines 'run-evals')
+        }
     }
 
     Invoke-Step 'q6-metrics' {
@@ -246,7 +266,7 @@ The agent identity's object ID is $($a.identityPrincipalId) (also in $Spike/agen
 
     Invoke-Teardown
     Write-Phase 'Done'
-    Write-Host "Evidence is in $Spike (state.json, mcp-tools.txt, agent.json, evals.jsonl, tokens.json, transcript-*.txt)."
+    Write-Host "Evidence is in $Spike (state.json, mcp-tools.txt, agent*.json, evals*.jsonl, tokens.json, progress-*.json, transcript-*.txt)."
     Write-Host 'Paste the transcript or those files in the thread and the results go into docs/spikes/s1a.md.'
 }
 catch {

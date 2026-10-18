@@ -10,12 +10,12 @@ Each item ends **confirmed** (with evidence) or **replaced** (with what S1 uses 
 
 | # | Question | Confirmed when | If not |
 |---|---|---|---|
-| Q1 | Can the sandbox subscription deploy Claude in Foundry at all? Claude needs Marketplace access, and CSP and sponsored subscriptions are excluded (prior art) | Claude Opus 5.5 and Claude Haiku 5.5 deploy in East US 2 (Global Standard) and answer a test prompt | The workflow calls the Anthropic API directly (spec §6, "the provider is a setting"). The rest of the spike still runs |
+| Q1 | Can the sandbox subscription deploy Claude in Foundry at all? Claude needs Marketplace access, and CSP and sponsored subscriptions are excluded (prior art) | Claude Opus 5.5, Sonnet 5.5 and Haiku 5.5 deploy in East US 2 (Global Standard) and answer a test prompt | The workflow calls the Anthropic API directly (spec §6, "the provider is a setting"). The rest of the spike still runs |
 | Q2 | Does an Agent Framework handoff workflow run as a Foundry **hosted agent**, with Claude as the model? | Coordinator (Haiku 5.5) hands a question to the Hosts specialist (Opus 5.5) and the answer comes back merged, inside one hosted agent | The workflow runs in a Container App as plain Agent Framework code (Foundry for models and tracing only) |
 | Q3 | Does the Azure MCP Server work as the read tool, with `--read-only` and only the `virtualdesktop` namespace, hosted from the `azmcp-foundry-aca-mi` template? | The Hosts agent lists the host pool and its (zero) session hosts through it; a write tool is absent from its tool list | Note which flag or template part failed; S1 wraps the same reads in the custom MCP server (SQ5) |
 | Q4 | Does `allowed_tools` per agent hold? | The coordinator can't call the MCP tools; Hosts can call only its listed ones. A prompt asking the coordinator to list host pools itself is refused by the platform, not by the prompt | The tool layer enforces the allowlist in code (S1 does that anyway as a second layer) |
 | Q5 | Do the agents get **Entra Agent ID** identities, and can Conditional Access block them? | The hosted agent's tool calls show up under an agent identity in the sign-in logs; a report-only CA policy targeting it records a match | Note what's missing; governance §2.3 layer 4 stays a design item |
-| Q6 | What does a question cost? | Token counts per question for coordinator and specialist from 10 eval questions, from the Foundry metrics and the trace | Can't fail; it's a measurement. It sets S1's daily token cap (spec §7) |
+| Q6 | What does a question cost, and which model should the Hosts specialist use? | Token counts and answers for the 10 eval questions with the Hosts agent on each of Opus 5.5, Sonnet 5.5 and Haiku 5.5 (one hosted agent per model, same code and allowlist), from the run log and the Foundry metrics | Can't fail; it's a measurement. It sets S1's specialist model and daily token cap (spec §7) |
 
 Not in scope: avd-buddy, the plan store, `approve`, the observer, the kill switch, Graph, and the other specialists.
 
@@ -33,8 +33,8 @@ The rest of the subscription stays guarded throughout. A subscription without th
 | Resource | Why | Size |
 |---|---|---|
 | Foundry resource + project | Model deployments, hosted agent, tracing | — |
-| Claude Opus 5.5 and Claude Haiku 5.5 deployments | Specialist and coordinator | Global Standard, pay per token |
-| Hosted agent | The Agent Framework handoff workflow (coordinator → Hosts) | Scales to zero after 15 minutes idle |
+| Claude Opus 5.5, Sonnet 5.5 and Haiku 5.5 deployments | Coordinator (Haiku) and the Hosts specialist on each model for Q6 | Global Standard, pay per token |
+| Hosted agents (three) | The Agent Framework handoff workflow (coordinator → Hosts), one per Hosts model | Scale to zero after 15 minutes idle |
 | Container App (from `azmcp-foundry-aca-mi`) | Azure MCP Server, `--read-only --namespace virtualdesktop` | Min replicas 0, smallest size |
 | Log Analytics workspace | The Container Apps logs, including the MCP server's record of which tools were called (Q4) | Pay per GB, capped at 0.5 GB a day |
 | AVD host pool + workspace, **no session hosts** | Something for `virtualdesktop` to read. Host pools and workspaces have no charge of their own; session hosts are what cost money, and there are none | — |
@@ -45,27 +45,28 @@ The agents' identities get **Reader on this resource group only**. Nothing reads
 
 A spike isn't an AVD deployment, so it uses `-Kind other -ManualAmount` with a note, per tenant-swarm's spend.md.
 
-**Model tokens**, priced at Anthropic's list prices, which Claude on Foundry bills at through the Marketplace (Opus 5.5: $4 / $20 per million input / output tokens; Haiku 5.5: $0.10 / $0.50). Assumption: 20 conversations. `Invoke-Spike.ps1` asks 13 questions (q01, the two Q4 probes, and the ten evals); the rest is room for a rerun after a failed step. Each Hosts conversation reads about 40k input tokens: the system prompt, the MCP tool definitions, and the tool output, sent again on every turn of the tool loop.
+**Model tokens**, priced at Anthropic's list prices, which Claude on Foundry bills at through the Marketplace (Opus 5.5: $4 / $20 per million input / output tokens; Sonnet 5.5: $2 / $10; Haiku 5.5: $0.10 / $0.50). Assumption: 20 conversations with Hosts on Opus (`Invoke-Spike.ps1` asks 13: q01, the two Q4 probes and the ten evals; the rest is room for a rerun), then the ten evals again with Hosts on Sonnet and on Haiku. Each Hosts conversation reads about 40k input tokens: the system prompt, the MCP tool definitions, and the tool output, sent again on every turn of the tool loop.
 
 | Line | Quantity | Amount |
 |---|---|---|
 | Opus 5.5 input (Hosts specialist) | 20 × 40k = 800k tokens | $3.20 |
 | Opus 5.5 output, thinking included | 20 × 4k = 80k tokens | $1.60 |
-| Haiku 5.5 input (coordinator) | 20 × 10k = 200k tokens | $0.02 |
-| Haiku 5.5 output | 20 × 1k = 20k tokens | $0.01 |
-| **Tokens, expected** | | **$4.83** |
-| **Tokens, upper bound** (tool output twice as large as assumed) | | **$10.00** |
+| Sonnet 5.5 input and output (Hosts, 10 evals) | 10 × 40k in, 10 × 4k out | $1.20 |
+| Haiku 5.5 input and output (Hosts, 10 evals) | 10 × 40k in, 10 × 4k out | $0.06 |
+| Haiku 5.5 input and output (coordinator, all 40) | 40 × 10k in, 40 × 1k out | $0.06 |
+| **Tokens, expected** | | **$6.12** |
+| **Tokens, upper bound** (tool output twice as large as assumed) | | **$13.00** |
 
 **Azure lines: unpriced until the start block prices them.** I couldn't reach the retail prices API from here, and the rule is never to guess a price. Step 1 below prints the matching meters, and the run starts only once each line has exactly one meter or is written down as unpriced.
 
 | Line | Quantity |
 |---|---|
-| Hosted agent compute | At most 6 hours of session time |
+| Hosted agent compute | Three agents, at most 6 hours each at 0.5 vCPU / 1 GiB |
 | Container Apps (Azure MCP Server) | At most 6 hours active, 0.5 vCPU / 1 GiB |
 | Log Analytics ingestion | Under 0.5 GB (the workspace's daily cap) |
 | Foundry resource | Check whether it has any fixed charge |
 
-**Proposed caps:** run cap **$15**, so the token upper bound plus about $2 of Azure fits and anything larger is refused. (The first estimate assumed 40 conversations with hand-run building; the one-command script needs about half, revised 2026-10-18.)
+**Proposed caps:** run cap **$20**, so the token upper bound plus about $3 of Azure fits and anything larger is refused. (Revised 2026-10-18: the one-command script needs about half the Opus conversations first assumed, and Q6 now compares three Hosts models.)
 
 **Stop rule while it runs:** if the Foundry metrics show more than 2M input tokens (about 2.5× plan), stop, tear down, and write down why.
 
@@ -75,13 +76,13 @@ A spike isn't an AVD deployment, so it uses `-Kind other -ManualAmount` with a n
 
 The runbook is [spikes/s1a/README.md](../../spikes/s1a/README.md): nine self-contained Cloud Shell (PowerShell) blocks, run as you in the sandbox subscription.
 
-1. **Price and open the run:** `Get-SpikeEstimate.ps1` prices the Azure lines from the retail prices API (exactly one meter per line, or it reports what it saw), then tenant-swarm's `Start-SpendRun.ps1 -Kind other -ManualAmount ... -RunCap 15`. A refusal stops the spike.
+1. **Price and open the run:** `Get-SpikeEstimate.ps1` prices the Azure lines from the retail prices API (exactly one meter per line, or it reports what it saw), then tenant-swarm's `Start-SpendRun.ps1 -Kind other -ManualAmount ... -RunCap 20`. A refusal stops the spike.
 2. **Deploy and Q1:** `Start-Spike.ps1` creates the resource group and the exemption, deploys `infra/main.bicep`, gives you Foundry User and Foundry Project Manager on the Foundry resource, and deploys the two Claude models by the names and versions the resource actually offers. `test_models.py` calls each with an Entra token.
 3. **Q3:** `list_mcp_tools.py` lists every tool the MCP server exposes with its read-only and destructive hints, as you (the server's Entra app pre-authorizes the Azure CLI).
 4. **Q2:** `deploy_agent.py` creates the hosted agent from code (`spikes/s1a/agent`), routes traffic to it and prints its agent identity; `Connect-SpikeAgent.ps1` gives that identity the MCP server's app role; the first eval question checks the handoff end to end.
 5. **Q4:** two probe questions, plus the MCP server's own log of which tools were called.
 6. **Q5:** the agent's startup log of its identity claims, its sign-in logs, and a report-only Conditional Access policy (portal steps, recorded as found).
-7. **Q6:** the ten eval questions, then `Get-SpikeToken.ps1` for token totals per deployment from Azure Monitor.
+7. **Q6:** the ten eval questions with Hosts on Opus, then again on a second agent each for Sonnet and Haiku, then `Get-SpikeToken.ps1` for token totals per deployment from Azure Monitor.
 8. **Evidence** stays in `~/clouddrive/avdswarm-spike/`, never in this repo.
 9. **Tear down:** `Remove-Spike.ps1` deletes the group, purges the soft-deleted Foundry resource, deletes the MCP app registration and checks for every leftover, including the exemption, which the ledger's resource check can't see. Then `Stop-SpendRun.ps1`.
 

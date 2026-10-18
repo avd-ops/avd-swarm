@@ -13,7 +13,9 @@ never a guess. Tokens are priced from Anthropic's list prices, which Claude on F
 param(
     [string] $Region = 'eastus2',
     [double] $Hours = 6,
-    [double] $TokenUpperBound = 10.00
+    [double] $TokenUpperBound = 13.00,
+    # One hosted agent per model the Hosts agent is compared on (Opus, Sonnet, Haiku).
+    [int] $Agents = 3
 )
 $ErrorActionPreference = 'Stop'
 
@@ -38,15 +40,15 @@ $lines = @(
        Filter = "serviceName eq 'Log Analytics' and armRegionName eq '$Region'"; Match = { $_.meterName -match 'Data Ingestion' -and $_.meterName -notmatch 'Basic|Auxiliary|Commitment' } }
     # Hosted agents bill vCPU and memory separately, like Container Apps (seen 2026-10-18: 'Hosted vCPU Usage' and
     # 'Hosted Memory Usage', per hour). The agent runs at 0.5 vCPU / 1 GiB (tools/deploy_agent.py).
-    @{ Name = 'Foundry hosted agent vCPU'; Quantity = 0.5 * $Hours; Unit = 'vCPU-hours'
+    @{ Name = 'Foundry hosted agent vCPU'; Quantity = 0.5 * $Hours * $Agents; Unit = 'vCPU-hours'
        Filter = "armRegionName eq '$Region' and contains(productName, 'Foundry')"; Match = { $_.meterName -match 'Hosted' -and $_.meterName -match 'vCPU' } }
-    @{ Name = 'Foundry hosted agent memory'; Quantity = 1 * $Hours; Unit = 'GiB-hours'
+    @{ Name = 'Foundry hosted agent memory'; Quantity = 1 * $Hours * $Agents; Unit = 'GiB-hours'
        Filter = "armRegionName eq '$Region' and contains(productName, 'Foundry')"; Match = { $_.meterName -match 'Hosted' -and $_.meterName -match 'Memory' } }
 )
 
 $total = $TokenUpperBound
 $note = [System.Collections.Generic.List[string]]::new()
-$note.Add("Tokens upper bound $('{0:N2}' -f $TokenUpperBound) (Opus 5.5 4/20, Haiku 5.5 0.10/0.50 per 1M; docs/spikes/s1a.md section 3)")
+$note.Add("Tokens upper bound $('{0:N2}' -f $TokenUpperBound) (Opus 5.5 4/20, Sonnet 5.5 2/10, Haiku 5.5 0.10/0.50 per 1M; docs/spikes/s1a.md section 3)")
 $unpriced = 0
 foreach ($line in $lines) {
     Write-Host "Pricing $($line.Name) in $Region..."
