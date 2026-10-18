@@ -136,6 +136,26 @@ try {
         Write-Host "Entra role for the app registration: $(@($roles | Where-Object { $_ -in $needed }) -join ', ')"
     }
 
+    # Each Claude deployment needs 1 (thousand tokens per minute) of the subscription's quota in eastus2,
+    # and new subscriptions can start at 0. Check before the spend run opens.
+    if ('deploy' -notin (Get-SpikeProgress).done) {
+        Write-Host 'Reading the subscription''s Claude quota in eastus2 ...'
+        $usage = @(az cognitiveservices usage list -l eastus2 -o json --only-show-errors 2>&1)
+        if ($LASTEXITCODE) { throw "Could not read the Foundry quota in eastus2: $($usage -join ' ')" }
+        $claudeQuota = @(($usage -join "`n") | ConvertFrom-Json | Where-Object { $_.name.localizedValue -match 'Claude' })
+        foreach ($q in $claudeQuota) { Write-Host "  $($q.name.localizedValue): $($q.currentValue) of $($q.limit) used ($($q.name.value))" }
+        $short = foreach ($m in 'claude-haiku-5-5', 'claude-opus-5-5', 'claude-sonnet-5-5') {
+            # claude-haiku-5-5 -> 'Claude Haiku 5.5'
+            $label = ($m -replace '^claude-(\w+)-(\d+)-(\d+)$', 'Claude $1 $2.$3')
+            $lines = @($claudeQuota | Where-Object { $_.name.localizedValue -match "$([regex]::Escape($label))$" })
+            if (-not $lines) { Write-Warning "No quota line found for $label; the deploy will tell." }
+            elseif (-not ($lines | Where-Object { ($_.limit - $_.currentValue) -ge 1 })) { $label }
+        }
+        if ($short) {
+            throw "No Claude quota left in eastus2 for: $(@($short) -join ', '). Request Tokens Per Minute quota for them in the Foundry portal (Quota page, eastus2, Global Standard; 1 thousand TPM each is enough for the spike), then rerun. Nothing was deployed and no spend run was opened."
+        }
+    }
+
     $progress = Get-SpikeProgress
     if ($progress.done.Count -eq 0) {
         $answer = Read-Host "Run the S1a spike in this subscription (sandbox '$Sandbox', run cap $RunCap)? [y/N]"
