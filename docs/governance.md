@@ -53,6 +53,7 @@ Write the policy in Rego or Cedar and evaluate it through Microsoft's Agent Gove
 | Budget | Refuse a plan whose spend block fails the spend gate ([spend.md](spend.md) §3.2): over the per-run cap, over the remaining monthly cap, any unpriced line, or no cap set |
 | Switch position | Refuse everything the current position forbids (§2.3) |
 | Observer verdict | When the policy requires it, wait for the observer to allow the plan (§2.2) |
+| Compliance | Refuse a plan whose action may lower a Defender for Cloud control on its targets unless the policy allows it, and every such plan while the score is below its floor (§2.5) |
 
 A refusal tells the operator which rule refused and why. Changing a rule is a PR; a PR an agent authored that touches `governance/` fails CI.
 
@@ -134,6 +135,35 @@ Deterministic triggers, evaluated by Azure Monitor alerts and the switch's Logic
 | `spend.teardown.failed`: a run's teardown didn't finish | `halt-actions` for new runs in that sandbox |
 | One operator's reads spike far above their usual rate (a stolen avd-buddy session) | `halt-agents` (R15) |
 | The switch flag cleared while a layer is still missing | Trips again at the previous position |
+| A swarm identity creates or changes a policy exemption, a policy assignment, a Defender exemption or a Defender plan setting (Activity Log) | `halt-all` |
+| Two `compliance.regressed` events within 7 days | `halt-actions` |
+
+### 2.5 Compliance gate (Defender for Cloud)
+
+A change avd-swarm makes must not leave the estate less compliant than it found it, and avd-swarm must never raise the score without fixing anything. Defender for Cloud is the measure, so the number people already watch is the number the gate enforces. Like the rest of the gate, this is code with its settings in Git (`governance/compliance.yml`, a protected path); no model decides.
+
+**What it reads.** Azure Resource Graph's `securityresources` table, with the Reader role the jobs already hold:
+- `microsoft.security/assessments`: each recommendation's status (`Healthy`, `Unhealthy`, `NotApplicable`) per resource. This is what the gate compares.
+- `microsoft.security/securescores`: the subscription's secure score, for the floor.
+- `microsoft.security/regulatorycompliancestandards/.../regulatorycomplianceassessments`: pass and fail counts per standard and control, for reports and C10.
+
+The Microsoft cloud security benchmark and the secure score come with Foundational CSPM, which is free and on by default, so the gate costs nothing in the personal sandbox. Other standards (CIS, NIST, ISO 27001, PCI) need Defender CSPM, a paid plan; `compliance.yml` lists the standards the gate reads, and adding a paid one needs a cost estimate first (spend.md). Source: [Defender for Cloud Resource Graph samples](https://learn.microsoft.com/azure/defender-for-cloud/resource-graph-samples), [CSPM plans](https://learn.microsoft.com/azure/defender-for-cloud/concept-cloud-security-posture-management).
+
+**Defender is slow; Azure Policy is the fast check.** Defender refreshes assessments on its own schedule, often hours after a change, which is too late to verify a plan. Most benchmark recommendations come from the benchmark's Azure Policy initiative, so the verify step uses policy states (`Microsoft.PolicyInsights/policyStates`) with an on-demand evaluation of the targets' resource group, and Defender confirms on its next refresh. The write identity's custom role gains `Microsoft.PolicyInsights/policyStates/triggerEvaluation/action`, nothing else.
+
+**Three checks, at the points the gate already runs:**
+
+| When | Check | Result |
+|---|---|---|
+| Gate, before approval | Snapshot every assessment on the plan's targets. Each action in the catalog declares its compliance effect: `none`, `improves <controls>` or `may-lower <controls>`. A `may-lower` plan needs the policy to allow that control and an observer verdict (§2.2). The plan shows the snapshot, so the approver sees what it touches | Refused with the rule and the control that refused it |
+| Gate, score floor | While the secure score is below `floor` in `compliance.yml`, refuse every `may-lower` plan; `none` and `improves` plans still pass, and so do plans that stop spend | Refused, naming the floor and the score |
+| Verify, after the job | Trigger policy evaluation, wait up to `verifyMinutes` (default 30), and compare with the snapshot. A resource that went from compliant to non-compliant on a control the plan didn't declare is a failed verification: roll back and emit `compliance.regressed` | Verified, or rolled back. A timeout marks the plan `compliance-pending`; the daily read job finishes the comparison against Defender and reports a late regression the same way |
+
+**No gaming the score.** An exemption, a disabled policy or a switched-off Defender plan raises the score without fixing anything, so no swarm identity holds `Microsoft.Authorization/policyExemptions/write`, `policyAssignments/write`, or any `Microsoft.Security` write. A person's exemption is fine but counted on its own: reports and C10 split a score change into fixes and exemptions, so an exemption is never credited as a fix.
+
+**Events to the observer** (§2.2): `compliance.snapshot` (plan ID, counts per control), `compliance.regressed` (plan ID, control, resource ID), and `compliance.exempted` (any exemption by anyone, from the Activity Log). Watchdog rules are in §2.4.
+
+**Pre-approved exceptions and remediation.** A plan whose effect is `improves` is still a plan a person approves; this section only adds a reason to refuse, never a way around approval. Remediation actions (for example turning on a diagnostic setting a recommendation asks for) join the catalog like any other action, with their own verification.
 
 ## 3. Relationship to the second brain
 
@@ -144,4 +174,5 @@ There is **one kill switch, this one** ([decision 0003](decisions/0003-swarm-act
 - ~~**GQ1** Which events may carry conversation text?~~ **Decided 2026-10-17:** none. Observers get change-workflow and security events only.
 - **GQ4** Do plans that touch users carry user principal names to the observer, or pseudonyms?
 - **GQ2** Is a 15-minute observer silence right for a personally paid tenant where nights are quiet?
+- **GQ5** Which standards beyond the Microsoft cloud security benchmark does the pilot estate need? Each one needs Defender CSPM, a paid plan, so it comes with a cost estimate first (§2.5).
 - **GQ3** Should tenant-swarm share one kill switch with avd-swarm, or have its own?
