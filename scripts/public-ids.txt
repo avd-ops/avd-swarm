@@ -1,0 +1,7 @@
+# GUIDs allowed in the repo: Microsoft's public, well-known IDs only. One per line, with a comment.
+# 00000000-0000-0000-0000-000000000000  placeholder used in examples
+00000000-0000-0000-0000-000000000000
+# 49a72310-ab8d-41df-bbb0-79b649203868  built-in role: Desktop Virtualization Reader
+49a72310-ab8d-41df-bbb0-79b649203868
+# 04b07795-8ddb-461a-bbee-02f9e1bf7b46  first-party app: Microsoft Azure CLI
+04b07795-8ddb-461a-bbee-02f9e1bf7b46

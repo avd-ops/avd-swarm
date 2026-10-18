@@ -1,0 +1,5 @@
+anthropic==1.15.0
+azure-ai-projects==2.9.0
+azure-identity==1.26.0
+mcp==1.30.0
+openai==3.35.0

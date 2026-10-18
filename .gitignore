@@ -1,0 +1,7 @@
+.env
+*.local.json
+local.settings.json
+node_modules/
+.DS_Store
+__pycache__/
+*.pyc
