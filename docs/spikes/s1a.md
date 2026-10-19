@@ -25,7 +25,7 @@ Not in scope: avd-buddy, the plan store, `approve`, the observer, the kill switc
 
 Everything in one throwaway resource group, `rg-avdswarm-spike`, with its resources in **East US 2** (Claude in Foundry's region; ARM reads are global, so the landing zone's region doesn't matter).
 
-**Location policy.** A subscription with the landing zone's guardrails (such as `avd-sandbox`) denies resource groups and resources outside the deployment region (`avdlz-allowed-rg-locations` and `avdlz-allowed-locations`, North Central US only). So the spike, by default:
+**Location policy.** A subscription with the landing zone's guardrails denies resource groups and resources outside the deployment region (`avdlz-allowed-rg-locations` and `avdlz-allowed-locations`, North Central US only). So the spike, by default:
 - creates the resource group **in North Central US**, which the policy allows (a resource group's own location doesn't have to match its resources');
 - adds a **policy exemption** for `avdlz-allowed-locations` scoped to **that resource group only**, category `Waiver`, expiring at the end of the spike day, with the run ID in its description;
 - deletes the exemption at teardown (it also expires by itself). The spend ledger's teardown check compares resources, and an exemption isn't one, so the teardown block checks for it by name and fails if it's still there.
@@ -100,7 +100,7 @@ Spec §3, §6, §7 and §9 change to match the results in the same PR.
 
 ## 6. What you need before it can start
 
-- **Sandbox:** your personal tenant, spend sandbox `personal` (decided 2026-10-18). If its subscription turns out to be a Visual Studio, sponsored or CSP subscription, Q1 is answered "replaced" in block 2 before any model spend.
+- **Sandbox:** your lab tenant, spend sandbox `personal` (decided 2026-10-18). If its subscription turns out to be a Visual Studio, sponsored or CSP subscription, Q1 is answered "replaced" in block 2 before any model spend.
 - tenant-swarm's spend setup for `personal` (`setup-spend-sandbox.sh`), or the caps passed as parameters in Cloud Shell, as the runbook does.
 - If the subscription has the landing zone's guardrails, the exemption in §2 is part of the run.
 - The GitHub CLI signed in once in Cloud Shell, for the private spend repo (tenant-swarm) and pushes to this repo (block 1 does it).
