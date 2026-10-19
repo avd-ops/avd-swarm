@@ -103,7 +103,7 @@ Spec §3, §6, §7 and §9 change to match the results in the same PR.
 - **Sandbox:** your personal tenant, spend sandbox `personal` (decided 2026-10-18). If its subscription turns out to be a Visual Studio, sponsored or CSP subscription, Q1 is answered "replaced" in block 2 before any model spend.
 - tenant-swarm's spend setup for `personal` (`setup-spend-sandbox.sh`), or the caps passed as parameters in Cloud Shell, as the runbook does.
 - If the subscription has the landing zone's guardrails, the exemption in §2 is part of the run.
-- The GitHub CLI signed in once in Cloud Shell, because both repos are private (block 1 does it).
+- The GitHub CLI signed in once in Cloud Shell, for the private spend repo (tenant-swarm) and pushes to this repo (block 1 does it).
 - Quota for Claude in Foundry in East US 2 (block 2 reports it if it's missing).
 
 ## 7. Fallback without Foundry (`-Provider Anthropic`)

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Personal project, not for production, provided as is; not affiliated with the author's employer, Liquidware or Microsoft.
-"""Fails an agent-authored pull request that touches a protected path (spec §6b, §6e; governance §2.1).
+"""Fails an agent-authored pull request that touches a protected path (spec section 6b, section 6e; governance section 2.1).
 
 A PR is agent-authored when its author or any commit's author is listed under `agents` in
 governance/protected-paths.yml (the GitHub Apps Improve and Scribe open PRs as). Such a PR may not

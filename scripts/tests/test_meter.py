@@ -1,5 +1,5 @@
 # Personal project, not for production, provided as is; not affiliated with the author's employer, Liquidware or Microsoft.
-"""Tests for the S1a spike's token spend meter, spikes/s1a/agent_api/meter.py (spend.md §3.7; red team R21, R22)."""
+"""Tests for the S1a spike's token spend meter, spikes/s1a/agent_api/meter.py (spend.md section 3.7; red team R21, R22)."""
 
 import sys
 import unittest

@@ -1,5 +1,5 @@
 # Personal project, not for production, provided as is; not affiliated with the author's employer, Liquidware or Microsoft.
-"""Tests for scripts/check_agent_pr.py (spec §6b, §6e; governance §2.1)."""
+"""Tests for scripts/check_agent_pr.py (spec section 6b, section 6e; governance section 2.1)."""
 
 import sys
 import unittest

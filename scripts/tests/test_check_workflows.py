@@ -1,5 +1,5 @@
 # Personal project, not for production, provided as is; not affiliated with the author's employer, Liquidware or Microsoft.
-"""Tests for scripts/check_workflows.py (spec §5b, §6b; red team R17, R20)."""
+"""Tests for scripts/check_workflows.py (spec section 5b, section 6b; red team R17, R20)."""
 
 import sys
 import textwrap

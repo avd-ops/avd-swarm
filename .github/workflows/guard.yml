@@ -29,7 +29,7 @@ jobs:
       - run: python3 -m pip install --quiet pyyaml==6.0.2
       - name: Unit tests (workflow, agent PR and spike meter checks)
         run: python3 -m unittest discover -s scripts/tests -v
-      - name: No write path in a public repo, no default-token PRs, no untrusted credentials (spec §5b)
+      - name: No write path in a public repo, no default-token PRs, no untrusted credentials (spec section 5b)
         env:
           REPO_PRIVATE: ${{ github.event.repository.private }}
         run: python3 scripts/check_workflows.py

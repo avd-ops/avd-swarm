@@ -202,6 +202,8 @@ The time-lock check is built in step 2 of the build order (spec §9a). Until the
 
 There is **one kill switch, this one** ([decision 0003](decisions/0003-swarm-acts-brain-thinks.md)). The brain's own switch and watchdog (brain EX-0004) move here, since the brain no longer acts. The brain reads the position through contract C10 and obeys it: at `halt-actions` it stops proposing playbook runs, at `halt-agents` and `halt-all` it stops its model calls, which go through the same flag-checking, metered model client as the swarm's agents (§2.3 layer 6). It keeps sensing and recording at every position, so a halted estate still has its evidence. The brain's watchdog triggers that are about acting (a write with no matching plan, a write outside the landing zone, failed verifications) are rules in §2.4. The cost safeties (EX-0001, EX-0002) stay outside the switch, as [spend.md](spend.md) §3.3 already requires.
 
+**Where the brain's old text differs, this section wins** (second red team AX-11). The brain's operations-spec §4.5.1 now points here instead of describing EX-0004. The differences, settled this way: four positions, not the brain's three (`halt-agents` is new); the daily token cap trips `halt-agents`, read from the token meter, not `halt-all` from Cost Management; the watchdog's identity holds no Managed Identity Contributor (R5); and only a person resumes, from Cloud Shell, with no standing resume workflow or identity (R6).
+
 ## 4. Open questions
 
 - ~~**GQ1** Which events may carry conversation text?~~ **Decided 2026-10-17:** none. Observers get change-workflow and security events only.

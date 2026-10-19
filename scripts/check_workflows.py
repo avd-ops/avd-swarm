@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Personal project, not for production, provided as is; not affiliated with the author's employer, Liquidware or Microsoft.
-"""Checks GitHub Actions workflow files against avd-swarm's workflow rules (spec §5b, §6b; governance §2.4).
+"""Checks GitHub Actions workflow files against avd-swarm's workflow rules (spec section 5b, section 6b; governance section 2.4).
 
 W1  A public repository holds no write-path workflow: no job environment, no `id-token: write`
     (or `write-all`), no Azure login step.
