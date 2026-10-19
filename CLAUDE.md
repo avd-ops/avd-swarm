@@ -1,3 +1,5 @@
+@AGENTS.md
+
 # CLAUDE.md
 
 Public (MIT) development repo for avd-swarm. Read [docs/spec.md](docs/spec.md) first; it connects to the second brain (avd-second-brain) and follows avd-landing-zone's CLAUDE.md rules where they apply.
