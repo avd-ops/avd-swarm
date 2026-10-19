@@ -10,7 +10,7 @@ Approval of each plan (spec §5) stops a bad change from running. It doesn't sto
 It guards against two threats:
 - **The system turned against itself:** prompt injection through logs or tool output, a compromised identity or component, or tampering with the guardrails, so that avd-swarm proposes or makes changes nobody intended.
 - **Runaway failure:** loops, floods of plans or actions, cascading changes, or a cost spiral, with no attacker involved.
-- **Runaway spend**, its own threat because the sandboxes are billed to personal and work cards: a run that costs more than its estimate, a teardown that doesn't finish, or resources nobody owns left running. Detail in `spend.md` (spec §7a).
+- **Runaway spend**, its own threat because the sandboxes are paid for out of pocket: a run that costs more than its estimate, a teardown that doesn't finish, or resources nobody owns left running. Detail in `spend.md` (spec §7a).
 
 The observer watches the change workflow and the security signals for both. It doesn't need the conversation to do that, so it never receives conversation text.
 

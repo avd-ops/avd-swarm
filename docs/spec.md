@@ -288,7 +288,7 @@ Until Scribe exists, the brain's findings issues are fixed by hand. Phase D1 in 
 
 ## 7a. Spend control (placeholder)
 
-The sandboxes are billed to personal and work cards, so spend control is a platform function, not a setting. avd-swarm must give:
+The sandboxes are paid for out of pocket, so spend control is a platform function, not a setting. avd-swarm must give:
 - a cost estimate before every run, shown in the plan and checked by the governance gate;
 - evidence of what each run actually cost;
 - evidence that teardown finished and nothing is left billing;

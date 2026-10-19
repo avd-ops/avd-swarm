@@ -5,7 +5,7 @@
 
 ## 1. Why
 
-The sandboxes avd-swarm runs in are paid by personal and work cards. Nick's rule: an estimate before every run, evidence of what each run cost, evidence that its teardown removed everything, and a monthly statement that squares with the invoice and the card. avd-swarm makes changes, so it is where runs start and end. It should not be possible to deploy through avd-swarm without a run record, or to leave one open without being told.
+The sandboxes avd-swarm runs in are paid for out of pocket. Nick's rule: an estimate before every run, evidence of what each run cost, evidence that its teardown removed everything, and a monthly statement that squares with the invoice. avd-swarm makes changes, so it is where runs start and end. It should not be possible to deploy through avd-swarm without a run record, or to leave one open without being told.
 
 ## 2. One ledger, not two
 
