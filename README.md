@@ -1,6 +1,12 @@
 # avd-swarm
 
-> **Warning:** a personal project, not for production, provided as is under the [MIT license](LICENSE). Not affiliated with the author's employer, Liquidware or Microsoft. It's a design and a spike so far; nothing here is ready to run against a real tenant.
+> [!WARNING]
+> **Personal project. Research and learning only. Not for production. No warranty.**
+>
+> - This is my own personal project, built on my own time **for research and learning**. It is **not affiliated with, endorsed by or supported by my employer**, and it does not represent my employer's views, products or guidance. It is not affiliated with or endorsed by Liquidware or Microsoft.
+> - It's a design and a spike so far. **Do not run it in production** or against a tenant that matters; nothing here is ready for a real tenant. Test anything you try in a dedicated lab tenant and subscription.
+> - It is provided **"as is", without warranty of any kind**, under the [MIT License](LICENSE). You use it at your own risk. You are responsible for what it changes, for any Azure or model charges, and for reviewing the code before you run it.
+> - **Contributions and forks are welcome and encouraged.** See [Contributing](#contributing).
 
 An agent-based platform for managing Azure and Entra ID without the portals, starting with the [AVD landing zone](https://github.com/nickprignano/avd-landing-zone). Its chat front end, **avd-buddy** (not built yet), works from any browser, iPad included. A coordinator agent hands questions to specialist agents (readiness, deploy, hosts, images, users, cost). They read freely and change nothing without a person approving the exact plan. It connects to the [second brain](https://github.com/nickprignano/avd-second-brain) where they overlap.
 
@@ -30,3 +36,13 @@ Only the S1a spike runs today. Each links its reference page, generated from the
 | [`spikes/s1a/scripts/Remove-Spike.ps1`](docs/reference/spikes-s1a-scripts-Remove-Spike.md) | Deletes the spike resource group, purges the soft-deleted Foundry resource, deletes the MCP server's Entra app, and checks that nothing is left, including the policy exemption, which the spend ledger's resource check can't see. |
 | [`spikes/s1a/scripts/Start-Spike.ps1`](docs/reference/spikes-s1a-scripts-Start-Spike.md) | Steps 2 to 4 of the spike runbook: resource group and same-day policy exemption, the Bicep deployment, your Foundry roles, and the Claude deployments (coordinator, Hosts, and the extra models the Hosts agent is compared on). |
 <!-- generated:entry-points end -->
+
+## Contributing
+
+Contributions and forks are welcome and encouraged. Fork it and make it your own, or send back what you learn: open an issue for a bug, a question or an idea, or a pull request with a fix, a test, a doc or a lesson from a real run. Small pull requests are easiest to review.
+
+Before you open one, run the checks the [CI workflows](.github/workflows) run and read [CLAUDE.md](CLAUDE.md) for the standing rules. Keep tenant data, IDs and secrets out of the repo, issues and pull requests. A change that touches a contract, an agent's role or governance comes with the matching [avd-second-brain](https://github.com/nickprignano/avd-second-brain) pull request. By contributing, you agree your contributions are licensed under the repo's [MIT License](LICENSE).
+
+## License
+
+[MIT](LICENSE). Provided "as is", without warranty of any kind.
