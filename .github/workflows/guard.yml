@@ -21,3 +21,36 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: shellcheck scripts/*.sh
+  workflows:
+    name: Workflow rules
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m pip install --quiet pyyaml==6.0.2
+      - name: Unit tests (workflow, agent PR and spike meter checks)
+        run: python3 -m unittest discover -s scripts/tests -v
+      - name: No write path in a public repo, no default-token PRs, no untrusted credentials (spec section 5b)
+        env:
+          REPO_PRIVATE: ${{ github.event.repository.private }}
+        run: python3 scripts/check_workflows.py
+  agent-pr:
+    name: Agent PRs stay out of protected paths
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: python3 -m pip install --quiet pyyaml==6.0.2
+      - name: Check the PR's authors against governance/protected-paths.yml
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          BASE: ${{ github.base_ref }}
+        run: |
+          gh pr view "$PR" --json author,commits > "$RUNNER_TEMP/pr.json"
+          git diff --name-status "origin/$BASE...HEAD" > "$RUNNER_TEMP/changes.txt"
+          python3 scripts/check_agent_pr.py "$RUNNER_TEMP/pr.json" "$RUNNER_TEMP/changes.txt"

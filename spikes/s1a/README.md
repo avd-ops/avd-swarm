@@ -4,7 +4,7 @@ What it answers, what it costs and why: [docs/spikes/s1a.md](../../docs/spikes/s
 
 Run every block in **Azure Cloud Shell (PowerShell)**, signed in to your personal tenant with the sandbox subscription selected. Each block is self-contained: it updates both repos, so a disconnected session just needs the block pasted again. State between blocks lives in `~/clouddrive/avdswarm-spike/`.
 
-Both repos are private, so the first block signs the GitHub CLI in once (device code, works from the iPad).
+The spend tooling lives in a private repo (tenant-swarm), so the first block signs the GitHub CLI in once (device code, works from the iPad).
 
 **Stop rule:** if a block says `STOP`, or the run is past 6 hours, go straight to block 9.
 

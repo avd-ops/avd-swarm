@@ -1,0 +1,25 @@
+# Protected paths for agent-authored pull requests (spec section 6b, section 6e; governance section 2.1, section 2.6).
+# A PR whose author or any commit author is one of the agents below fails the guard if it
+# touches a protected path, or changes or deletes a file under an append-only path.
+# This file is itself protected. Patterns: a trailing "/**" matches everything under a folder;
+# anything else is a glob on the whole path.
+agents:
+  - avd-swarm-improve[bot]
+  - avd-swarm-scribe[bot]
+protected:
+  - governance/**
+  - .github/**
+  - templates/workflows/**
+  - .claude/**
+  - CLAUDE.md
+  - AGENTS.md
+  - CODEOWNERS
+  - LICENSE
+  - scripts/check-no-ids.sh
+  - scripts/check_*.py
+  - scripts/public-ids.txt
+  - scripts/tests/**
+  - spikes/s1a/agent_api/meter.py
+append_only:
+  - evals/**
+  - spikes/s1a/evals/**

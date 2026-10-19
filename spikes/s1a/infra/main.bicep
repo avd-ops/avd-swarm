@@ -194,6 +194,9 @@ param operatorObjectId string = ''
 @description('anthropic only: base URL of agent_api/ at the pushed commit (raw.githubusercontent.com); the container installs and runs it.')
 param agentCodeUrl string = ''
 
+@description('anthropic only: the run\'s cap on Claude spend in USD, metered from each response before the next call (agent_api/meter.py).')
+param tokenSpendCapUsd string = '15'
+
 @description('anthropic only: client ID of the app registration Entra issues Claude API tokens for (workload identity federation, Start-Spike.ps1 creates it).')
 param claudeAudienceAppId string = ''
 
@@ -230,9 +233,9 @@ resource agentsApp 'Microsoft.App/containerApps@2024-03-01' = if (provider == 'a
           name: 'agents'
           image: 'docker.io/library/python:3.13-slim'
           command: ['sh', '-c']
-          // No image build: install the pinned requirements and fetch main.py from the pushed commit, then run it.
+          // No image build: install the pinned requirements and fetch main.py and meter.py from the pushed commit, then run it.
           args: [
-            'pip install --no-cache-dir -q -r ${agentCodeUrl}/requirements.txt && python -c "import urllib.request; urllib.request.urlretrieve(\'${agentCodeUrl}/main.py\', \'/tmp/main.py\')" && exec python /tmp/main.py'
+            'pip install --no-cache-dir -q -r ${agentCodeUrl}/requirements.txt && python -c "import urllib.request as u; [u.urlretrieve(\'${agentCodeUrl}/\' + f, \'/tmp/\' + f) for f in (\'main.py\', \'meter.py\')]" && exec python /tmp/main.py'
           ]
           resources: { cpu: json('0.5'), memory: '1Gi' }
           env: [
@@ -247,6 +250,7 @@ resource agentsApp 'Microsoft.App/containerApps@2024-03-01' = if (provider == 'a
             { name: 'HOSTS_ALLOWED_TOOLS', value: '' } // set after Q3
             { name: 'HOSTS_EFFORT', value: 'medium' }
             { name: 'COORDINATOR_EFFORT', value: 'low' }
+            { name: 'TOKEN_SPEND_CAP_USD', value: tokenSpendCapUsd }
           ]
         }
       ]

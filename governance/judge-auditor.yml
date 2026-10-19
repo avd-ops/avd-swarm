@@ -1,0 +1,14 @@
+# The judge auditor's settings (spec section 6b, red team R24). Protected: no agent can tune them.
+window_days: 7                     # one check per window, at its end; windows don't overlap
+seeded_faults_per_window: 120      # 20 of each fault kind, counted as distinct question-and-fault pairs
+fault_kinds: [number-changed, name-swapped, claim-added, fact-deleted, unit-swapped, stale-snapshot-cited]
+confidence: 0.95                   # one-sided bounds (Clopper-Pearson)
+seeded_catch_rate_floor: 0.95      # alarm when the upper bound of the catch rate is below this
+ground_truth_miss_ceiling: 0.10    # of answers the ARM check failed: alarm when the lower bound of the share the judge passed is above this
+ground_truth_min_answers: 20       # ARM-failed answers before the measure says anything
+overturn_ceiling: 0.10             # alarm when the lower bound of the overturn rate is above this
+overturn_min_cases: 10
+advisory_measures: [ground_truth, overturns]   # reported, never alarm, until a person moves them out by PR
+shadow_min_windows: 2
+shadow_min_discordant: 10          # b + c
+shadow_alpha: 0.05                 # exact one-sided sign test of b against c

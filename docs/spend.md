@@ -54,6 +54,17 @@ Events carry counts and amounts, never conversation text, as governance requires
 ### 3.6 Insights to the brain (spec §6c)
 Monthly counts only, in `avd-swarm-insights/v1`: runs, refused runs by reason, median actual-to-estimate ratio per run kind, teardowns with leftovers. These feed the brain's harvest so estimate allowances and caps start from real numbers in other estates.
 
+### 3.7 Token spend: metered as it happens, capped outside (R22)
+Cost Management data for Azure arrives hours to a day after the spend, and Anthropic's API usage isn't in Azure's bill at all. A cap that reads either one can be crossed many times over before it fires, by a loop that runs for an afternoon. So model spend is enforced from what each call reports, and capped again at the provider:
+
+1. **One metered model client.** Every model call, by any agent, the judge, Improve, Scribe or the brain, goes through one wrapper. Before a call it reserves the worst case (the request's input tokens, from the previous turn's usage or a token count, plus `max_tokens` of output, at the model's pinned price) and refuses if the reservation would cross the run's, the day's or the month's cap. After the call it books the actual cost from the response's `usage` (input, output, cache read, cache write) and releases the rest of the reservation. It checks the kill switch flag in the same step (governance §2.3, layer 6). If the counter can't be read or written, the call is refused.
+2. **Prices are pinned in Git.** `governance/model-prices.yml` (protected) holds the per-million-token prices per model ID, with the date and source they were read from. A model with no price is refused, like an unpriced line in the spend gate.
+3. **The counter lives outside the agents.** A small table (one row per day and per run) that only the wrapper's identity writes, with optimistic concurrency so parallel agents can't both spend the last dollar. The watchdog reads it every 5 minutes with the `agents.activity` counts (governance §2.2) and trips `halt-agents` at the daily cap, independently of the wrapper.
+4. **The provider caps it again.** The agents' Anthropic federation rule targets a service account in a **workspace of its own**, with a monthly spend limit and per-model token rate limits set by a person in the Claude Console (limits can be set on any workspace but the Default one). The workspace limit is the backstop if everything above fails, and nothing in avd-swarm can raise it. For Claude in Foundry, the deployment's tokens-per-minute quota is the rate ceiling.
+5. **Cost Management reconciles; it doesn't enforce.** The daily job compares the meter with Cost Management and Anthropic's usage report, and a gap of more than 10% is a `spend.meter.drift` event and a lesson, never a reason to raise a cap.
+
+The S1a spike carries a minimal version of 1 and 2 from build-order step 1 (spikes/s1a: a per-run token spend cap in the agent service, and a stop flag), since it is the one thing that can already spend tokens.
+
 ## 4. Phases
 | Phase (spec §9) | Adds |
 |---|---|
@@ -64,4 +75,4 @@ Monthly counts only, in `avd-swarm-insights/v1`: runs, refused runs by reason, m
 ## 5. Open questions
 - **CQ1** Pin tenant-swarm's module by commit (default), or publish it as a package both repos install?
 - **CQ2** Should a run that crosses a month count against the month it started in (today's rule), or be split by day?
-- **CQ3** Should `spend.cap.reached` trip `halt-agents` too, to stop token spend, or only actions?
+- ~~**CQ3** Should `spend.cap.reached` trip `halt-agents` too?~~ **Answered 2026-10-19:** token spend has its own metered cap that trips `halt-agents` (§3.7); `spend.cap.reached` for Azure resources stays at `halt-actions`.
