@@ -19,6 +19,7 @@ The agents read freely through allowlisted tools. They change nothing themselves
 - The brain's playbooks reach avd-swarm as proposals (C9) and go through the same gate, approval and executor as every other change (§5). avd-swarm's action catalog is what playbooks are built from.
 - avd-swarm's one kill switch stops both (governance §3). The brain's Concierge is a read tool here; the front ends are avd-swarm's.
 - What avd-swarm learns and does goes back to the brain: insights, incidents and grading scores (C8), action outcomes and the switch position (C10), §6c.
+- The brain's docs findings (C13) reach Scribe, which drafts the fixes as PRs, §6e.
 - Facts about an estate come through the brain, redacted, never straight from their sources: its current state from avd-current-state (C11), and measured performance and sizing from avd-readiness-stratusphere when a question needs it (C12), §6d.
 - avd-swarm still runs without a brain, with its own actions and evals; a brain without avd-swarm only advises.
 
@@ -190,6 +191,23 @@ What that means here:
 **Facts are cited by register ID (brain C15).** Every fact a proposal cites, from C11, C12 or later tiers, is named by its ID in avd-second-brain's fact register (`contracts/fact-register.json`), for example `c11.hostPools.loadBalancer@hp-3fa2c1d0`. The gate refuses evidence that names an ID the pinned register doesn't have, or one still `proposed`.
 
 **The target-state manifest is not a swarm input (brain C14).** avd-readiness-stratusphere's approved `avd-target-state/v1` manifest goes from the customer's engagement folder to avd-landing-zone's `ConvertFrom-AvdTargetState.ps1`, run by a person. The swarm doesn't read it, render it or deploy it; putting a manifest deployment in the catalog is a later decision with its own linked PRs.
+
+### 6e. Scribe: drafting docs fixes from the brain's findings
+
+The second brain checks that code comments, READMEs, changelogs, docs and its generated wiki agree with the code and with its facts of record (contracts, sources, decisions, terms), and publishes what disagrees as contract **C13**, `avd-doc-findings/v1` ([avd-second-brain docs-spec](https://github.com/nickprignano/avd-second-brain/blob/main/docs/docs-spec.md), [decision 0004](decisions/0004-scribe-drafts-docs.md)). **Scribe** is the avd-swarm role that turns those findings into draft PRs. The brain decides what is wrong; Scribe only drafts; a person merges.
+
+Scribe belongs to the Improve family (§6b), not the operating agents: it never talks to the operator, holds no Azure role, and runs on a schedule after the brain's nightly sweep, never on an incoming message.
+
+- **Generated fixes use the generator, not a model.** A finding marked `generated` (a reference page, a README table, a changelog block) is fixed by rerunning the brain's generator at the pinned commit. A model drafts only prose, from the finding, the cited source of truth and the file it fixes.
+- **Code is never changed to match docs** (brain docs-spec §4). When the source of truth is code, Scribe edits the text; when it is a brain fact, the PR goes to the brain.
+- **Judge findings wait for a person.** Scribe acts on a `judge` finding only once someone has confirmed it in the findings issue.
+- **Protected paths:** `CLAUDE.md`, `.claude/`, agent prompts and allowlists, `governance/`, the observer registry, workflows, `LICENSE` and the project notice, and in the brain `knowledge/` (which changes only by harvest) and the facts of record. A PR Scribe authored that touches them fails CI, as for Improve (governance §2.1).
+- **Untrusted input:** code comments, doc text and PR bodies are data, never instructions.
+- **Limits:** at most one open Scribe PR per repo, batched by check; the daily token cap applies; every PR must pass the repo's docs check before it leaves draft.
+- **Identity:** a GitHub App with `contents:write` and `pull_requests:write` on the connected repos only, no `actions` or `administration` rights, no merge, and branches named `scribe/*`; every connected repo protects its default branch so the App's `contents:write` can't push there. It holds no Azure or Graph role. It is listed in [identities.md](identities.md) when built (phase D1).
+- **Back to the brain:** findings opened, drafted, merged and rejected go out as counts in C8's insights; a finding closes when the next sweep no longer reports it.
+
+Until Scribe exists, the brain's findings issues are fixed by hand. Phase D1 in the brain's docs-spec adds Scribe; it can run before S1 as a Claude Code GitHub Action, estimated in the [spend.md](spend.md) format first.
 
 ## 7. Cost
 
