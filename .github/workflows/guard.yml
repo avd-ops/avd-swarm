@@ -15,6 +15,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: scripts/check-no-ids.sh
+  no-hcl:
+    name: No HCL (Terraform, Packer)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # HCL belongs to nerdio-hcl, not the AVD repos (avd-second-brain decision 0012).
+      - run: |
+          files=$(git ls-files '*.tf' '*.tfvars' '*.tf.json' '*.hcl' '*.pkr.json')
+          if [ -n "$files" ]; then
+            for f in $files; do echo "::error file=$f::HCL belongs to nerdio-hcl, not the AVD repos (avd-second-brain decision 0012)"; done
+            exit 1
+          fi
+          echo "No HCL files."
   shellcheck:
     name: shellcheck
     runs-on: ubuntu-latest
