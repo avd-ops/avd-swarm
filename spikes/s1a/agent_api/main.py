@@ -15,6 +15,10 @@ Endpoints, all requiring the operator's Entra token (audience: the MCP server's 
   POST /claude-check      one token exchange with Anthropic, no model call (proves the federation rule)
   POST /ask               start one question, returns a job ID (Container Apps ingress times out at 240 s)
   GET  /ask/{id}          the job's status and, when done, the answer, usage and identity evidence
+  POST /stop              the spike's kill switch: every later model call is refused until the app restarts
+
+Every Claude call goes through meter.py first: refused once stopped, or when the run's metered spend plus
+the call's worst case would pass TOKEN_SPEND_CAP_USD (avd-swarm spend.md section 3.7).
 """
 
 from __future__ import annotations
@@ -40,6 +44,8 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
+from meter import Meter, SpendRefused, estimate_input_tokens
+
 log = logging.getLogger("avdswarm.spike.api")
 logging.basicConfig(level=logging.INFO)
 
@@ -56,6 +62,9 @@ HOSTS_EFFORT = os.environ.get("HOSTS_EFFORT", "medium")
 HOSTS_ALLOWED_TOOLS = [t.strip() for t in os.environ.get("HOSTS_ALLOWED_TOOLS", "").split(",") if t.strip()]
 MODELS = {"claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"}
 MAX_STEPS = 20  # a tool loop ends here even if the model keeps calling tools (lesson 0008)
+MAX_TOKENS = 16000
+# The run's cap on Claude spend, checked before every call; docs/spikes/s1a.md section 3 puts the token upper bound near $15.
+meter = Meter(cap_usd=float(os.environ.get("TOKEN_SPEND_CAP_USD", "15")))
 LOGIN = f"https://login.microsoftonline.com/{TENANT}"
 
 COORDINATOR_SYSTEM = (
@@ -176,9 +185,6 @@ async def setup(request: Request) -> JSONResponse:
     body = await request.json()
     try:
         graph = await blueprint_token("https://graph.microsoft.com/.default")
-    except anthropic.WorkloadIdentityError as error:
-        jobs[job_id].update(status="failed", error={"step": "anthropic-exchange", "status": error.status_code,
-                                                    "body": error.body, "requestId": error.request_id, "message": str(error)})
     except TokenError as error:
         return JSONResponse({"error": json.loads(str(error))}, status_code=502)
     async with httpx.AsyncClient(timeout=30) as http:
@@ -215,11 +221,18 @@ def text_of(message) -> str:
 
 
 async def ask_claude(model: str, effort: str, system: str, tools: list, messages: list, totals: dict):
-    """One request. Caching, effort and max_tokens as in agent/main.py's model_options."""
-    response = await claude.messages.create(
-        model=model, max_tokens=16000, system=system, tools=tools, messages=messages,
-        cache_control={"type": "ephemeral"}, output_config={"effort": effort},
-    )
+    """One request, metered. Caching, effort and max_tokens as in agent/main.py's model_options."""
+    request_chars = len(json.dumps([system, tools, messages], default=str))
+    reservation = meter.reserve(model, estimate_input_tokens(request_chars), MAX_TOKENS)  # raises SpendRefused
+    try:
+        response = await claude.messages.create(
+            model=model, max_tokens=MAX_TOKENS, system=system, tools=tools, messages=messages,
+            cache_control={"type": "ephemeral"}, output_config={"effort": effort},
+        )
+    except BaseException:
+        meter.release(reservation)
+        raise
+    meter.book(reservation, model, response.usage.model_dump())
     add_usage(totals, model, response.usage)
     return response
 
@@ -284,6 +297,8 @@ async def answer(question: str, hosts_model: str, identity_app_id: str) -> dict:
 async def run_job(job_id: str, question: str, model: str, identity_app_id: str) -> None:
     try:
         jobs[job_id].update(status="done", result=await answer(question, model, identity_app_id))
+    except SpendRefused as error:
+        jobs[job_id].update(status="failed", error={"step": "spend-meter", "message": str(error), "meter": meter.status()})
     except anthropic.APIStatusError as error:
         jobs[job_id].update(status="failed", error={"step": "anthropic", "status": error.status_code,
                                                     "body": error.response.text, "requestId": error.request_id})
@@ -300,6 +315,8 @@ async def ask(request: Request) -> JSONResponse:
         return JSONResponse({"error": "Anthropic federation IDs aren't set on the app yet (Invoke-Spike.ps1 sets them)."}, status_code=409)
     if not HOSTS_ALLOWED_TOOLS:
         return JSONResponse({"error": "HOSTS_ALLOWED_TOOLS is empty: set it from list_mcp_tools.py's output."}, status_code=409)
+    if meter.stopped:
+        return JSONResponse({"error": f"stopped: {meter.stopped}", "meter": meter.status()}, status_code=409)
     if body.get("model") not in MODELS:
         return JSONResponse({"error": f"model must be one of {sorted(MODELS)}"}, status_code=400)
     job_id = uuid.uuid4().hex
@@ -325,13 +342,25 @@ async def claude_check(_request: Request) -> JSONResponse:
     return JSONResponse({"ok": True, "expiresAt": exchanged.expires_at, "entraClaims": evidence})
 
 
+async def stop(request: Request) -> JSONResponse:
+    """The spike's kill switch: refuse every later model call. Only a restart (a person's action) clears it."""
+    try:
+        reason = (await request.json()).get("reason", "")
+    except ValueError:
+        reason = ""
+    meter.stop(reason or "stopped by the operator")
+    log.warning("model calls stopped: %s", meter.stopped)
+    return JSONResponse(meter.status())
+
+
 async def ask_status(request: Request) -> JSONResponse:
     job = jobs.get(request.path_params["job_id"])
     return JSONResponse(job) if job else JSONResponse({"error": "unknown job"}, status_code=404)
 
 
 async def health(_request: Request) -> JSONResponse:
-    return JSONResponse({"ok": True, "allowedTools": HOSTS_ALLOWED_TOOLS, "claudeConfigured": CLAUDE_CONFIGURED})
+    return JSONResponse({"ok": True, "allowedTools": HOSTS_ALLOWED_TOOLS, "claudeConfigured": CLAUDE_CONFIGURED,
+                         "meter": meter.status()})
 
 
 app = Starlette(routes=[
@@ -340,6 +369,7 @@ app = Starlette(routes=[
     Route("/claude-check", guarded(claude_check), methods=["POST"]),
     Route("/ask", guarded(ask), methods=["POST"]),
     Route("/ask/{job_id}", guarded(ask_status)),
+    Route("/stop", guarded(stop), methods=["POST"]),
 ])
 
 if __name__ == "__main__":
