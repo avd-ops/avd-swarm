@@ -1,0 +1,71 @@
+{
+  "about": "Docs findings this repo accepts, by key, with the reason (avd-second-brain docs/docs-spec.md section 12). The docs check leaves them out; D11 can't be accepted. Remove an entry when its text changes or the file is built.",
+  "accepted": [
+    {
+      "key": "0f1f880abc3e",
+      "check": "D1",
+      "path": "docs/spend.md",
+      "reason": "Designed in the spec, not built yet (README build order); the path is where it will live."
+    },
+    {
+      "key": "4ca306b9d1ea",
+      "check": "D1",
+      "path": "docs/governance.md",
+      "reason": "Designed in the spec, not built yet (README build order); the path is where it will live."
+    },
+    {
+      "key": "5057a99e526f",
+      "check": "D1",
+      "path": "docs/governance.md",
+      "reason": "Designed in the spec, not built yet (README build order); the path is where it will live."
+    },
+    {
+      "key": "5862d50c2477",
+      "check": "D1",
+      "path": "docs/identities.md",
+      "reason": "Planned for S1 (docs/identities.md); not built yet."
+    },
+    {
+      "key": "7618b533f059",
+      "check": "D1",
+      "path": "docs/spec.md",
+      "reason": "The path is in the landing zone and the brain, as the sentence says."
+    },
+    {
+      "key": "7e1e67efa126",
+      "check": "D1",
+      "path": "docs/decisions/0003-swarm-acts-brain-thinks.md",
+      "reason": "The path is in avd-second-brain, as the sentence says."
+    },
+    {
+      "key": "dd27f174cacd",
+      "check": "D1",
+      "path": "docs/spend.md",
+      "reason": "Designed in the spec, not built yet (README build order); the path is where it will live."
+    },
+    {
+      "key": "e4d21b5bc3df",
+      "check": "D1",
+      "path": "docs/spec.md",
+      "reason": "The path is in avd-second-brain, as the sentence says."
+    },
+    {
+      "key": "e5ea7ae20da3",
+      "check": "D1",
+      "path": "docs/prior-art.md",
+      "reason": "Designed in the spec, not built yet (README build order); the path is where it will live."
+    },
+    {
+      "key": "e97c499a0d1f",
+      "check": "D1",
+      "path": "docs/governance.md",
+      "reason": "Designed in the spec, not built yet (README build order); the path is where it will live."
+    },
+    {
+      "key": "e99220676173",
+      "check": "D1",
+      "path": "docs/spend.md",
+      "reason": "Designed in the spec, not built yet (README build order); the path is where it will live."
+    }
+  ]
+}
