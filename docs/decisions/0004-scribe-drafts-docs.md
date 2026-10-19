@@ -2,7 +2,7 @@
 
 - **Status:** Proposed
 - **Date:** 2026-10-18
-- **Pair:** [avd-second-brain decision 0004](https://github.com/nickprignano/avd-second-brain/blob/main/docs/decisions/0004-docs-consistency.md) says the same from the other side. The two change together.
+- **Pair:** [avd-second-brain decision 0004](https://github.com/nickprignano/avd-second-brain/blob/main/docs/knowledge/decisions/0004-docs-consistency.md) says the same from the other side. The two change together.
 
 ## Context
 The owner asked on 2026-10-18 for a repo or swarm function that builds a wiki and documentation for people and agents and keeps code comments, changelogs, READMEs and the wiki consistent with the second brain. Under decision 0003 the brain thinks and avd-swarm acts, so the work splits.
