@@ -132,8 +132,8 @@ An independent, offline red team read both specs at this branch's head, the open
 | V1-21 | H | Recovery draft puts swarm terms in the landing zone's status check | §6 above; sent to the recovery work |
 | V1-22 | M | No release tags and no restart-agent script in the landing zone | Spec §2, §6 above |
 | V1-23 | M | Brain-dependent checks in the pair's CI | §6 above (owner D15) |
-| V1-24 | M | Three draft branches would revert X4, X5 and SQ5 if merged after this one | Sent to those drafts: rebase on this branch first |
-| V1-25 | M | The Well-Architected draft still has its own rule engine | Sent to that draft: reduce to a WARA reader, no new agent |
+| V1-24 | M | Three draft branches would revert X4, X5 and SQ5 if merged after this one | Sent to those drafts: rebase on this branch first. #21 now adds only `docs/waf-review.md` and merges clean either way |
+| V1-25 | M | The Well-Architected draft still has its own rule engine | Done in #21: a mode of the Deploy agent, `review/map.yml` to evidence, WARA's analyzer for Reliability, counts for the other pillars |
 | V1-26 | M | Recovery drills before the Resiliency Manager check | Sent to the recovery work: G11 becomes its DR0 exit |
 | V1-27 | H | The failover identity writes role assignments before the owner answers | Sent to the recovery work: keep it out of identities.md until answered (owner D16) |
 | V1-28 | M | The ARM MCP server needs delegated auth | Spec SQ2 |
