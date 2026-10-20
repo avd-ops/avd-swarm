@@ -50,6 +50,7 @@ Write the policy in Rego or Cedar and evaluate it through Microsoft's Agent Gove
 | Rate | At most N plans per hour and N writes per day, per action and overall |
 | Time windows | No host actions in business hours unless the plan says why |
 | Evidence freshness | Refuse a brain proposal (C9) whose only evidence is stale: an avd-current-state facts snapshot (brain contract C11) older than 7 days, or a forensic window (C12) that ended more than 90 days ago or that the factory's quality gate marked `low-confidence`. Limits start there. Facts are a reason to propose; targets are always resolved live ([spec](spec.md) §6d) |
+| Says why | Refuse a plan without a `why` block ([spec](spec.md) §6f): no event kind, neither an accepted decision from the brain's lifecycle record (brain C18) nor a drafted one, or a drafted decision with no alternative. The gate checks the shape only; the approver judges the reason |
 | Budget | Refuse a plan whose spend block fails the spend gate ([spend.md](spend.md) §3.2): over the per-run cap, over the remaining monthly cap, any unpriced line, or no cap set |
 | Switch position | Refuse everything the current position forbids (§2.3) |
 | Observer verdict | When the policy requires it, wait for the observer to allow the plan (§2.2) |
