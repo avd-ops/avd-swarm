@@ -8,10 +8,11 @@ Runs the whole S1a spike in one command: price, open the spend run, deploy, Q1-Q
 
 | Parameter | Type | Required | Default | What it does |
 |---|---|---|---|---|
-| `-Sandbox` | string | no | `'personal'` |  |
+| `-Sandbox` | string | no | `'lab'` | A name for the subscription you run labs in; the spend guard allows one open run per sandbox. |
 | `-RunCap` | double | no | `20` |  |
-| `-MonthlyCap` | double | no | `150` |  |
-| `-Funding` | string | no | `'personal-card'` |  |
+| `-MonthlyCap` | double | no |  | Your monthly cap for this subscription, in its billing currency. Asked for when not given. |
+| `-MonthToDate` | Nullable[double] | no |  | Month to date by hand, when Cost Management can't be read on this subscription (the spend guard refuses without it). |
+| `-LedgerPath` | string | no | `(Join-Path $HOME 'clouddrive/avdswarm-spend')` | Where the run records go. Keep it private: it's yours, not this repo's. |
 | `-AllowedTools` | string | no |  | Comma-separated MCP tool names for the Hosts agent. Default: the read-only host pool and session host tools found in Q3. |
 | `-Runtime` | string | no | `'python_3_13'` |  |
 | `-AllowUnpriced` | switch | no |  | Open the run even if a line is unpriced (the estimate's note says which). |

@@ -8,7 +8,7 @@
 |---|---|---|---|
 | `location` | string | `'eastus2'` | Region for the Foundry resource and the Container App: one where Claude in Foundry is offered. |
 | `avdLocation` | string | `resourceGroup().location` | Region for the AVD objects. The landing zone region, so they need no policy exemption. |
-| `runId` | string |  | Spend run ID, tagged on every resource (tenant-swarm docs/spend.md). |
+| `runId` | string |  | Spend run ID from spend/spend_guard.py, tagged on every resource (docs/spend.md). |
 | `provider` | string | `'foundry'` |  |
 | `suffix` | string | `take(uniqueString(resourceGroup().id), 6)` | Short unique suffix for globally unique names. |
 | `mcpAppId` | string |  |  |

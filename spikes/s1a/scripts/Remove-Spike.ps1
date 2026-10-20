@@ -2,8 +2,9 @@
 <#
 .SYNOPSIS
 Deletes the spike resource group, purges the soft-deleted Foundry resource, deletes the MCP
-server's Entra app, and checks that nothing is left, including the policy exemption, which the
-spend ledger's resource check can't see. Run tenant-swarm's Stop-SpendRun.ps1 after it.
+server's Entra app, and checks that nothing is left, including the policy exemption, which a
+resource group cost check can't see. Its last line is the teardown evidence for the spend guard's
+close command (spend/spend_guard.py).
 #>
 [CmdletBinding(SupportsShouldProcess)]
 param(
@@ -106,7 +107,7 @@ if ($leftovers.Count -gt 0) {
     Write-Host "RESULT teardown FAIL: $($leftovers -join '; ')"
     exit 1
 }
-Write-Host 'RESULT teardown PASS. Also delete the report-only Conditional Access policy from step 6 if you made one. Next: Stop-SpendRun.ps1.'
+Write-Host 'RESULT teardown PASS. Also delete the report-only Conditional Access policy from step 6 if you made one. Next: close the run with spend_guard.py close.'
 if ($Provider -eq 'Anthropic') {
     Write-Host "Claude Console > Settings > Workload identity: delete (or disable) the federation rule for run $RunId. Its managed identity and audience app are gone, so it can't match anything, but it shouldn't linger."
 }

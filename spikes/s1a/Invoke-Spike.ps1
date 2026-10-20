@@ -2,7 +2,9 @@
 <#
 .SYNOPSIS
 Runs the whole S1a spike in one command: price, open the spend run, deploy, Q1-Q6, keep the
-evidence, tear down and close the run.
+evidence, tear down and close the run. Everything it needs is in this public repo: the spend run is
+spend/spend_guard.py, which refuses the run before anything is deployed if the estimate is over
+-RunCap or would take the month past -MonthlyCap.
 
 .DESCRIPTION
 Run it in Azure Cloud Shell (PowerShell), signed in to the sandbox subscription. It stops twice
@@ -27,10 +29,15 @@ federation rule in the Claude Console, asks for the rule's IDs, and checks the t
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '', Justification = 'Used inside the step script blocks.')]
 [CmdletBinding()]
 param(
-    [string] $Sandbox = 'personal',
+    # A name for the subscription you run labs in; the spend guard allows one open run per sandbox.
+    [string] $Sandbox = 'lab',
     [double] $RunCap = 20,
-    [double] $MonthlyCap = 150,
-    [string] $Funding = 'personal-card',
+    # Your monthly cap for this subscription, in its billing currency. Asked for when not given.
+    [double] $MonthlyCap,
+    # Month to date by hand, when Cost Management can't be read on this subscription (the spend guard refuses without it).
+    [Nullable[double]] $MonthToDate,
+    # Where the run records go. Keep it private: it's yours, not this repo's.
+    [string] $LedgerPath = (Join-Path $HOME 'clouddrive/avdswarm-spend'),
     # Comma-separated MCP tool names for the Hosts agent. Default: the read-only host pool and session host tools found in Q3.
     [string] $AllowedTools,
     [ValidateSet('python_3_13', 'python_3_14')][string] $Runtime = 'python_3_13',
@@ -47,10 +54,9 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $Repo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)          # ~/avd-swarm
-$TenantSwarm = Join-Path (Split-Path -Parent $Repo) 'tenant-swarm'      # ~/tenant-swarm, for the spend scripts
+$Guard = Join-Path $Repo 'spend/spend_guard.py'
 $Kit = $PSScriptRoot
 $Spike = Join-Path $HOME 'clouddrive/avdswarm-spike'
-$Ledger = Join-Path $HOME 'clouddrive/spend-ledger'
 $Venv = Join-Path $HOME 'avdswarm-spike-venv'
 $Py = Join-Path $Venv 'bin/python'
 $ProgressFile = Join-Path $Spike 'progress.json'
@@ -125,14 +131,22 @@ function Invoke-Teardown {
     Write-Phase 'Teardown: delete everything and close the spend run'
     $runId = if (Test-Path "$Spike/run-id") { Get-Content "$Spike/run-id" } else { $null }
     if (-not $runId) { Write-Host 'No spend run was opened, so nothing was deployed.'; return }
-    $env:AZURE_SUBSCRIPTION_ID = az account show --query id -o tsv
     $runProvider = if (Test-Path "$Spike/provider") { Get-Content "$Spike/provider" } else { $Provider }
-    & (Join-Path $Kit 'scripts/Remove-Spike.ps1') -RunId $runId -Provider $runProvider
-    if ($LASTEXITCODE) { throw 'Teardown left something behind (listed above). Clean it up and run -TeardownOnly again.' }
-    & (Join-Path $TenantSwarm 'scripts/spend/Stop-SpendRun.ps1') -Sandbox $Sandbox -RunId $runId -LedgerPath $Ledger
+    & (Join-Path $Kit 'scripts/Remove-Spike.ps1') -RunId $runId -Provider $runProvider | Select-Object -Last 1 | Set-Content "$Spike/teardown-$runId.json"
+    $removeExit = $LASTEXITCODE
+    # Token spend billed outside Azure (the Anthropic fallback): what the agent service metered, from the eval records.
+    $closeArgs = @($Guard, '--ledger', $LedgerPath, '--sandbox', $Sandbox, 'close', '--run-id', $runId, '--teardown', "$Spike/teardown-$runId.json")
+    if ($runProvider -eq 'Anthropic') {
+        $opened = (Get-Item "$Spike/run-id").LastWriteTime
+        $tokenCost = (Get-ChildItem $Spike -Filter 'evals*.jsonl' -ErrorAction SilentlyContinue | Where-Object LastWriteTime -GE $opened |
+                Get-Content | Where-Object { $_.Trim() } | ForEach-Object { ($_ | ConvertFrom-Json).costUsd } | Measure-Object -Sum).Sum
+        $closeArgs += @('--token-cost', [string][double]$tokenCost, '--token-source', 'metered from the eval records; check the Claude Console usage page')
+    }
+    & python3 @closeArgs
+    if ($removeExit -or $LASTEXITCODE) { throw 'Teardown left something behind (listed above). Clean it up and run -TeardownOnly again.' }
     Save-SpikeResult 'teardown' 'clean'
     Write-Host "`nRun $runId closed. Delete the report-only Conditional Access policy if you made one."
-    Write-Host "Three days from now the daily check settles the actual cost; commit $Ledger to tenant-swarm's ledger branch."
+    Write-Host "Three days from now, settle the actual cost: python3 $Guard --ledger $LedgerPath --sandbox $Sandbox settle --run-id $runId"
     Move-Item $ProgressFile "$Spike/progress-$runId.json" -Force
     Remove-Item "$Spike/run-id", "$Spike/provider" -Force -ErrorAction SilentlyContinue
 }
@@ -140,16 +154,20 @@ function Invoke-Teardown {
 Start-Transcript -Path (Join-Path $Spike "transcript-$([datetime]::UtcNow.ToString('yyyyMMdd-HHmmss')).txt") | Out-Null
 try {
     # ---------- Prerequisites ----------
-    Write-Phase 'Checking the repos, the subscription and the tools'
-    gh auth status *> $null
-    if ($LASTEXITCODE) { gh auth login --hostname github.com --git-protocol https --web }
-    gh auth setup-git
-    if (Test-Path $TenantSwarm) { git -C $TenantSwarm pull -q } else { gh repo clone nickprignano/tenant-swarm $TenantSwarm -- -q }
-    if ($LASTEXITCODE) { throw 'Could not get tenant-swarm (the spend scripts). Check gh auth status.' }
+    Write-Phase 'Checking the subscription and the tools'
     $account = az account show -o json | ConvertFrom-Json
     Write-Host "Subscription: $($account.name)  User: $($account.user.name)"
 
     if ($TeardownOnly) { Invoke-Teardown; return }
+
+    # The stop rule: a run past its planned hours goes straight to teardown.
+    if (Test-Path "$Spike/run-id") {
+        & python3 $Guard --ledger $LedgerPath --sandbox $Sandbox status | Out-Host
+        if ($LASTEXITCODE -eq 1) {
+            Write-Host 'STOP: the open run is past its planned hours (above). Tearing down.' -ForegroundColor Red
+            Invoke-Teardown; return
+        }
+    }
     if ((Test-Path "$Spike/provider") -and (Get-Content "$Spike/provider") -ne $Provider) {
         $Provider = Get-Content "$Spike/provider"
         Write-Host "Resuming the open run with -Provider $Provider, the provider it was opened with."
@@ -192,7 +210,10 @@ try {
 
     $progress = Get-SpikeProgress
     if ($progress.done.Count -eq 0) {
-        $answer = Read-Host "Run the S1a spike in this subscription (sandbox '$Sandbox', run cap $RunCap)? [y/N]"
+        if (-not $MonthlyCap) {
+            $MonthlyCap = [double](Read-Host "Your monthly cap for this subscription (what you're willing to spend on it this month, billing currency)")
+        }
+        $answer = Read-Host "Run the S1a spike in this subscription (sandbox '$Sandbox', run cap $RunCap, monthly cap $MonthlyCap)? [y/N]"
         if ($answer -notmatch '^(y|yes)$') { Write-Host 'Stopped; nothing was done.'; return }
     }
     else {
@@ -216,16 +237,15 @@ try {
         }
         $answer = Read-Host "Open the spend run with these Azure lines plus the token estimate, run cap ${RunCap}? [y/N]"
         if ($answer -notmatch '^(y|yes)$') { throw 'Stopped at the estimate; nothing is deployed.' }
-        $env:AZURE_SUBSCRIPTION_ID = $account.id
-        $spendArgs = @{
-            Sandbox = $Sandbox; Kind = 'other'; Purpose = "avd-swarm S1a spike ($Provider)"; Hours = 6
-            ManualAmount = $estimate.manualAmount; ManualNote = $estimate.manualNote
-            RunCap = $RunCap; MonthlyCap = $MonthlyCap; Funding = $Funding; LedgerPath = $Ledger
-        }
-        if ($AllowUnpriced) { $spendArgs.AllowUnpriced = $true }
-        & (Join-Path $TenantSwarm 'scripts/spend/Start-SpendRun.ps1') @spendArgs
-        $run = Get-ChildItem (Join-Path $Ledger $Sandbox) -Recurse -Filter *.json | Sort-Object LastWriteTime |
-            Select-Object -Last 1 | Get-Content -Raw | ConvertFrom-Json
+        if (-not $MonthlyCap) { $MonthlyCap = [double](Read-Host 'Your monthly cap for this subscription (billing currency)') }
+        $openArgs = @($Guard, '--ledger', $LedgerPath, '--sandbox', $Sandbox, 'open', '--purpose', "avd-swarm S1a spike ($Provider)",
+            '--resource-group', 'rg-avdswarm-spike', '--hours', '6', '--estimate', [string]$estimate.manualAmount,
+            '--estimate-note', $estimate.manualNote, '--unpriced-lines', [string]$estimate.unpricedLines,
+            '--run-cap', [string]$RunCap, '--monthly-cap', [string]$MonthlyCap)
+        if ($AllowUnpriced) { $openArgs += '--allow-unpriced' }
+        if ($null -ne $MonthToDate) { $openArgs += @('--month-to-date', [string]$MonthToDate) }
+        $lines = @(& python3 @openArgs | ForEach-Object { Write-Host $_; "$_" })
+        $run = Get-LastJson $lines 'spend-open'
         if ($run.status -ne 'open') { throw "The spend run was refused: $($run.runId) is $($run.status). Nothing is deployed." }
         $run.runId | Set-Content "$Spike/run-id"
         $Provider | Set-Content "$Spike/provider"
@@ -453,7 +473,7 @@ The agent identity's object ID is $($a.identityPrincipalId) (also in $Spike/agen
     Invoke-Teardown
     Write-Phase 'Done'
     Write-Host "Evidence is in $Spike (state.json, mcp-tools.txt, agent*.json, evals*.jsonl, tokens.json, progress-*.json, transcript-*.txt)."
-    Write-Host 'Paste the transcript or those files in the thread and the results go into docs/spikes/s1a.md.'
+    Write-Host 'They hold resource names and IDs: keep them private. Results go into docs/spikes/s1a.md section 5 without them.'
 }
 catch {
     Write-Host "`nFAILED: $($_.Exception.Message)" -ForegroundColor Red

@@ -1,8 +1,8 @@
 # avd-swarm S1a spike: price the Azure lines. Personal project, not for production, provided as is; not affiliated with the author's employer, Liquidware or Microsoft.
 <#
 .SYNOPSIS
-Prices the spike's Azure lines from the retail prices API and prints the -ManualAmount and
--ManualNote for tenant-swarm's Start-SpendRun.ps1.
+Prices the spike's Azure lines from the retail prices API and prints the amount and note for
+the spend guard's open command (spend/spend_guard.py).
 
 .DESCRIPTION
 Each line must match exactly one meter (avd-landing-zone decision 0010). A line that matches none
@@ -94,5 +94,5 @@ foreach ($line in $lines) {
     manualNote    = ($note -join '; ')
 } | ConvertTo-Json -Compress
 if ($unpriced -gt 0) {
-    Write-Warning "$unpriced line(s) unpriced. Decide before opening the run: price them by hand with a note, or pass -AllowUnpriced to Start-SpendRun.ps1."
+    Write-Warning "$unpriced line(s) unpriced. Decide before opening the run: price them by hand with a note, or open the run with --allow-unpriced (Invoke-Spike.ps1 -AllowUnpriced)."
 }

@@ -1,7 +1,7 @@
 # S1a spike: does the S1 stack actually work?
 
 - **Status:** Planned (2026-10-17). Nothing in this plan has run yet.
-- **Part of:** [spec.md](../spec.md) §9 (S1a). Estimated and closed through the spend ledger ([spend.md](../spend.md)).
+- **Part of:** [spec.md](../spec.md) §9 (S1a). Estimated, capped and closed through the public spend guard ([spend/](../../spend/README.md), [spend.md](../spend.md)).
 - **Timebox:** one working session, at most 6 hours of deployed time, torn down the same day.
 
 ## 1. What it answers
@@ -28,7 +28,7 @@ Everything in one throwaway resource group, `rg-avdswarm-spike`, with its resour
 **Location policy.** A subscription with the landing zone's guardrails denies resource groups and resources outside the deployment region (`avdlz-allowed-rg-locations` and `avdlz-allowed-locations`, North Central US only). So the spike, by default:
 - creates the resource group **in North Central US**, which the policy allows (a resource group's own location doesn't have to match its resources');
 - adds a **policy exemption** for `avdlz-allowed-locations` scoped to **that resource group only**, category `Waiver`, expiring at the end of the spike day, with the run ID in its description;
-- deletes the exemption at teardown (it also expires by itself). The spend ledger's teardown check compares resources, and an exemption isn't one, so the teardown block checks for it by name and fails if it's still there.
+- deletes the exemption at teardown (it also expires by itself). The spend guard reads cost by resource group, and an exemption has no cost, so the teardown block checks for it by name and fails if it's still there.
 
 The rest of the subscription stays guarded throughout. A subscription without those guardrails skips the exemption.
 
@@ -45,7 +45,7 @@ The agents' identities get **Reader on this resource group only**. Nothing reads
 
 ## 3. Cost estimate (spend.md format, kind `other`)
 
-A spike isn't an AVD deployment, so it uses `-Kind other -ManualAmount` with a note, per tenant-swarm's spend.md.
+A spike isn't an AVD deployment, so its estimate is priced by hand from the lines below and checked by the spend guard ([spend/](../../spend/README.md)) against the run and monthly caps.
 
 **Model tokens**, priced at Anthropic's list prices, which Claude on Foundry bills at through the Marketplace (Opus 5.5: $4 / $20 per million input / output tokens; Sonnet 5.5: $2 / $10; Haiku 5.5: $0.10 / $0.50). Assumption: 20 conversations with Hosts on Opus (`Invoke-Spike.ps1` asks 13: q01, the two Q4 probes and the ten evals; the rest is room for a rerun), then the ten evals again with Hosts on Sonnet and on Haiku. Each Hosts conversation reads about 40k input tokens: the system prompt, the MCP tool definitions, and the tool output, sent again on every turn of the tool loop.
 
@@ -78,7 +78,7 @@ A spike isn't an AVD deployment, so it uses `-Kind other -ManualAmount` with a n
 
 The runbook is [spikes/s1a/README.md](../../spikes/s1a/README.md): nine self-contained Cloud Shell (PowerShell) blocks, run as you in the sandbox subscription.
 
-1. **Price and open the run:** `Get-SpikeEstimate.ps1` prices the Azure lines from the retail prices API (exactly one meter per line, or it reports what it saw), then tenant-swarm's `Start-SpendRun.ps1 -Kind other -ManualAmount ... -RunCap 20`. A refusal stops the spike.
+1. **Price and open the run:** `Get-SpikeEstimate.ps1` prices the Azure lines from the retail prices API (exactly one meter per line, or it reports what it saw), then `spend_guard.py open --estimate ... --run-cap 20 --monthly-cap <yours>`. A refusal stops the spike.
 2. **Deploy and Q1:** `Start-Spike.ps1` creates the resource group and the exemption, deploys `infra/main.bicep`, gives you Foundry User and Foundry Project Manager on the Foundry resource, and deploys the two Claude models by the names and versions the resource actually offers. `test_models.py` calls each with an Entra token.
 3. **Q3:** `list_mcp_tools.py` lists every tool the MCP server exposes with its read-only and destructive hints, as you (the server's Entra app pre-authorizes the Azure CLI).
 4. **Q2:** `deploy_agent.py` creates the hosted agent from code (`spikes/s1a/agent`), routes traffic to it and prints its agent identity; `Connect-SpikeAgent.ps1` gives that identity the MCP server's app role; the first eval question checks the handoff end to end.
@@ -86,24 +86,23 @@ The runbook is [spikes/s1a/README.md](../../spikes/s1a/README.md): nine self-con
 6. **Q5:** the agent's startup log of its identity claims, its sign-in logs, and a report-only Conditional Access policy (portal steps, recorded as found).
 7. **Q6:** the ten eval questions with Hosts on Opus, then again on a second agent each for Sonnet and Haiku, then `Get-SpikeToken.ps1` for token totals per deployment from Azure Monitor.
 8. **Evidence** stays in `~/clouddrive/avdswarm-spike/`, never in this repo.
-9. **Tear down:** `Remove-Spike.ps1` deletes the group, purges the soft-deleted Foundry resource, deletes the MCP app registration and checks for every leftover, including the exemption, which the ledger's resource check can't see. Then `Stop-SpendRun.ps1`.
+9. **Tear down:** `Remove-Spike.ps1` deletes the group, purges the soft-deleted Foundry resource, deletes the MCP app registration and checks for every leftover, including the exemption, which a resource group cost check can't see. Then `spend_guard.py close` with that evidence, and `settle` three days later.
 
 ## 5. Result (filled in after the run)
 
 | # | Result | Evidence |
 |---|---|---|
 | Q1–Q6 | | |
-| Cost | Estimate / actual (settled) | Run record path on the `ledger` branch |
+| Cost | Estimate / actual (settled) | The run's record from `spend_guard.py settle` (kept private) |
 | Teardown | Clean / leftovers | Run record |
 
 Spec §3, §6, §7 and §9 change to match the results in the same PR.
 
 ## 6. What you need before it can start
 
-- **Sandbox:** your lab tenant, spend sandbox `personal` (decided 2026-10-18). If its subscription turns out to be a Visual Studio, sponsored or CSP subscription, Q1 is answered "replaced" in block 2 before any model spend.
-- tenant-swarm's spend setup for `personal` (`setup-spend-sandbox.sh`), or the caps passed as parameters in Cloud Shell, as the runbook does.
+- **Sandbox:** a lab tenant and a sandbox subscription, never a production one (the owner's run uses a personal lab tenant, decided 2026-10-18). If its subscription turns out to be a Visual Studio, sponsored or CSP subscription, Q1 is answered "replaced" in block 2 before any model spend.
+- A run cap and your monthly cap for the subscription, passed to the spend guard (`Invoke-Spike.ps1 -RunCap -MonthlyCap`; it asks for the monthly cap if you don't pass it), and Cost Management readable on the subscription for the month to date.
 - If the subscription has the landing zone's guardrails, the exemption in §2 is part of the run.
-- The GitHub CLI signed in once in Cloud Shell, for the private spend repo (tenant-swarm) and pushes to this repo (block 1 does it).
 - Quota for Claude in Foundry in East US 2 (block 2 reports it if it's missing).
 
 ## 7. Fallback without Foundry (`-Provider Anthropic`)
@@ -123,5 +122,5 @@ Added 2026-10-18, when the subscription had no Claude quota in Foundry (0 TPM fo
 
 **No secret.** Claude is called with Anthropic's workload identity federation for Entra. Start-Spike.ps1 registers a Claude API audience app (v2.0 tokens, `api://<appId>`); the agents app's managed identity gets an Entra token for it, and the Anthropic SDK exchanges that at `POST /v1/oauth/token` for an access token that lives minutes. In the Claude Console you register the tenant's v2.0 issuer (maximum JWT lifetime 86400 seconds, because managed identity tokens live up to 24 hours), a service account, and a rule that matches the audience, the managed identity's `oid` and the tenant's `tid`. Invoke-Spike.ps1 prints those values, takes the rule's IDs (none is a secret; they stay in the Cloud Shell state folder), and runs one exchange through `/claude-check` before any question. Use a workspace just for the spike with a spend limit, and delete the rule after teardown; teardown deletes the audience app and the identity. Anthropic documents this at [Use WIF with Microsoft Entra ID](https://platform.claude.com/docs/en/manage-claude/wif-providers/azure).
 
-**Cost.** Azure: the Container Apps and logs, under $1 for a few hours. Tokens are billed by Anthropic, not Azure, so they're outside the Azure spend check: the 12 eval questions on three Hosts models are expected around $8, and the 2M input token stop rule caps them near $15. Record Anthropic's charge for the run (Console, Usage) in the spend run when you close it. Since 2026-10-19 the agent service also enforces this itself (`agent_api/meter.py`): it prices each response's usage before the next call and refuses any call whose worst case would pass `TOKEN_SPEND_CAP_USD` (default $15, the Bicep parameter `tokenSpendCapUsd`), and `POST /stop` refuses every later call until the app restarts. `GET /healthz` shows the metered spend. Put the spike's federation rule in its own Anthropic workspace with a monthly spend limit, so the provider caps it too (spend.md §3.7).
+**Cost.** Azure: the Container Apps and logs, under $1 for a few hours. Tokens are billed by Anthropic, not Azure, so they're outside the Azure spend check: the 12 eval questions on three Hosts models are expected around $8, and the 2M input token stop rule caps them near $15. `Invoke-Spike.ps1` records the metered token spend on the run when it closes it; check it against Anthropic's charge (Console, Usage). Since 2026-10-19 the agent service also enforces this itself (`agent_api/meter.py`): it prices each response's usage before the next call and refuses any call whose worst case would pass `TOKEN_SPEND_CAP_USD` (default $15, the Bicep parameter `tokenSpendCapUsd`), and `POST /stop` refuses every later call until the app restarts. `GET /healthz` shows the metered spend. Put the spike's federation rule in its own Anthropic workspace with a monthly spend limit, so the provider caps it too (spend.md §3.7).
 
