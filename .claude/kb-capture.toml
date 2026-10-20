@@ -6,3 +6,9 @@
 
 capture_hook = "block"
 kb_repos = ["nickprignano/avd-second-brain"]
+
+# Auto-merge for low-risk PRs (ai-brain decision 0014). Off here: the kb-auto-merge workflow isn't
+# installed because the Guard forbids pull_request_target (check_workflows.py W3), and this repo
+# has no knowledge base for the default paths to match.
+auto_merge = "off"
+auto_merge_paths = ["docs/knowledge/**", "llms.txt"]
