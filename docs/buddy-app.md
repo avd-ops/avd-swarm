@@ -75,13 +75,14 @@ One main screen, the conversation. Everything else opens from it and returns to 
 
 The build reads one source file named in `buddy/app/brand.json` (`"icon_source": "placeholder"` or `"mascot"`) and generates every size in [the asset README's table](../assets/buddy/README.md#making-the-sizes). Pages and the manifest reference the generated names only, so swapping the icon is a one-line change and a rebuild, with no edit to HTML, CSS or the manifest. An adopter can point the setting at their own file.
 
-### 6.2 Placeholder until the trademark review
+### 6.2 The owner's icon, by an accepted-risk decision
 
-The owner's icon (`assets/buddy/avd-buddy-icon-source.jpg`) resembles Microsoft's Clippy, and the README there explains why public use waits for a trademark review. Until the owner records the review's outcome:
+The owner's icon (`assets/buddy/avd-buddy-icon-source.jpg`) resembles Microsoft's Clippy. On 2026-10-20 the owner chose to use it anyway, for an open source research project, with the risk explained; the decision and its words are in [`assets/buddy/REVIEW.md`](../assets/buddy/REVIEW.md). So:
 
-- `icon_source` stays `placeholder`: the avd-ops mark (`brand/mark.svg`, vendored with the design system) on a `--brand-ink` tile, with a small chat bubble. Its sizes follow the same table.
-- The chat avatar is the placeholder too.
-- A test fails the build if `icon_source` is `mascot` and `assets/buddy/REVIEW.md` doesn't exist. That file is the owner's one-line record of the review; it's created by the owner's PR, never by an agent.
+- `icon_source` is `mascot`: the app icon and the chat avatar come from the owner's icon, through the SVG redraw in the asset README.
+- The `placeholder` stays buildable: the avd-ops mark (`brand/mark.svg`, vendored with the design system) on a `--brand-ink` tile, with a small chat bubble, at the same sizes. Going back is the one-line change in §6.1, plus a line in `REVIEW.md`.
+- A test fails the build if `icon_source` is `mascot` and `assets/buddy/REVIEW.md` doesn't exist, so the icon can't be used without a recorded decision. Only the owner's own word changes that file.
+- The icon stays off avd-ops.dev and the other family pages until the owner says otherwise.
 
 ## 7. Push notifications: later, opt-in, and empty
 
@@ -191,7 +192,7 @@ What we found no prior art for, and so wrote: a chat PWA that by rule can't appr
 
 ## 15. Open questions
 
-- **BQ1** The trademark review of the icon (§6.2). Default: the placeholder ships until the owner records an outcome.
+- **BQ1** ~~The trademark review of the icon~~ **Answered (2026-10-20):** the owner chose the icon as an accepted risk (§6.2, `assets/buddy/REVIEW.md`). Revisit on an objection or before any use someone might pay for.
 - **BQ2** Does GitHub Mobile let a reviewer approve a deployment on a phone? GitHub's docs describe the web flow only. Check on a real device in phase B; if not, the "Review and approve in GitHub" link opens the mobile web page, which works.
 - **BQ3** Push (phase C) at all? Default: only if the owner asks after phase B.
 - **BQ4** Web Chat or our own chat view (§11)? Default: our own, unless Web Chat fits the budgets.

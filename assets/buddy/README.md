@@ -6,13 +6,13 @@
 - **Where it came from:** made with Google's Gemini image model. The file keeps its C2PA content credentials as Google wrote them ("Created by Google Generative AI", an imperceptible SynthID watermark); don't strip them. They carry no personal data.
 - **Kept byte for byte.** SHA-256 `eabcf7d6e58554e0c6f3cc3e5637495c2fdc0d288898ccfc54da4788dbbcd920`. Edits go in a new file, never over this one.
 
-## Public use waits for a trademark review
+## Used by the owner's decision, as an accepted risk
 
-The character resembles Microsoft's Clippy, the Office assistant. Until a trademark review says it can be used, treat it as **not cleared for public use**:
+The character resembles Microsoft's Clippy, the Office assistant. On 2026-10-20 the owner chose to use it for avd-buddy anyway, without a formal trademark review, because this is an open source research project; the decision is recorded in [REVIEW.md](REVIEW.md).
 
-- avd-buddy's builds use the **placeholder** icon (docs/buddy-app.md §6.2), and the swap to this one is a one-line PR after the review.
+- avd-buddy's builds use it (`icon_source: mascot`, docs/buddy-app.md §6.2); the placeholder stays one line away.
 - It doesn't go on avd-ops.dev or any other family page until the owner says so.
-- If the review goes badly, deleting the file isn't enough: it stays in this public repo's history, so removing it means rewriting history on `main` and asking forks to do the same. The owner accepted that when asking to commit it.
+- If someone objects, deleting the file isn't enough: it stays in this public repo's history, so removing it means rewriting history on `main` and asking forks to do the same. The owner accepted that when asking to commit it.
 
 Generative AI output may also not be protected by copyright in the US, so the image may give us less exclusive control than a drawn mark would. The avd-ops mark faced the same question and was rebuilt as vector art; the same is the next step here (below).
 
