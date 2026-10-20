@@ -38,6 +38,8 @@ Every kill switch position, `halt-all` included, still allows Stop, Lock and tea
 
 That role scopes by tag, so the approve job that opens a run also tags everything it deploys with `spend-run: <run ID>` (avd-landing-zone's `tags` parameter already merges extra tags onto every resource group and resource). The ledger itself doesn't depend on the tag: teardown evidence and actual cost still come from the inventory baseline and resource groups, so resources a tag missed still show up as leftovers.
 
+**Never the last copy** ([avd-second-brain decision 0016](https://github.com/nickprignano/avd-second-brain/blob/main/docs/knowledge/decisions/0016-never-delete-the-last-copy.md)). The run store, where every run's logs and teardown evidence go, lives outside the run's resource groups and never carries the `spend-run` tag, and the `stop-spend` role's condition also refuses anything tagged `avd-evidence: keep`, so neither a teardown plan nor the `stop-spend` identity can delete it. A teardown plan follows the store's `-TeardownLogs` preference (default `Keep`) and exports the deployment's own logs to the run store before it deletes the deployment. A plan that would delete the last copy of data inside a deployment (profiles, backups, assessment data) names `-DiscardLastCopy` in its summary; only the approving person can accept that, and no agent or watchdog sets it.
+
 ### 3.4 Watchdog and observer events (governance §2.2, §2.4)
 | Signal (from the daily check) | Event | Default trigger |
 |---|---|---|

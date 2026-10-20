@@ -78,7 +78,7 @@ The counters let an observer see a runaway (an agent calling tools a thousand ti
 
 **Corroborate, don't trust (R9).** A compromised avd-swarm can sign false events, so an observer treats them as claims. It checks them against Azure's own records, the Activity Log and the Entra audit and sign-in logs for every swarm identity, which avd-swarm can't edit. The watchdog's `halt-all` triggers read only those records.
 
-**Audit trail (R12).** Every event is also written to immutable blob storage with a one-year time-based retention policy that no swarm identity can delete or shorten.
+**Audit trail (R12).** Every event is also written to immutable blob storage with a one-year time-based retention policy that no swarm identity can delete or shorten. After the year, lifecycle management moves events to the archive tier; it never deletes them (never delete the last copy, avd-second-brain decision 0016).
 
 **Transports.** Event Grid custom topic (default), a webhook, or both. The observer registry (`governance/observers.yml`, protected) lists each observer, its transport, the events it gets, and whether its verdicts are required.
 
@@ -115,7 +115,7 @@ The counters let an observer see a runaway (an agent calling tools a thousand ti
 
    The brain's own model calls (its Critic, Diagnose and Concierge) go through the same client, so the same flag stops them (§3).
 
-**Stopping spend is never blocked** ([spend.md](spend.md) §3.3). Every position, `halt-all` included, still allows Stop, Lock and teardown plans for resources inside a run, still approved by a person. Because `halt-actions` and above delete the `approve` credential, those plans run through a separate `stop-spend` environment and identity. Its custom role can only deallocate, stop and delete, and only resources tagged with a run ID. The switch never removes it, and the watchdog trips `halt-all` if it writes anything else.
+**Stopping spend is never blocked** ([spend.md](spend.md) §3.3). Every position, `halt-all` included, still allows Stop, Lock and teardown plans for resources inside a run, still approved by a person. Because `halt-actions` and above delete the `approve` credential, those plans run through a separate `stop-spend` environment and identity. Its custom role can only deallocate, stop and delete, and only resources tagged with a run ID, never the run store or anything tagged `avd-evidence: keep` ([spend.md](spend.md) §3.3). The switch never removes it, and the watchdog trips `halt-all` if it writes anything else.
 
 **Who can trip it:** a person (a button in avd-buddy, a Cloud Shell block, or a GitHub workflow), any registered observer, and the watchdog. **No agent can trip or reset it.** An agent can recommend a trip, and a person or an observer decides.
 
