@@ -39,6 +39,16 @@ It is also the development version of **tenant-swarm**, a private project for th
 - Tenant-wide administration that isn't about AVD (all of Entra, Exchange, Teams, other workloads). That belongs to tenant-swarm.
 - Replacing Cloud Shell blocks for operators who prefer them (lesson 0015).
 
+### The base pair stands alone (invariant)
+
+[avd-landing-zone](https://github.com/nickprignano/avd-landing-zone) (portal-driven Cloud Shell deployment and operation) and [avd-current-state](https://github.com/nickprignano/avd-current-state) (offline fact collection and validation) are a self-contained pair. They work, and keep working, with no second brain and no avd-swarm; avd-landing-zone stays true to its original purpose. avd-swarm and the brain are built on top of them and never become something they need (the owner's rule, 2026-10-20; the brain's operations spec §3.0 says the same).
+
+- **Dependencies point down only.** avd-swarm reads the pair's outputs (the preflight's state line, `-WhatIf`, lessons, run records) and runs the pair's own scripts at a pinned release tag and hash. No script, template, parameter, portal step or default of the pair calls, imports, deploys or waits on avd-swarm.
+- **avd-swarm deploys from here, never from the pair's repos.** Its resource group, identities, workflows and templates live in this repo and the adopter's private repo (§5b), never as a module, folder or workflow of avd-landing-zone.
+- **A need in the pair is a feature of the pair.** When avd-swarm needs something from the landing zone (a recovery script, a run record, a read-only status check), it is built there as something an operator can use from Cloud Shell alone, and avd-swarm runs it unchanged. Nothing swarm-specific lands there.
+- **The landing zone's default deployment never changes** because avd-swarm exists, and every avd-swarm action has a Cloud Shell block that does the same without it (§5).
+- **Formats the pair produces are vendored as byte copies**, so the pair builds and tests with no other repo checked out.
+
 ## 3. Architecture
 
 ```
@@ -67,6 +77,7 @@ avd-swarm deploys into its own resource group (`rg-<prefix>-<env>-swarm`) and do
 
 - **Multi-agent:** Foundry's GA Agent Service has no connected agents, and portal workflows retire on 2026-12-01. The coordinator and specialists are one Agent Framework workflow (handoffs) deployed as a hosted agent that scales to zero.
 - **Read tools:** the Azure MCP Server, hosted from Microsoft's Container Apps template with a managed identity, run with `--read-only`, an explicit namespace list, and `allowed_tools` per agent. Its `virtualdesktop` namespace covers host pools, session hosts and user sessions. A custom MCP server (SQ5) only fills what that leaves out. Cost forecasts come from the ARM MCP server's `forecast_costs`, with only its read tools allowed, since that toolset can also create budgets and deploy.
+- **MCP, in both directions (answers SQ5 for v1).** *As a client*, avd-swarm uses MCP for reads only: Microsoft's Azure MCP Server as above, and the ARM MCP server's cost read tools. It doesn't use the Microsoft MCP Server for Enterprise, whose Graph reads are tenant-wide; the Users agent keeps a narrow AVD-scoped Graph tool (prior art §1). *As a server*, avd-swarm builds no MCP server in v1 (build order steps 1 to 3): its own tools (`propose_change`, the brain's Concierge, the KQL catalog, the AVD-scoped Graph reads) are plain functions behind one tool layer, where the allowlist, the decoy tripwire, the untrusted-text scan, the token meter and the kill switch flag already sit, and avd-buddy is the only front end. If the Foundry run of S1a shows that a hosted agent can attach custom tools only through MCP (its Toolbox endpoint), that same tool layer is published as an MCP server with no change to what it exposes. A custom MCP server for other clients, such as Claude Code, is a later step: it exposes read tools and `propose_change` or `propose_playbook_run` only, never a write, and a plan it proposes is approved in the GitHub Environment like any other.
 - **Foundry's own tool approval** (`require_approval`, MCP approval requests) answers inside the conversation, so it is never the write approval. At most it is an extra check in front of `propose_change`.
 - **Foundry guardrails and tracing:** indirect prompt injection and task adherence checks on tool calls and responses are on, and traces go to Application Insights. They feed the observer's security events.
 
@@ -80,7 +91,7 @@ avd-swarm deploys into its own resource group (`rg-<prefix>-<env>-swarm`) and do
 | **Hosts** | Health, sessions, drain state, agent version, failed checks | Resource Graph, KQL (`WVDAgentHealthStatus`, `WVDErrors`, ...), brain episodes | Host actions (drain, restart agent, recycle, re-register) |
 | **Images** | Current and candidate image versions, which hosts run what | Compute Gallery, image pipeline state (decision 0013) | Promotion, as a PR (decision 0013) |
 | **Users** | Who can sign in, why a user can't, profile and FSLogix problems, licenses | Graph: AVD user groups, app group assignments, license assignments, sign-in logs; storage and FSLogix logs | Group membership and assignment changes |
-| **Cost** | Spend to date, forecast against the budget, idle hosts, auto shutdown savings, what each run cost and whether its teardown finished | Cost Management, retail prices (decision 0010), budget state, and tenant-swarm's spend ledger ([spend.md](spend.md)) | Stop, Resume, size changes |
+| **Cost** | Spend to date, forecast against the budget, idle hosts, auto shutdown savings, what each run cost and whether its teardown finished | Cost Management, retail prices (decision 0010), budget state, and the spend guard's run records ([spend.md](spend.md) §2) | Stop, Resume, size changes |
 
 Adding an agent is a PR with its prompt, its tool allowlist and its eval questions. Prompts and allowlists are protected paths: a PR an agent authored that touches them fails CI, as in brain §9.2. The coordinator starts on a smaller, cheaper model, since it routes and merges; specialists start on Claude Opus 5.5 with effort per agent and move to a cheaper model only where evals hold. Cost per question is measured from the first eval run (red team R14).
 
@@ -327,6 +338,8 @@ The phases above stay; this is the smallest path that proves the idea, in the or
 | **3. First writes** (S2) | The private adopter repo synced from a release tag (§5b), the write-path templates, every kill switch layer and the watchdog, the time-lock check (governance §2.6), and two actions, drain and restart agent, with the §5a preconditions | Per plan, through the spend gate; a kill switch drill first | Ten approved, verified changes, and a drill that trips each position and resumes |
 | **4. Designed, not scheduled** | C9 (brain proposals), Improve and Scribe, the judge and its auditor (§6b; only its decision rules exist, `scripts/judge_auditor.py`), the compliance gate (governance §2.5), standing exceptions, group membership actions, S3 and S4. Each gets its own red team pass before it's built | n/a | n/a |
 
+**v1 is steps 1 to 3** (proposed 2026-10-20, [v1-review.md](v1-review.md)): the spike, read-only agents beside the brain's Tier 1, and the first two writes with every control in front of them. Step 4 is after v1.
+
 S1a's Foundry run can follow whenever quota arrives, since the spike carries its own meter. The checks built in step 1 for later steps (the agent PR check, the auditor's rules) are pure functions with tests, so the rules are fixed before anything uses them.
 
 ## 10. Open questions
@@ -336,7 +349,8 @@ S1a's Foundry run can follow whenever quota arrives, since the spike carries its
 - **SQ3** Teams as a second front end beside avd-buddy, or avd-buddy only?
 - **SQ7** Does avd-buddy live in this repo (`buddy/`) or in its own repo once it grows? Default: `buddy/` here until S2.
 - **SQ4** Should S1 start with Claude Code in GitHub Actions as the coordinator, before the Foundry setup?
-- **SQ5** A custom MCP server for tools the Azure MCP Server doesn't cover, which Claude Code and other clients could also use. It stays open, with one limit: it exposes read tools and `propose_change` or `propose_playbook_run` only, never a direct write.
+- **SQ5** ~~A custom MCP server for tools the Azure MCP Server doesn't cover?~~ **Answered for v1 (proposed 2026-10-20, §3):** no custom MCP server in build order steps 1 to 3; the swarm's tools are one tool layer, published as MCP only if Foundry's hosted agents need it. An MCP server for other clients stays a later step, with the same limit: read tools and `propose_change` or `propose_playbook_run` only, never a direct write.
 - **SQ8** Where do transcripts live (Cosmos DB, Blob), and is 90 days the right retention for what Improve needs?
 - **SQ9** The topic vocabulary for C8: start from the agents' areas and the brain's check categories, or derive it from the first months of transcripts?
+- **SQ11** Azure SRE Agent as an optional runtime for what it covers (incident investigation, scheduled health checks, approval before acting, audit trail)? It is a paid, closed service whose approval is a button in its own chat (§2's non-goal) and whose default run mode acts on its own. Default (proposed 2026-10-20): not part of v1; later at most an adopter's optional add-on in Review mode, with this repo's governance plugged in through its hooks, plans still approved in the GitHub Environment and its cost in the spend guard; the free repos never depend on it. Owner's call ([v1-review.md](v1-review.md) §7).
 - **SQ6** Language for the tools: PowerShell to match the landing zone and the brain, or another language where an SDK or the MCP server is stronger?

@@ -196,7 +196,7 @@ Branch protection in solo mode: PRs required, status checks required (the guard 
 
 **What CODEOWNERS is for.** A `CODEOWNERS` file names the owner on every protected path, so GitHub requests their review and shows it. It is not what keeps a protected path safe in solo mode; the guard's agent check, the time-lock and the watchdog's merged-around-the-rules trigger (§2.4) are.
 
-The time-lock check is built in step 2 of the build order (spec §9a). Until then, no protected path holds anything that can act: there is no write path, catalog or observer to loosen.
+The time-lock check is built in step 3 of the build order (spec §9a), with the adopter repo it guards. Until then, no protected path holds anything that can act: there is no write path, catalog or observer to loosen.
 
 ## 3. Relationship to the second brain
 
