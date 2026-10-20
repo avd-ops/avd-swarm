@@ -57,6 +57,8 @@ Write the policy in Rego or Cedar and evaluate it through Microsoft's Agent Gove
 | Observer verdict | When the policy requires it, wait for the observer to allow the plan (§2.2) |
 | Compliance | Refuse a plan whose action may lower a Defender for Cloud control on its targets unless the policy allows it, and every such plan while the score is below its floor (§2.5) |
 
+Answers aren't plans, so the gate doesn't see them. Their limits, how many specialists one question may fan out to and the claim check's settings ([spec](spec.md) §4a), will live in `governance/answers.yml`, protected like the policy: an agent can't widen its own fan-out or loosen the check that marks its claims.
+
 A refusal tells the operator which rule refused and why. Changing a rule is a PR; a PR an agent authored that touches `governance/` fails CI, and a person's change that raises capability waits out the time-lock (§2.6).
 
 ### 2.2 External observer hook
