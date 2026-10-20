@@ -26,7 +26,7 @@ The brain side of v1 is its Tier 1 (Notice) plus a deterministic Concierge read 
 
 - **As a client, yes, already designed.** Microsoft's Azure MCP Server is the main read tool: `--read-only`, an explicit namespace list with `virtualdesktop`, and an allowlist per agent. S1a's Q3 and Q4 test exactly that. Cost forecasts come from the ARM MCP server's read tools only, since that server can also create budgets and deploy. The Microsoft MCP Server for Enterprise (Graph) is left out: its reads are tenant-wide, so the Users agent keeps a narrow AVD-scoped tool.
 - **As a server, not in v1.** avd-swarm's own tools (`propose_change`, the brain's Concierge, the KQL catalog, AVD-scoped Graph reads) are plain functions behind one tool layer. That layer is where the allowlist, decoy tripwire, untrusted-text scan, token meter and kill switch flag sit, so every provider gets the same checks. avd-buddy is the only front end in v1.
-- **One trigger to revisit.** If S1a's Foundry run shows a hosted agent can attach custom tools only through MCP (its Toolbox endpoint), the same tool layer is published as an MCP server with nothing added.
+- **Two triggers to revisit.** If S1a's Foundry run shows a hosted agent can attach custom tools only through MCP (its Toolbox endpoint), or an adopter connects Azure SRE Agent (spec SQ11, which would call our read tools and `propose_change` as an MCP connector), the same tool layer is published as an MCP server with nothing added: reads and proposals only.
 - **Later:** an MCP server for Claude Code and other clients, exposing read tools and `propose_change` only. A plan it proposes is approved in the GitHub Environment like every other; MCP never carries a write or an approval.
 - **The brain builds no MCP server.** Its Concierge reaches avd-swarm as one of these tools (brain review §2).
 
@@ -81,7 +81,7 @@ Each gap names the build step that needs it. Defaults are what a later session b
 | G9 | **Policy engine**: governance §2.1 names Microsoft's Agent Governance Toolkit but nobody has tried it | Before 3 | An offline spike, no cloud spend: write §2.1's rules in the toolkit, run them against fixture plans, and check the license and the Cloud Shell fit. Keep the observers, the layered switch and "only a person resets" on top: the toolkit has none of those |
 | G10 | **Cost of the standing pieces** (Static Web Apps Standard, Event Grid, Logic App, immutable store) has no estimate | 2 | Priced from the meters in spend.md format before step 2's first deploy |
 | G11 | **Recovery actions** (DR branch) before building drills | After v1 | Check whether Azure's resiliency drills and recovery plans cover AVD host pools first; if they do, the action calls them instead of scripting failover (prior art report) |
-| G12 | **Well-Architected review** (#21) | After v1 | Consume WARA and the AVD review checklist instead of a rule engine of our own (prior art report); decision for the owner |
+| G12 | **Well-Architected review** (#21) | After v1 | Consume WARA and the AVD review checklist instead of a rule engine of our own (prior art report; the owner agreed 2026-10-20, and #21 is being revised) |
 
 ## 6. The base pair check
 
@@ -98,4 +98,4 @@ Every proposed change was checked for a place where avd-landing-zone or avd-curr
 
 ## 7. Decisions only the owner can make
 
-There is one list for both repos, in [avd-second-brain's v1 review §7](https://github.com/nickprignano/avd-second-brain/blob/main/docs/v1-review.md#7-decisions-only-the-owner-can-make). The ones that are avd-swarm's: v1 = steps 1 to 3 (D2), no MCP server of our own in v1 (D4), the policy engine spike (D6), Python for the agent service (D7) the Well-Architected scope cut (D8) and Azure SRE Agent as an optional runtime (D10, spec SQ11; default: not in v1, at most an adopter's add-on later in Review mode, with plans still approved in the GitHub Environment). Each has a default the work follows until answered. Public text that names private repos (X11) is left to the cleanup that owns it.
+There is one list for both repos, in [avd-second-brain's v1 review §7](https://github.com/nickprignano/avd-second-brain/blob/main/docs/v1-review.md#7-decisions-only-the-owner-can-make). The ones that are avd-swarm's: v1 = steps 1 to 3 (D2), no MCP server of our own in v1 (D4), the policy engine spike (D6), Python for the agent service (D7) the Well-Architected scope cut (D8, confirmed by the owner: consume WARA) and Azure SRE Agent (D10: the owner said it can cover what it covers while the chatbot is still built; open is whose approval its actions use, default the GitHub Environment plan, spec SQ11). Each has a default the work follows until answered. Public text that names private repos (X11) is left to the cleanup that owns it.
