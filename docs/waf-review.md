@@ -7,7 +7,7 @@
 
 ## 1. Summary
 
-An operator opens avd-buddy and says "review my AVD estate against Well-Architected". A **Reviewer** agent walks them through the five pillars, one at a time, in the order they care about. For each pillar it first reads what Microsoft's own tools and the family already produce (the [Azure/review-checklists](https://github.com/Azure/review-checklists) AVD checklist as the list of what to check, Microsoft's WARA collector for Reliability, the landing zone's `waf-*` checks, Azure Advisor, Defender for Cloud, Azure Policy, and current-state facts through the brain), and asks only the questions the evidence can't answer, such as "have you tested a restore of a profile share?". Every finding comes with its evidence and a link to the Microsoft Learn page that says why it matters. Scores are computed by code from the check results, never by a model.
+An operator opens avd-buddy and says "review my AVD estate against Well-Architected". The Deploy agent, in its **review mode**, walks them through the five pillars, one at a time, in the order they care about. For each pillar it first reads what Microsoft's own tools and the family already produce (the [Azure/review-checklists](https://github.com/Azure/review-checklists) AVD checklist as the list of what to check, Microsoft's WARA collector for Reliability, the landing zone's `waf-*` checks, Azure Advisor, Defender for Cloud, Azure Policy, and current-state facts through the brain), and asks only the questions the evidence can't answer, such as "have you tested a restore of a profile share?". Every finding comes with its evidence and a link to the Microsoft Learn page that says why it matters. There is no score of our own: each item shows its source's own verdict, and Reliability is prioritized by WARA's analyzer.
 
 The review changes nothing. A finding's fix is handed to the specialist that owns it, which turns it into a plan through the ordinary write path (spec §5), a PR to the landing zone's parameters, or a Cloud Shell block. Accepting a trade-off is a PR a person merges, never a click in the chat.
 
@@ -30,21 +30,21 @@ Microsoft's assessments ([Azure Well-Architected Review](https://learn.microsoft
 
 ### Non-goals
 - Any change made by the review itself, or any "accept" or "fix" that completes inside the chat (spec §2).
-- A model deciding a finding or a score (avd-second-brain's rule "a model never decides").
+- A score or rule engine of our own, and a model deciding a finding (avd-second-brain's rule "a model never decides").
 - Re-implementing a check the landing zone's preflight already has. The review reads its result.
 - **Out of scope here:** comparing one estate with others, reviewing more than one tenant or workloads other than AVD, and formatted documents beyond Markdown and CSV.
 
 ## 3. How the conversation goes
 
-The Reviewer is a specialist in the coordinator's handoff workflow (spec §3, §4). A review is a sequence of fixed steps; the model chooses the wording, not the steps.
+Review mode belongs to the Deploy agent (spec §4), which already reads the landing zone's Well-Architected review; it adds a prompt section, eval questions and the reader's tools to that agent, not a new agent. A review is a sequence of fixed steps; the model chooses the wording, not the steps.
 
-| Step | The Reviewer | The operator sees |
+| Step | Review mode | The operator sees |
 |---|---|---|
 | 1. Scope | Lists the landing zones and host pools the agent identities can read (Resource Graph) and asks which to review. Defaults to the one the conversation is about | A pick list, from the tool's output, never typed IDs |
 | 2. Context | Asks the workload questions that change what "good" means: how critical, how many users, working hours and time zones, recovery targets (RTO and RPO for profiles and hosts), compliance needs, and the pillar order. Answers that the landing zone already records (environment `dev`, `test`, `prod`; the parameter file's deliberate trade-offs) are filled in and shown, not asked | Five to eight questions, each with "why we ask" and a Learn link |
 | 3. Evidence | Runs every check for the scope in one pass (§4), read-only, and stores the results in a **review record** (§6) | A progress line per source before each slow read (landing-zone lesson 0006); a source that can't be read is listed with its error, and the rest still run (landing-zone decision 0009) |
 | 4. Pillar walk | For each pillar in the operator's order: the findings that came from evidence, then the open questions for checks that need the operator (§4, `answeredBy: operator`), one at a time | A pillar card (§6) rendered from the record, and the questions under it |
-| 5. Scorecard | Computes scores and confidence (§5) and shows changes since the previous review of the same scope | The scorecard, rendered from the record |
+| 5. Summary | Counts results per pillar (§5) and shows what changed since the previous review of the same scope | The summary, rendered from the record |
 | 6. Next steps | For each finding the operator picks, hands off to the owning specialist (§8), or records a request to accept the trade-off | Plans and PR links, from the plan store and GitHub, never described in agent text (spec §5 step 4) |
 
 The operator can stop after any pillar; the record keeps what was done, and a later "continue the review" resumes it. A full review is about the length of Microsoft's own (about 60 questions there); most of this one's checks are answered by reads, so the operator answers far fewer.
@@ -57,7 +57,7 @@ A **check** is one item the review evaluates. The items come from Microsoft, and
 
 **Reliability evidence: WARA.** Microsoft's [Well-Architected Reliability Assessment](https://github.com/Azure/Well-Architected-Reliability-Assessment) module ([PowerShell Gallery `WARA`](https://www.powershellgallery.com/packages/WARA), MIT, 1.0.6) runs a read-only Resource Graph collection, and its collector has an `-AVD` switch for AVD resource types. It covers the Reliability pillar only. `Start-WARACollector` writes a JSON file. The review's reader takes that file (and the analyzer's action plan, if the operator ran it) and turns each finding into evidence for its checklist item. It doesn't use the reporter, which needs Windows with PowerPoint. WARA needs PowerShell 7.4, Az.Accounts 3.0 and Az.ResourceGraph 1.0, which Cloud Shell has. It runs one of two ways:
 - the operator runs the collector in Cloud Shell and hands the JSON to avd-buddy (the default, with no new identity);
-- once build step 2 exists, a read tool runs it as the Reviewer's agent identity (Reader).
+- once build step 2 exists, a read tool runs it as the Deploy agent's identity (Reader).
 
 **The other pillars' evidence: what Azure and the family already evaluate.**
 1. **The landing zone's `waf-*` checks** (decision 0009: design checks, Advisor, Defender for Cloud, Policy and PSRule for Azure, by pillar), read from the preflight's state line or run read-only (`-WellArchitected -SkipTenant -SkipNtfs`).
@@ -88,15 +88,15 @@ A **check** is one item the review evaluates. The items come from Microsoft, and
 
 **Changing the mapping** is a PR with its test and an eval question (§9). `answeredBy`, `evidence` and our own evaluate functions are protected fields, like the action catalog's (spec §5a): an agent-authored PR that touches them fails the guard, so Improve can't make an estate look better by loosening a mapping. Moving to a new checklist or WARA version is a pin bump PR, and the first review after it shows which results changed because of the bump, not because of the estate.
 
-## 5. Scores
+## 5. No score of our own
 
-Scores are computed by `review/score.py` from the results, never by the model, and the weights are in `review/scoring.yml` (a protected path, `governance/` style).
+The review doesn't compute scores (prior art check, 2026-10-20). It shows Microsoft's verdicts and counts them:
 
-- **Per check:** `pass` = 1, `warn` = 0.5, `fail` = 0, `unknown` = 0, `n/a` left out. An accepted trade-off (§8) is left out of the score and listed apart, so accepting a risk never raises a score by itself.
-- **Per pillar:** the severity-weighted mean of its checks (high 3, medium 2, low 1), shown as 0 to 100 with the counts beside it ("72, from 18 checks: 11 pass, 3 warn, 2 fail, 2 unknown; 1 accepted").
-- **Confidence per pillar:** the share of its weight that came from live reads, as opposed to operator answers or a stale snapshot. A pillar under 50% is labeled "mostly self-reported".
-- **No overall score.** The pillars trade against each other (Microsoft's own [tradeoffs](https://learn.microsoft.com/azure/well-architected/pillars) pages), and one number hides that. The scorecard shows five.
-- **Since last time:** a review of the same scope shows each pillar's change and each check that changed result, with the evidence for both.
+- **Per item:** the source's own result (`pass`, `warn`, `fail`, `unknown`, `n/a`), or `accepted` for a trade-off a person merged (§8), which is listed separately.
+- **Reliability:** prioritized by WARA's analyzer when the operator ran it, else by the collector's own severity.
+- **Per pillar:** counts only ("18 items: 11 pass, 3 warn, 2 fail, 2 unknown; 1 accepted"), with the share answered by live reads rather than operator answers or a stale snapshot. A pillar under 50% is labeled "mostly self-reported". Counts are code (`review/count.py`), never a model.
+- **No overall number,** since the pillars trade against each other ([pillars](https://learn.microsoft.com/azure/well-architected/pillars)).
+- **Since last time:** each item that changed result, with the evidence for both.
 
 ## 6. Evidence, the review record and what avd-buddy shows
 
@@ -107,9 +107,9 @@ Scores are computed by `review/score.py` from the results, never by the model, a
 - forensic facts (C12, Performance Efficiency and Cost Optimization only), cited by window, and only when the brain has them; without them, sizing checks are `unknown` with "needs measurement", and the Readiness agent can propose a collection (spec §6d);
 - operator answers: the question, the answer and the time.
 
-**The review record** (`avd-swarm-waf-review/v1`) holds the scope, the context answers, every check's result with its evidence, the scores, and links to plans and PRs raised from it. It is estate data, so it lives with the plan store in the adopter's private resources (spec §5b), behind the operator's sign-in, never in this repo, an issue, a workflow log or the brain's `knowledge/`. Its schema goes in this repo with fixtures, like the plan's.
+**The review record** (`avd-swarm-waf-review/v1`) holds the scope, the context answers, every item's result with its evidence, the counts, and links to plans and PRs raised from it. It is estate data, so it lives with the plan store in the adopter's private resources (spec §5b), behind the operator's sign-in, never in this repo, an issue, a workflow log or the brain's `knowledge/`. Its schema goes in this repo with fixtures, like the plan's.
 
-**avd-buddy renders the record, not the agent's text** (spec §5 step 4, red team R4). Pillar cards and the scorecard have a fixed layout: check name, result, evidence links, the Learn link and the fix button. The agent's text sits beside them as commentary, and it may not restate a result or a score. Text read from the estate (a resource name, a tag, an Advisor description) is shown as quoted evidence, and avd-buddy never renders external images or links from it (red team AX-7, [security-tooling.md](security-tooling.md)).
+**avd-buddy renders the record, not the agent's text** (spec §5 step 4, red team R4). Pillar cards and the summary have a fixed layout: check name, result, evidence links, the Learn link and the fix button. The agent's text sits beside them as commentary, and it may not restate a result or a count. Text read from the estate (a resource name, a tag, an Advisor description) is shown as quoted evidence, and avd-buddy never renders external images or links from it (red team AX-7, [security-tooling.md](security-tooling.md)).
 
 ### 6a. How avd-buddy shows it (design pass)
 
@@ -117,8 +117,8 @@ avd-buddy uses the family's [avd-ops design system](https://github.com/nickprign
 
 | Pattern | Built from | Notes |
 |---|---|---|
-| **Scorecard** | A `.card` per pillar in a grid: one column at the 16px phone gutter, five columns at desktop width. The `.eyebrow` holds the pillar name, the score is set in `--display`, and the counts and confidence go in `--muted` | No overall score (§5). A meter bar shows each result's share of the pillar's checks, using `--good`, `--caution`, `--bad` and `--line` for unknown. The counts are always written out beside the bar, so color never carries meaning alone. "Since last time" is a signed number with a word ("up 6"), never just an arrow |
-| **Pillar card** | `.card` with a header (pillar, score, Learn checklist link) and a list of check rows | Rendered from the record (§6). The agent's commentary sits outside the card, in the chat stream, in body text with no card |
+| **Summary** | A `.card` per pillar in a grid: one column at the 16px phone gutter, five columns at desktop width. The `.eyebrow` holds the pillar name, the fail and warn counts are set in `--display`, and the rest and the live-read share go in `--muted` | No overall number (§5). A meter bar shows each result's share of the pillar's items, using `--good`, `--caution`, `--bad` and `--line` for unknown. The counts are always written out beside the bar, so color never carries meaning alone. "Since last time" is written out ("2 fewer fails"), never just an arrow |
+| **Pillar card** | `.card` with a header (pillar, counts, Learn checklist link) and a list of check rows | Rendered from the record (§6). The agent's commentary sits outside the card, in the chat stream, in body text with no card |
 | **Check row** | A row with a result pill, the check name, the area chip (`.chips .chip`), evidence links and a fix button | Result pills reuse the Results tokens: `pass` on `--good-soft`/`--good`, `warn` on `--caution-soft`/`--caution`, `fail` on `--bad-soft`/`--bad`, `unknown` and `n/a` on `--sunken`/`--muted`, `accepted` on `--surface` with a `--line-strong` border. Every text and pill pair clears WCAG AA in both themes (checked 2026-10-20 against v1.0.0: lowest is `pass`, light theme, 4.69:1). Each pill shows its word (and the reason for `n/a` and `unknown`) and is never a bare dot. This adds a `.result.r-*` class family to avd-ops beside `.status.s-*`, scoped the same way so it can't collide with the portal's `.status` |
 | **Evidence and self-reported labels** | Evidence goes in `code`/`--mono` links (tool, time, fact ID). Self-reported is a chip with a dashed `--line-strong` border and the words "operator said" | Stale snapshot evidence gets the same chip with "stale, 9 days". Text quoted from the estate is shown as `code`, never as a link or an image (AX-7) |
 | **Fix button and question card** | The fix button is a `.cta.ghost` reading "Propose a fix", and it opens the plan or PR link from the plan store. It never reads "Fix", because nothing is fixed until a person approves. The question card is a `.card` with the question, a "why we ask" line with its Learn link, and the answer controls; "Skip" is a `.cta.ghost` | One question at a time. A skipped question leaves its check `unknown`, which the operator can see on the pillar card |
@@ -152,7 +152,7 @@ C8 isn't written in the brain's `docs/contracts.md` yet; its `reviews` section l
 
 ## 8. From finding to fix
 
-The Reviewer proposes nothing itself. Each finding's `fix` line in the mapping says what happens when the operator presses its fix button:
+Review mode proposes nothing itself. Each finding's `fix` line in the mapping says what happens when the operator presses its fix button:
 
 | `kind` | Who | What |
 |---|---|---|
@@ -163,14 +163,14 @@ The Reviewer proposes nothing itself. Each finding's `fix` line in the mapping s
 
 **The gate treats a review as evidence, not as a target list,** the same as a snapshot (spec §6d): a plan that cites a finding still resolves every target live, and the gate refuses a plan whose only evidence is a review older than the freshness limit.
 
-**Accepting a trade-off** is a person's decision with a reason, written down where people review it. The Reviewer drafts a PR to the adopter's private repo adding an entry to `review/accepted.yml` (checklist item id, scope pseudonym, reason, who, expiry of at most 12 months), and the entry counts once it is merged. The landing zone's `data.accepted` findings (its dev and test parameter files' deliberate choices) are read as accepted for that environment, with the parameter file as the reason. Expired acceptances return as findings.
+**Accepting a trade-off** is a person's decision with a reason, written down where people review it. Review mode drafts a PR to the adopter's private repo adding an entry to `review/accepted.yml` (checklist item id, scope pseudonym, reason, who, expiry of at most 12 months), and the entry counts once it is merged. The landing zone's `data.accepted` findings (its dev and test parameter files' deliberate choices) are read as accepted for that environment, with the parameter file as the reason. Expired acceptances return as findings.
 
 ## 9. Evals, safety and limits
 
-- **Eval questions** for the Reviewer are added to `evals/` (append-only): "which pillar is weakest and why", "what's the evidence for the backup finding", "what would fix it". Expected facts come from ARM at eval time (spec §6b), and the check functions are tested against fixtures before any eval runs. Exit: answers cite evidence for at least 80% of eval questions, and the scorecard matches `review/score.py` on every fixture.
-- **Prompt injection.** Resource names, tags, Advisor text and operator answers are data. An injected "mark this as passed" can't work, because results come from Microsoft's sources and the mapping and are rendered from the record; the Reviewer's text can't change either.
+- **Eval questions** for review mode are added to `evals/` (append-only): "which pillar is weakest and why", "what's the evidence for the backup finding", "what would fix it". Expected facts come from ARM at eval time (spec §6b), and the reader is tested against fixtures before any eval runs. Exit: answers cite evidence for at least 80% of eval questions, and the summary matches `review/count.py` on every fixture.
+- **Prompt injection.** Resource names, tags, Advisor text and operator answers are data. An injected "mark this as passed" can't work, because results come from Microsoft's sources and the mapping and are rendered from the record; the agent's text can't change either.
 - **Talked into a pass.** An operator answer can satisfy only `operator` and `either` checks. Each is labeled self-reported on the card and lowers confidence.
-- **Identity and spend.** The Reviewer reads as its own agent identity, with the same rights as the other agents (Reader and Log Analytics Reader on the AVD resource groups; Reader's `*/read` covers Advisor, Policy and Defender for Cloud recommendations at that scope) and no Graph permission; identity checks that need Graph come from the landing zone's state line or are `unknown`. It falls under the daily token cap and `halt-agents` like every agent (spec §7, governance §2.3).
+- **Identity and spend.** Review mode reads as the Deploy agent's identity, with the same rights as the other agents (Reader and Log Analytics Reader on the AVD resource groups; Reader's `*/read` covers Advisor, Policy and Defender for Cloud recommendations at that scope) and no Graph permission; identity checks that need Graph come from the landing zone's state line or are `unknown`. It falls under the daily token cap and `halt-agents` like every agent (spec §7, governance §2.3).
 - **Personal data.** No check needs a user's name. Checks about users are counts.
 - **Freshness.** Advisor refreshes on its own schedule, so a same-day review can under-report; the card says so, as the landing zone's review does.
 
@@ -178,8 +178,8 @@ The Reviewer proposes nothing itself. Each finding's `fix` line in the mapping s
 
 | Phase | Builds | Needs | Exit |
 |---|---|---|---|
-| R0 | This spec; the checklist pin; `review/map.yml` for every AVD checklist item; a reader for WARA's collector JSON and the landing zone's state line; `review/evaluate.py` for the few items only C11/C12 can answer; `review/score.py` and the record schema; offline tests over a WARA collector sample built from public examples (never a real estate's output), a sample state line and the checklist at its pin | Nothing in Azure | Every checklist item mapped, marked `operator` or `n/a` with a reason; every landing-zone `waf-*` id reachable from some item |
-| R1 | The Reviewer agent in avd-buddy, read-only, steps 1 to 5 of §3 | Build order step 2 (avd-buddy, coordinator, metering, `halt-agents`) | The eval exit above |
+| R0 | This spec; the checklist pin; `review/map.yml` for every AVD checklist item; a reader for WARA's collector JSON and the landing zone's state line; `review/evaluate.py` for the few items only C11/C12 can answer; `review/count.py` and the record schema; offline tests over a WARA collector sample built from public examples (never a real estate's output), a sample state line and the checklist at its pin | Nothing in Azure | Every checklist item mapped, marked `operator` or `n/a` with a reason; every landing-zone `waf-*` id reachable from some item |
+| R1 | Review mode for the Deploy agent in avd-buddy, read-only, steps 1 to 5 of §3 | Build order step 2 (avd-buddy, coordinator, metering, `halt-agents`) | The eval exit above |
 | R2 | Fix buttons and accepted trade-offs (§8) | Build order step 3 (the adopter repo, `approve`, first actions) | Ten findings fixed through approved plans or merged PRs, each verified by the next review |
 | R3 | The C8 `reviews` section and the Posture feed (§7) | C8 in the brain | The brain harvests a review pattern by PR |
 
@@ -197,8 +197,8 @@ R0 is free and offline; it can be built whenever a person says so. R1 onward wai
 
 ## 12. Open questions
 
-- **WQ1** Should the Reviewer be its own agent, or a mode of the Deploy agent, which already reads the landing zone's review? Proposed: its own agent, because it spans every specialist's area, its prompt and evals are a review's and not a deployment's, and an agent's allowlist and prompt are protected paths that are easier to keep small one agent at a time.
+- **WQ1** ~~Own agent or a mode of the Deploy agent?~~ **Answered (2026-10-20, v1 red team):** a mode of the Deploy agent, which already reads the landing zone's review. No new agent.
 - **WQ2** Does the review also cover the Liquidware tier when it's deployed (ProfileUnity, FlexApp)? Proposed: yes, as checks in avd-liquidware's lane linked from here, once its `liquidware.*` facts are built.
 - **WQ3** ~~Cite the checklist's item GUIDs?~~ **Answered:** cite the short `id` (`A01.01`) at the pinned commit; no GUID enters the repo.
-- **WQ5** Where WARA and a landing-zone `waf-*` check disagree on the same item, which wins on the card? Proposed: show both with their sources, and score the worse one, since a missed risk costs more than a duplicate.
-- **WQ4** Should a review be able to start from Cloud Shell, without avd-buddy, for operators who prefer it (spec §2 non-goals)? Proposed: yes, the same checks and scorer as a script, after R1.
+- **WQ5** Where WARA and a landing-zone `waf-*` check disagree on the same item, which wins on the card? Proposed: show both with their sources, and count the worse one, since a missed risk costs more than a duplicate.
+- **WQ4** Should a review be able to start from Cloud Shell, without avd-buddy, for operators who prefer it (spec §2 non-goals)? Proposed: yes, the same reader and counts as a script, after R1.
