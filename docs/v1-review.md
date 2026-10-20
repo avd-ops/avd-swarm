@@ -129,13 +129,13 @@ An independent, offline red team read both specs at this branch's head, the open
 | V1-18 | M | No outside observer in v1 | Governance §2.2, G5 |
 | V1-19 | H | The operations spec still tells Tier 1 to build its own switch | Brain operations spec, five places |
 | V1-20 | H | More upward dependencies in the brain spec | Brain review §6 (owner D14) |
-| V1-21 | H | Recovery draft puts swarm terms in the landing zone's status check | §6 above; sent to the recovery work |
+| V1-21 | H | Recovery draft puts swarm terms in the landing zone's status check | §6 above; done in #24 |
 | V1-22 | M | No release tags and no restart-agent script in the landing zone | Spec §2, §6 above |
 | V1-23 | M | Brain-dependent checks in the pair's CI | §6 above (owner D15) |
-| V1-24 | M | Three draft branches would revert X4, X5 and SQ5 if merged after this one | Sent to those drafts: rebase on this branch first. #21 now adds only `docs/waf-review.md` and merges clean either way |
+| V1-24 | M | Three draft branches would revert X4, X5 and SQ5 if merged after this one | Sent to those drafts: rebase on this branch first. #21 now adds only `docs/waf-review.md` and merges clean either way; #24 is rebased and stacked on this branch |
 | V1-25 | M | The Well-Architected draft still has its own rule engine | Done in #21: a mode of the Deploy agent, `review/map.yml` to evidence, WARA's analyzer for Reliability, counts for the other pillars |
-| V1-26 | M | Recovery drills before the Resiliency Manager check | Sent to the recovery work: G11 becomes its DR0 exit |
-| V1-27 | H | The failover identity writes role assignments before the owner answers | Sent to the recovery work: keep it out of identities.md until answered (owner D16) |
+| V1-26 | M | Recovery drills before the Resiliency Manager check | Done in #24: G11 is its DR0 exit |
+| V1-27 | H | The failover identity writes role assignments before the owner answers | Done in #24: out of identities.md and governance until answered (owner D16) |
 | V1-28 | M | The ARM MCP server needs delegated auth | Spec SQ2 |
 | V1-29 | M | How SRE Agent authenticates to our MCP connector | Spec §3a: Entra only, or no connector |
 | V1-30 | M | SRE Agent text wasn't in the untrusted-text scan | security-tooling.md |
@@ -146,4 +146,4 @@ An independent, offline red team read both specs at this branch's head, the open
 | V1-35 | M | Public text names a private project and its roadmap | Owner D17 (default: apply the cleanup now) |
 | V1-36 | L | Hosts read brain episodes directly | Spec §4 |
 | V1-37 | L | How a budget's action group authenticates to `trip` | Governance §2.2 |
-| V1-38 | L | Failover's whole-pool drain vs one host per pool | Sent to the recovery work |
+| V1-38 | L | Failover's whole-pool drain vs one host per pool | Done in #24 |
