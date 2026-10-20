@@ -1,5 +1,7 @@
 # avd-swarm
 
+Part of [avd-ops](https://avd-ops.dev/), the open toolkit for Azure Virtual Desktop.
+
 > [!WARNING]
 > **Personal project. Research and learning only. Not for production. No warranty.**
 >
