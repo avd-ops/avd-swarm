@@ -41,6 +41,7 @@ So today nothing detects injected instructions in the tool output, logs, issue t
 |---|---|---|
 | Every tool result before it goes back to the model (MCP output, KQL rows, logs, Run Command output) | `documents`, chunked | The main indirect-injection path: a log line or a host's description written by someone else |
 | Brain answers through the Concierge, and the string fields of C11 and C12 facts | `documents` | The brain redacts but doesn't screen for instructions |
+| Azure SRE Agent thread text, when the add-on is on (spec §3a) | `documents` | It read logs and resource names someone else wrote; quoted as evidence, never followed (red team V1-30) |
 | The operator's own message | `userPrompt` | A stolen avd-buddy session (R15) typing jailbreaks shows up here |
 | Transcripts Improve reads, C13 findings Scribe reads, issue and PR text | `documents` | R11 (poisoned evals), R20 and the brain's issue-to-agent scenario are all text an agent reads from outside |
 
