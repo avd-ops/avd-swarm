@@ -3,15 +3,21 @@
 - **Status:** Proposed (2026-10-20). Design only: nothing here is built, scheduled or run, and it needs no spend until its first eval run, which is estimated in the [spend.md](spend.md) format first.
 - **Part of:** [spec.md](spec.md) (agents §4, write path §5, facts §6d), [governance.md](governance.md). Build order: §9a step 4, "designed, not scheduled", until a person moves it (§9 below).
 - **Pairs with:** avd-second-brain, which feeds the review its knowledge and facts and takes its findings into the Posture loop ([decision 0003](decisions/0003-swarm-acts-brain-thinks.md), §7 below).
-- **Builds on:** avd-landing-zone's Well-Architected review, `Test-AvdLandingZoneReadiness.ps1 -WellArchitected` ([landing-zone decision 0009](https://github.com/nickprignano/avd-landing-zone/blob/master/build/decisions/0009-well-architected-review.md)).
+- **Consumes:** the [Azure/review-checklists](https://github.com/Azure/review-checklists) AVD checklist, Microsoft's [WARA](https://github.com/Azure/Well-Architected-Reliability-Assessment) collector, and avd-landing-zone's Well-Architected review, `Test-AvdLandingZoneReadiness.ps1 -WellArchitected` ([landing-zone decision 0009](https://github.com/nickprignano/avd-landing-zone/blob/master/build/decisions/0009-well-architected-review.md)).
 
 ## 1. Summary
 
-An operator opens avd-buddy and says "review my AVD estate against Well-Architected". A **Reviewer** agent walks them through the five pillars, one at a time, in the order they care about. For each pillar it first reads what it can (the landing zone's `waf-*` checks, Azure Advisor, Defender for Cloud, Azure Policy, the estate's resources, and current-state facts through the brain), and asks only the questions the evidence can't answer, such as "have you tested a restore of a profile share?". Every finding comes with its evidence and a link to the Microsoft Learn page that says why it matters. Scores are computed by code from the check results, never by a model.
+An operator opens avd-buddy and says "review my AVD estate against Well-Architected". A **Reviewer** agent walks them through the five pillars, one at a time, in the order they care about. For each pillar it first reads what Microsoft's own tools and the family already produce (the [Azure/review-checklists](https://github.com/Azure/review-checklists) AVD checklist as the list of what to check, Microsoft's WARA collector for Reliability, the landing zone's `waf-*` checks, Azure Advisor, Defender for Cloud, Azure Policy, and current-state facts through the brain), and asks only the questions the evidence can't answer, such as "have you tested a restore of a profile share?". Every finding comes with its evidence and a link to the Microsoft Learn page that says why it matters. Scores are computed by code from the check results, never by a model.
 
 The review changes nothing. A finding's fix is handed to the specialist that owns it, which turns it into a plan through the ordinary write path (spec §5), a PR to the landing zone's parameters, or a Cloud Shell block. Accepting a trade-off is a PR a person merges, never a click in the chat.
 
-**What this adds to what exists.** The landing zone's `-WellArchitected` review already reads the deployed resources and Azure's own evaluations, and its decision says "the questionnaire part of Microsoft's Well-Architected assessment remains manual". Microsoft's own assessments ([Azure Well-Architected Review](https://learn.microsoft.com/assessments/azure-architecture-review/) and its Azure Virtual Desktop workload variant) are questionnaires that don't read the estate, beyond Advisor recommendations for one subscription. This review joins the two: evidence first, questions only for the gaps, and remediation that goes through a person's approval.
+**Consume, don't rebuild** (prior art check, 2026-10-20, with the owner's go the same day). The rules and the evidence collection already exist. Microsoft publishes them as the AVD review checklist, the WARA module, Advisor, Defender for Cloud and Policy, and the landing zone's `-WellArchitected` review wraps several of them. This review writes **no Well-Architected rule engine of its own**. What it adds is what none of those has:
+- a chat front end that walks the pillars and asks only what the reads left open;
+- evidence from the brain's redacted C11 and C12 facts beside Microsoft's results;
+- accepted trade-offs that a person merges, with a reason and an expiry;
+- a fix path through avd-swarm's governed plans.
+
+Microsoft's assessments ([Azure Well-Architected Review](https://learn.microsoft.com/assessments/azure-architecture-review/) and its Azure Virtual Desktop workload variant) stay questionnaires, and the landing zone's decision 0009 says that part "remains manual". This review is where it stops being manual.
 
 ## 2. Goals and non-goals
 
@@ -43,45 +49,44 @@ The Reviewer is a specialist in the coordinator's handoff workflow (spec §3, §
 
 The operator can stop after any pillar; the record keeps what was done, and a later "continue the review" resumes it. A full review is about the length of Microsoft's own (about 60 questions there); most of this one's checks are answered by reads, so the operator answers far fewer.
 
-## 4. Checks
+## 4. Checks: Microsoft's lists, our mapping
 
-A **check** is one thing the review evaluates. The check catalog lives in this repo at `review/checks/`, one YAML file per check, like the action catalog (spec §5).
+A **check** is one item the review evaluates. The items come from Microsoft, and this repo only maps each one to the evidence that answers it.
+
+**What to check: the AVD review checklist.** [Azure/review-checklists](https://github.com/Azure/review-checklists) (MIT) keeps an AVD checklist, `checklists/avd_checklist.en.json`. Checked 2026-10-20, each item has a category (BCDR, Compute, Foundation, Identity, Monitoring and Management, Networking, Security, Storage), a subcategory, text, a description, a `waf` pillar, a severity, a short `id` (`A01.01`) and a Learn `link`. The items carry no Resource Graph query, so the evidence mapping is the part this repo adds. The review reads the checklist from a pinned commit (a pin bump is a PR), and never copies its text: the card shows the item's `text` and `link` at that commit. Items are cited by their short `id`, never their `guid`, so no GUID enters this repo (the ID guard).
+
+**Reliability evidence: WARA.** Microsoft's [Well-Architected Reliability Assessment](https://github.com/Azure/Well-Architected-Reliability-Assessment) module ([PowerShell Gallery `WARA`](https://www.powershellgallery.com/packages/WARA), MIT, 1.0.6) runs a read-only Resource Graph collection, and its collector has an `-AVD` switch for AVD resource types. It covers the Reliability pillar only. `Start-WARACollector` writes a JSON file. The review reads that file, and doesn't use the analyzer's Excel plan or the reporter, which needs Windows with PowerPoint. WARA needs PowerShell 7.4, Az.Accounts 3.0 and Az.ResourceGraph 1.0, which Cloud Shell has. It runs one of two ways:
+- the operator runs the collector in Cloud Shell and hands the JSON to avd-buddy (the default, with no new identity);
+- once build step 2 exists, a read tool runs it as the Reviewer's agent identity (Reader).
+
+**The other pillars' evidence: what Azure and the family already evaluate.**
+1. **The landing zone's `waf-*` checks** (decision 0009: design checks, Advisor, Defender for Cloud, Policy and PSRule for Azure, by pillar), read from the preflight's state line or run read-only (`-WellArchitected -SkipTenant -SkipNtfs`).
+2. **Advisor** recommendations (their category is the pillar), **Defender for Cloud** recommendations and **Policy** compliance, read directly for anything outside the landing zone's resource groups.
+3. **C11 and C12 facts** through the brain (spec §6d), for what the agent identities can't read live and for sizing.
+4. **The operator**, for items Azure can't show (a tested restore, a DR runbook, an on-call rota).
+
+**The mapping file.** `review/map.yml` holds one line per checklist item: its `id` and the evidence that answers it. That evidence is a WARA recommendation id, a landing-zone `waf-*` id, an Advisor or Defender recommendation type, a Policy definition, a C15 fact ID, or `operator`. Each line also records which family specialist owns the fix (§8).
 
 ```yaml
-id: re-profile-storage-redundancy
-pillar: Reliability
-waf: [RE:05]                       # the pillar checklist code(s) it evidences
-area: profiles                     # AVD design area (below)
-learn:                             # where the guidance lives; linked, never restated
-  - https://learn.microsoft.com/azure/well-architected/reliability/redundancy
-  - https://learn.microsoft.com/azure/virtual-desktop/fslogix-profile-container-configure-azure-files-active-directory
-kb: landing-zone/README.md#well-architected-review   # brain KB page with what real runs taught, if any
-answeredBy: evidence               # evidence | operator | either
-sources:
-  - lz: waf-storage-redundancy     # a landing-zone preflight check id, read from its state line
-  - arm: storageAccounts.sku       # a read tool and the property it evaluates
-  - fact: c11.storage.count        # a C15 fact register ID, read through the brain (spec §6d)
-evaluate: profile_storage_redundancy   # a pure function in review/checks.py
-severity: high                     # high | medium | low
-appliesWhen: { environment: [prod] }   # otherwise the result is n/a, with the reason
-remediation:
-  kind: deploy-pr                  # action | deploy-pr | cloudshell | none
-  owner: Deploy                    # the specialist that takes the handoff
-tradeoff: https://learn.microsoft.com/azure/well-architected/reliability/tradeoffs
+- item: B03.01                # checklist id at the pinned commit (an illustrative id)
+  evidence:
+    - wara: <recommendation id>   # from the collector's JSON
+    - lz: waf-profile-backup      # a landing-zone check
+  answeredBy: evidence        # evidence | operator | either
+  appliesWhen: { environment: [prod] }
+  fix: { kind: deploy-pr, owner: Deploy }   # action | deploy-pr | cloudshell | none
+  kb: fslogix/README.md       # brain KB page with what real runs taught, if any
 ```
 
-**Evaluation is code.** `evaluate` names a pure function that takes the data the sources returned and gives one result: `pass`, `warn`, `fail`, `unknown` (a source couldn't be read or returned nothing), or `n/a` (with the reason). Functions are tested offline with fixtures that leave out empty properties the way ARM does (landing-zone lesson 0021), and a check whose source can't be read is `unknown`, never `pass`.
+**Evaluation stays mechanical, and mostly isn't ours.** A Microsoft source that already gives a verdict (WARA, Advisor, Defender, Policy, a landing-zone check) is read as-is: open recommendation means `fail` or `warn` by its severity, and none means `pass`. Our own code (`review/evaluate.py`, pure functions tested against fixtures that leave out empty properties the way ARM does, landing-zone lesson 0021) only covers items no Microsoft source evaluates and a C11 or C12 fact can. Every new function is a gap worth proposing upstream to the checklist or to WARA (brain decision 0011; a person files it). When a source can't be read, the item is `unknown`, never `pass`.
 
-**Operator answers count for less, and only where no read exists.** A check marked `answeredBy: operator` covers what Azure can't show: whether restores are tested, who is on call, whether there's a documented DR plan. The operator's answer is recorded as "the operator said", with the time. A check with an evidence source can't be answered by the operator: telling the Reviewer "we have backups" doesn't change a result that came from the backup vault. `either` is for checks whose read is optional (for example, a DR drill that may or may not leave a trace).
+**Operator answers count for less, and only where no read exists.** An item marked `answeredBy: operator` covers what Azure can't show. The answer is recorded as "the operator said", with the time. An item with an evidence source can't be answered by the operator: saying "we have backups" doesn't change a result that came from the backup vault. `either` is for items whose read is optional, such as a DR drill that may or may not leave a trace.
 
-**Where checks come from.** The catalog starts from:
-1. **The landing zone's `waf-*` checks**, mapped one to one, with `sources: [lz: waf-<check>]`. The review runs the preflight read-only (`-WellArchitected -SkipTenant -SkipNtfs`, Reader only) or reads its last state line, so the two never disagree.
-2. **The five pillar checklists**, by code ([Reliability](https://learn.microsoft.com/azure/well-architected/reliability/checklist) RE:01 to RE:10, [Security](https://learn.microsoft.com/azure/well-architected/security/checklist), [Cost Optimization](https://learn.microsoft.com/azure/well-architected/cost-optimization/checklist), [Operational Excellence](https://learn.microsoft.com/azure/well-architected/operational-excellence/checklist), [Performance Efficiency](https://learn.microsoft.com/azure/well-architected/performance-efficiency/checklist)). Every checklist code has at least one check, or a line in `review/coverage.yml` saying why it doesn't apply to AVD or isn't covered yet, so the gaps are visible.
-3. **AVD guidance in the product docs**, which is where Microsoft keeps it current: [security recommendations](https://learn.microsoft.com/azure/virtual-desktop/security-recommendations), the [Microsoft cloud security benchmark baseline for AVD](https://learn.microsoft.com/security/benchmark/azure/baselines/azure-virtual-desktop-security-baseline) (based on MCSB v1.0; read through Defender for Cloud, which tracks the current version), [AVD's Advisor recommendations](https://learn.microsoft.com/azure/virtual-desktop/azure-advisor-recommendations), [autoscale](https://learn.microsoft.com/azure/virtual-desktop/autoscale-scenarios), [Insights](https://learn.microsoft.com/azure/virtual-desktop/insights), and the Architecture Center's [virtual desktop guidance](https://learn.microsoft.com/azure/architecture/virtual-desktop/virtual-desktop-get-started).
+**Coverage is visible.** Every checklist item at the pinned commit is mapped, marked `operator`, or listed as `n/a` for this landing zone with a reason. A new checklist commit that adds items fails the mapping test until each new item has a line. The pillar checklist codes ([Reliability](https://learn.microsoft.com/azure/well-architected/reliability/checklist) RE:01 to RE:10, and the [Security](https://learn.microsoft.com/azure/well-architected/security/checklist), [Cost Optimization](https://learn.microsoft.com/azure/well-architected/cost-optimization/checklist), [Operational Excellence](https://learn.microsoft.com/azure/well-architected/operational-excellence/checklist) and [Performance Efficiency](https://learn.microsoft.com/azure/well-architected/performance-efficiency/checklist) checklists) are linked from each pillar card.
 
-**AVD design areas** (`area`): `identity`, `network`, `hosts` (compute, images, scaling), `profiles` (FSLogix and storage), `apps`, `monitoring`, `bcdr`, `governance`. They follow the Cloud Adoption Framework's AVD design areas, but the catalog doesn't link those pages: the CAF's enterprise-scale AVD article is deprecated and due to be removed on 2026-10-30 (checked 2026-10-20), and links under `learn.microsoft.com/azure/well-architected/azure-virtual-desktop/` now redirect into the AVD product docs. A scheduled link check (the brain's freshness check, C7) flags a `learn` link that redirects or disappears, and Scribe drafts the fix (spec §6e).
+**Links.** The catalog doesn't link the Cloud Adoption Framework's AVD scenario pages, because its enterprise-scale AVD article is deprecated and due to be removed on 2026-10-30. Links under `learn.microsoft.com/azure/well-architected/azure-virtual-desktop/` now redirect into the AVD product docs (both checked 2026-10-20). The brain's freshness check (C7) flags a link that redirects or disappears, and Scribe drafts the fix (spec §6e).
 
-**Changing a check** is a PR with its test and an eval question (§9). `evaluate`, `severity` and `answeredBy` are protected fields, as the action catalog's are (spec §5a): an agent-authored PR that touches them fails the guard, so Improve can't make the estate look better by loosening a check.
+**Changing the mapping** is a PR with its test and an eval question (§9). `answeredBy`, `evidence` and our own evaluate functions are protected fields, like the action catalog's (spec §5a): an agent-authored PR that touches them fails the guard, so Improve can't make an estate look better by loosening a mapping. Moving to a new checklist or WARA version is a pin bump PR, and the first review after it shows which results changed because of the bump, not because of the estate.
 
 ## 5. Scores
 
@@ -138,16 +143,16 @@ avd-swarm and the brain change together (decision 0003); the review uses only th
 | To the brain | How | Brain side |
 |---|---|---|
 | Findings that aren't accepted | The review record stays private; the adopter's own operations brain, when deployed, reads open findings as one more Well-Architected source for its Posture loop (brain operations-spec §4.7, "Posture"), beside the landing zone's `waf-*` warnings, so there is one findings stream, not two | Evolve proposes PRs or issues by pillar, as today |
-| Counts | C8 `avd-swarm-insights/v1` gets a `reviews` section: reviews run, results by check id and pillar, trade-offs accepted by check id, questions abandoned. Counts only, from a fixed vocabulary (the check ids), no free text, no estate | Harvest turns patterns into knowledge by a PR a person merges: a check that fails in most runs of the landing zone becomes a landing-zone default or a lesson |
+| Counts | C8 `avd-swarm-insights/v1` gets a `reviews` section: reviews run, results by checklist item id and pillar, trade-offs accepted by item id, questions abandoned. Counts only, from a fixed vocabulary (the checklist's item ids at the pinned commit), no free text, no estate | Harvest turns patterns into knowledge by a PR a person merges: a check that fails in most runs of the landing zone becomes a landing-zone default or a lesson |
 | Gaps | A checklist code with no check, a check that is `unknown` in most runs, a Learn link that redirected | Docs findings (C13) and KB updates |
 
-The brain's Diagnose and Critic may comment on a finding through the Concierge ("this Advisor recommendation is noise on a dev landing zone, see lesson ..."), but a comment never changes a result: only a check's code or an accepted trade-off does.
+The brain's Diagnose and Critic may comment on a finding through the Concierge ("this Advisor recommendation is noise on a dev landing zone, see lesson ..."), but a comment never changes a result: only a source's result, the mapping or an accepted trade-off does.
 
 C8 isn't written in the brain's `docs/contracts.md` yet; its `reviews` section lands there, with its schema and a test in `tests/Connectors.Tests.ps1`, when C8 does.
 
 ## 8. From finding to fix
 
-The Reviewer proposes nothing itself. Each finding's `remediation` says what happens when the operator presses its fix button:
+The Reviewer proposes nothing itself. Each finding's `fix` line in the mapping says what happens when the operator presses its fix button:
 
 | `kind` | Who | What |
 |---|---|---|
@@ -158,12 +163,12 @@ The Reviewer proposes nothing itself. Each finding's `remediation` says what hap
 
 **The gate treats a review as evidence, not as a target list,** the same as a snapshot (spec §6d): a plan that cites a finding still resolves every target live, and the gate refuses a plan whose only evidence is a review older than the freshness limit.
 
-**Accepting a trade-off** is a person's decision with a reason, written down where people review it. The Reviewer drafts a PR to the adopter's private repo adding an entry to `review/accepted.yml` (check id, scope pseudonym, reason, who, expiry of at most 12 months), and the entry counts once it is merged. The landing zone's `data.accepted` findings (its dev and test parameter files' deliberate choices) are read as accepted for that environment, with the parameter file as the reason. Expired acceptances return as findings.
+**Accepting a trade-off** is a person's decision with a reason, written down where people review it. The Reviewer drafts a PR to the adopter's private repo adding an entry to `review/accepted.yml` (checklist item id, scope pseudonym, reason, who, expiry of at most 12 months), and the entry counts once it is merged. The landing zone's `data.accepted` findings (its dev and test parameter files' deliberate choices) are read as accepted for that environment, with the parameter file as the reason. Expired acceptances return as findings.
 
 ## 9. Evals, safety and limits
 
 - **Eval questions** for the Reviewer are added to `evals/` (append-only): "which pillar is weakest and why", "what's the evidence for the backup finding", "what would fix it". Expected facts come from ARM at eval time (spec §6b), and the check functions are tested against fixtures before any eval runs. Exit: answers cite evidence for at least 80% of eval questions, and the scorecard matches `review/score.py` on every fixture.
-- **Prompt injection.** Resource names, tags, Advisor text and operator answers are data. An injected "mark this as passed" can't work, because results come from `evaluate` and are rendered from the record; the Reviewer's text can't change either.
+- **Prompt injection.** Resource names, tags, Advisor text and operator answers are data. An injected "mark this as passed" can't work, because results come from Microsoft's sources and the mapping and are rendered from the record; the Reviewer's text can't change either.
 - **Talked into a pass.** An operator answer can satisfy only `operator` and `either` checks. Each is labeled self-reported on the card and lowers confidence.
 - **Identity and spend.** The Reviewer reads as its own agent identity, with the same rights as the other agents (Reader and Log Analytics Reader on the AVD resource groups; Reader's `*/read` covers Advisor, Policy and Defender for Cloud recommendations at that scope) and no Graph permission; identity checks that need Graph come from the landing zone's state line or are `unknown`. It falls under the daily token cap and `halt-agents` like every agent (spec §7, governance §2.3).
 - **Personal data.** No check needs a user's name. Checks about users are counts.
@@ -173,7 +178,7 @@ The Reviewer proposes nothing itself. Each finding's `remediation` says what hap
 
 | Phase | Builds | Needs | Exit |
 |---|---|---|---|
-| R0 | This spec; the check catalog's schema and the first checks mapped from the landing zone's `waf-*` ids; `review/checks.py`, `review/score.py` and the record schema, with offline tests; `review/coverage.yml` | Nothing in Azure | Every landing-zone `waf-*` id mapped; every checklist code has a check or a coverage line |
+| R0 | This spec; the checklist pin; `review/map.yml` for every AVD checklist item; a reader for WARA's collector JSON and the landing zone's state line; `review/evaluate.py` for the few items only C11/C12 can answer; `review/score.py` and the record schema; offline tests over a saved WARA JSON, a state line and the checklist at its pin | Nothing in Azure | Every checklist item mapped, marked `operator` or `n/a` with a reason; every landing-zone `waf-*` id reachable from some item |
 | R1 | The Reviewer agent in avd-buddy, read-only, steps 1 to 5 of §3 | Build order step 2 (avd-buddy, coordinator, metering, `halt-agents`) | The eval exit above |
 | R2 | Fix buttons and accepted trade-offs (§8) | Build order step 3 (the adopter repo, `approve`, first actions) | Ten findings fixed through approved plans or merged PRs, each verified by the next review |
 | R3 | The C8 `reviews` section and the Posture feed (§7) | C8 in the brain | The brain harvests a review pattern by PR |
@@ -184,12 +189,16 @@ R0 is free and offline; it can be built whenever a person says so. R1 onward wai
 
 - **Microsoft's assessments** ([Azure Well-Architected Review](https://learn.microsoft.com/assessments/azure-architecture-review/), its Azure Virtual Desktop workload assessment, and [Advisor's WAF assessments](https://learn.microsoft.com/azure/advisor/advisor-assessments)): questionnaires tied to the pillar checklists, with Advisor recommendations for one subscription or resource group, milestones and CSV export. They don't read the estate's configuration beyond Advisor and can't act. This review links them and uses their checklist codes, so an operator can take Microsoft's assessment alongside it and compare.
 - **avd-landing-zone's `-WellArchitected` review** (decision 0009): reads resources, Advisor, Defender, Policy and PSRule for Azure. The review reuses it whole.
-- **[Azure/review-checklists](https://github.com/Azure/review-checklists)** (MIT): includes an AVD checklist and Resource Graph query scripts. Its items are a source to check the catalog's coverage against; whether to cite its item IDs is an open question (WQ3).
+- **[Azure/review-checklists](https://github.com/Azure/review-checklists)** (MIT): its AVD checklist is the review's list of items (§4), read at a pin, cited by short id.
+- **[WARA](https://github.com/Azure/Well-Architected-Reliability-Assessment)** (MIT): the Reliability evidence (§4). Its analyzer and PowerPoint reporter aren't used; the review's own output stays Markdown and CSV.
+- **Azure Copilot's deployment agent** (preview) grounds deployment plans in Well-Architected guidance, and a community Well-Architected review skill exists for coding agents. Neither reads AVD-specific evidence, records accepted trade-offs or routes fixes through an approval outside the chat.
+- **[Azure SRE Agent](https://learn.microsoft.com/azure/sre-agent/run-modes)** is an **optional add-on**, not a dependency. Where an adopter runs it, its findings and investigations can be one more read-only evidence source on a pillar card, cited like Advisor. Its write actions stay in Review mode for AVD resources, so avd-swarm's `approve` path is still the only writer (spec §5). The chat front end, the C11/C12 evidence and the governed fix path are built here either way.
 - **PSRule for Azure:** already run by the landing zone's review on the exported resources.
 
 ## 12. Open questions
 
 - **WQ1** Should the Reviewer be its own agent, or a mode of the Deploy agent, which already reads the landing zone's review? Proposed: its own agent, because it spans every specialist's area, its prompt and evals are a review's and not a deployment's, and an agent's allowlist and prompt are protected paths that are easier to keep small one agent at a time.
 - **WQ2** Does the review also cover the Liquidware tier when it's deployed (ProfileUnity, FlexApp)? Proposed: yes, as checks in avd-liquidware's lane linked from here, once its `liquidware.*` facts are built.
-- **WQ3** Cite Azure/review-checklists item IDs in `review/coverage.yml`? They are GUIDs, so each would go in `scripts/public-ids.txt`. Proposed: link the checklist file instead.
+- **WQ3** ~~Cite the checklist's item GUIDs?~~ **Answered:** cite the short `id` (`A01.01`) at the pinned commit; no GUID enters the repo.
+- **WQ5** Where WARA and a landing-zone `waf-*` check disagree on the same item, which wins on the card? Proposed: show both with their sources, and score the worse one, since a missed risk costs more than a duplicate.
 - **WQ4** Should a review be able to start from Cloud Shell, without avd-buddy, for operators who prefer it (spec §2 non-goals)? Proposed: yes, the same checks and scorer as a script, after R1.
