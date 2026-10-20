@@ -1,7 +1,7 @@
 # AI security tooling: defending the swarm, and security signal for operators
 
 - **Status:** Proposed (2026-10-19). Research only: nothing was installed or run, and no tenant, subscription or spend setting changed.
-- **Source survey:** [Open-source AI tools for fighting bad actors](https://github.com/nickprignano/ai-brain/blob/main/docs/knowledge/privacy-and-safety/README.md#open-source-ai-tools-for-fighting-bad-actors) in the AI knowledge base. This page links to it rather than repeating it, and only says how its tools fit avd-swarm.
+- **Sources:** the tools' own pages: [Prompt Shields](https://learn.microsoft.com/azure/ai-services/content-safety/concepts/jailbreak-detection), [PyRIT](https://github.com/microsoft/PyRIT), [garak](https://github.com/NVIDIA/garak), [promptfoo](https://github.com/promptfoo/promptfoo), [Beelzebub](https://github.com/beelzebub-labs/beelzebub), [Sentinel MCP custom tools](https://learn.microsoft.com/azure/sentinel/datalake/sentinel-mcp-create-custom-tool) and the [Canarytokens Entra ID token](https://docs.canarytokens.org/guide/entraid-token). What applies to the AVD repos is in avd-second-brain's [AI agents page](https://github.com/nickprignano/avd-second-brain/blob/main/docs/knowledge/agents/README.md#securing-the-agents-and-avd-security-signal). This page links to them rather than repeating them, and only says how the tools fit avd-swarm.
 - **Checked against:** [spec.md](spec.md) (§3, §5, §6, §9a), [governance.md](governance.md) (§2.2 to §2.4), [redteam.md](redteam.md) (R1 to R25, open AX items) and the S1a spike's model client (`spikes/s1a/agent_api/main.py`).
 - **Rules that apply:** keyless only (managed identity, Entra Agent ID or workload identity federation; no API keys or client secrets), no new AI vendor, least-privilege roles, no tenant or customer names, and the license of every tool checked before its code is used.
 - **Scope:** tenant-wide security (all of Entra, Defender XDR across the tenant, deception for a tenant's sign-in page) belongs to tenant-swarm (spec §8) and isn't designed here.
@@ -75,7 +75,7 @@ Long tool output is chunked into documents of at most a few thousand characters,
 
 ## 4. Decoy tools and the unknown-tool tripwire
 
-**The idea** (from Beelzebub's MCP honeypot, GPL-3.0, so idea only; see the survey): offer each agent one or two tools a healthy agent never has reason to call, and treat a call as an alarm.
+**The idea** (from Beelzebub's MCP honeypot, GPL-3.0, so idea only; see its README): offer each agent one or two tools a healthy agent never has reason to call, and treat a call as an alarm.
 
 **Where it sits.** In the tool layer's allowlist, the same list `run_hosts()` already filters against. Each agent's allowlist file (a protected path, spec §4) lists its decoys, for example `export_session_recordings` or `run_command_as_admin`, with plain descriptions. A decoy call returns a neutral error and emits `decoy.tripped` (agent, tool name, conversation ID, no text).
 
@@ -83,7 +83,7 @@ Long tool output is chunked into documents of at most a few thousand characters,
 
 **What trips.** One `decoy.tripped` marks the conversation the way a Prompt Shields hit does and sends the person a notification; two within a day trip `halt-actions`. Decoys are listed in the allowlist file so the tool-list check (AX-14) counts them as expected, and the evals check that a healthy agent never calls one.
 
-**Limits.** An injection that abuses a real read tool, or only steers the answer text, passes silently (the survey says the same). Decoys add a few hundred tokens of tool descriptions per call; the meter counts them.
+**Limits.** An injection that abuses a real read tool, or only steers the answer text, passes silently (Beelzebub's README says the same). Decoys add a few hundred tokens of tool descriptions per call; the meter counts them.
 
 ## 5. Red-teaming our own agents
 
@@ -100,7 +100,7 @@ Both run against a **test deployment** of step 2 in the sandbox, never against a
 
 **Cost.** The target's own tokens dominate: every probe is a full agent turn with tool calls. A limited garak scan of a few hundred prompts and a PyRIT campaign of a few dozen conversations each fit inside one run's token cap (spend.md §3.7), estimated in spend.md's format before the run, with Nick's go.
 
-**Skip promptfoo:** its red-team mode generates attacks in its vendor's cloud by default and sends the target's replies there (survey). With local attack and judge models it would be acceptable, but PyRIT and garak already cover both jobs.
+**Skip promptfoo:** its red-team mode generates attacks in its vendor's cloud by default and sends the target's replies there ([promptfoo red-team architecture](https://www.promptfoo.dev/docs/red-team/architecture/)). With local attack and judge models it would be acceptable, but PyRIT and garak already cover both jobs.
 
 ## 6. Security signal for operators: AVD hunts
 

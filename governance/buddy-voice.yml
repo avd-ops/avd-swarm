@@ -1,0 +1,56 @@
+# avd-buddy's voice settings (docs/buddy-voice.md). Protected: no agent can loosen them.
+# Read by scripts/voice_check.py, which decides the mode in code and checks every reply.
+
+# Hard steady: never any levity, even if the operator invites it.
+hard_steady_events:
+  - plan-shown            # a plan card or approval link is on screen
+  - approval-pending
+  - destructive-step      # the action is marked destructive or irreversible in the catalog
+  - kill-switch           # any switch position other than normal, or a trip or reset in progress
+  - security-finding
+  - data-loss-risk        # a profile, disk, snapshot or backup could be lost
+  - gate-refused
+
+# Soft steady: calm and practical; a gentle aside only when the operator invites it.
+soft_steady_events:
+  - run-failed            # a deploy, preflight, verification or eval run failed
+  - incident              # unhealthy hosts, sign-in failures, an open SRE Agent thread
+  - spend-alert           # over budget, forecast over budget, or a teardown that didn't finish
+  - first-deployment
+  - judge-degraded
+
+# Operator words that make a turn soft steady. Matched as whole words, case-insensitive.
+stress_words: [urgent, asap, down, outage, broken, panic, scared, stuck, help, prod, production, emergency, deadline, worried, lost, deleted]
+
+# Operator words that invite levity in a soft steady turn.
+levity_invites: [lol, haha, joke, funny, "make me laugh", "cheer me up"]
+
+# The aside: one optional line of wit, shown only in light mode or an invited soft steady turn.
+aside:
+  max_chars: 140
+  min_replies_between: 2          # at most one aside in every three replies
+  languages: [en]                 # off in any other conversation language; idioms don't translate
+
+# Banned topics: a hit anywhere in an aside fails it. Answers aren't matched, since a true answer may
+# have to say "outage" or "kill switch"; their tone is the judge's and a person's to check.
+# Whole words, case-insensitive. These catch the obvious; the judge and a person catch the rest.
+banned_terms:
+  politics: [politics, political, election, elections, democrat, democrats, republican, republicans, liberal, conservative, senator, congress, parliament, president, vote, voting]
+  religion: [religion, religious, god, gods, church, mosque, temple, synagogue, prayer, pray, bible, quran, jesus, allah, heaven, hell]
+  sex: [sex, sexy, sexual, naked, nude, flirt, flirting, kinky, innuendo, aroused, hookup]
+  bodies: [fat, ugly, skinny, bald, hot, gorgeous, weight, looks]
+  identity: [race, racial, ethnic, gender, accent, old-timer, boomer, millennial, zoomer]
+  substances: [drunk, beer, booze, wine, hangover, weed, stoned]
+  violence: [kill, murder, die, dead, death, shoot, gun, bomb, weapon]
+  profanity: [damn, crap, wtf, sucks]
+  people_and_employers: [boss, bosses, manager, managers, coworker, coworkers, colleague, colleagues, intern, employer, ceo, hr]
+  incidents: [outage, breach, hacked, ransomware, data loss, wiped, meltdown, disaster]
+
+# The aside never carries a fact: no digits, links, code, IDs or names from the estate.
+aside_forbidden_patterns:
+  digits: '\d'
+  link: 'https?://|www\.'
+  code: '`'
+  emoticon: '(^|\s)[:;=]-?[()DPp]($|\s|[.!?,])'
+  resource_id: '/subscriptions/'
+  guid: '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-'
