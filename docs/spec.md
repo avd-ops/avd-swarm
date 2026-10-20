@@ -294,7 +294,7 @@ The sandboxes are paid for out of pocket, so spend control is a platform functio
 - evidence that teardown finished and nothing is left billing;
 - a monthly reconciliation of the books.
 
-The design is in [spend.md](spend.md), on top of tenant-swarm's spend ledger. Until it is merged, the governance budget check refuses any plan without a cost estimate.
+The design is in [spend.md](spend.md); its first piece, the public spend guard in [spend/](../spend/README.md), runs the S1a spike. Until the rest is built, the governance budget check refuses any plan without a cost estimate.
 
 ## 8. Relationship to tenant-swarm
 

@@ -1,19 +1,21 @@
 # Spend as a built-in function
 
 - **Status:** Proposed
-- **Part of:** [spec.md](spec.md) §7a (Cost agent, §4) and [governance.md](governance.md) (spend gate §2.1, stop-spend path §2.3, watchdog §2.4). Builds on tenant-swarm's spend ledger (tenant-swarm `docs/spend.md`), which does the work; this page says how avd-swarm uses it.
+- **Part of:** [spec.md](spec.md) §7a (Cost agent, §4) and [governance.md](governance.md) (spend gate §2.1, stop-spend path §2.3, watchdog §2.4). The first piece is built: the public spend guard, [spend/spend_guard.py](../spend/README.md), which the S1a spike runs on.
 
 ## 1. Why
 
 The sandboxes avd-swarm runs in are paid for out of pocket. Nick's rule: an estimate before every run, evidence of what each run cost, evidence that its teardown removed everything, and a monthly statement that squares with the invoice. avd-swarm makes changes, so it is where runs start and end. It should not be possible to deploy through avd-swarm without a run record, or to leave one open without being told.
 
-## 2. One ledger, not two
+## 2. One public guard, records you keep
 
-tenant-swarm owns the scripts (`scripts/spend/`), the workflows and the `ledger` branch. avd-swarm doesn't copy them:
+avd-swarm ships its own spend guard, [spend/spend_guard.py](../spend/README.md), so anyone can run a lab from this repo alone (decided 2026-10-20; it replaced an import from a private ledger, which a public adopter couldn't run):
 
-- avd-swarm's tools import `Spend.psm1` from tenant-swarm at a **pinned commit**, the way the brain reads knowledge at a pinned commit (C6). A change to the spend logic is a tenant-swarm PR, then a pin bump here.
-- avd-swarm reads and writes the same records (`spend-run/v1`, `spend-statement/v1`). A run started from avd-buddy and one started from the GitHub app are the same kind of record, in the same ledger.
-- The records hold amounts, resource group names and hashed resource IDs, never a tenant, subscription or card detail (tenant-swarm's ID guard covers them).
+- **Before:** `open` checks the estimate against the per-run cap and what's left of the monthly cap (Cost Management's month to date plus this month's unsettled runs), refuses an unpriced line unless allowed on purpose, refuses a second open run in the same sandbox, and gives the run a due time.
+- **After:** `close` records the teardown evidence (the leftovers check) and token spend billed outside Azure; `settle` reads the run's actual cost from Cost Management by resource group and day, settled three days after the close, with any charge after the close day flagged.
+- **Records** (`avd-swarm-spend-run/v1`, one JSON file per run) hold amounts, dates, the resource group name and the teardown result, never a tenant, subscription or card detail. They live where the owner keeps them (by default `~/clouddrive/avdswarm-spend/` in Cloud Shell), never in this repo. An owner who keeps a private ledger elsewhere can import the same records; avd-swarm doesn't depend on it.
+- The rules are pure functions with offline tests (`scripts/tests/test_spend_guard.py`). A change to them is a PR here.
+- Not built yet: the monthly statement against the card charge (§3.5) and the daily check that settles runs on its own; until then `settle` and `status` are run by hand.
 
 ## 3. What it adds to avd-swarm
 
@@ -25,10 +27,10 @@ Reads the ledger and Cost Management, read-only. Questions it answers with evide
 - "Where's the month?" Month to date against the cap, the forecast, runs vs standing cost, and the statement's open items.
 
 ### 3.2 Plans that cost money carry a run (governance §2.1, Budget rule)
-- `propose_change` adds a **spend block** to any plan that creates, starts or resizes resources: the run estimate (`Get-SpendRunEstimate`, from the deploy agent's sizing or the preflight's estimate), the cap decision (`Get-SpendGateDecision`), and the run ID it will open or extend.
+- `propose_change` adds a **spend block** to any plan that creates, starts or resizes resources: the run estimate (from the deploy agent's sizing or the preflight's estimate), the cap decision (the spend guard's `decide_open`), and the run ID it will open or extend.
 - The gate's Budget rule is that decision: a plan is refused when the checked cost is over the per-run cap or what's left of the monthly cap, when a line is unpriced, or when no cap is set. The rule's inputs live in `governance/policy.yml` like every other rule. avd-swarm adds no second budget formula.
-- The approve job's first step opens the run (`Start-SpendRun.ps1`) before anything is deployed; a refusal there stops the job, even if the gate passed earlier in the day. It then deploys with the `spend-run` tag (§3.3).
-- The teardown plan closes it (`Stop-SpendRun.ps1`). Leftovers fail the plan's verification step, which counts toward the watchdog's "two failed verifications" trigger.
+- The approve job's first step opens the run (`spend_guard.py open`) before anything is deployed; a refusal there stops the job, even if the gate passed earlier in the day. It then deploys with the `spend-run` tag (§3.3).
+- The teardown plan closes it (`spend_guard.py close`). Leftovers fail the plan's verification step, which counts toward the watchdog's "two failed verifications" trigger.
 - A plan that would start a second run in a sandbox with one open is refused: one open run per sandbox keeps attribution honest.
 
 ### 3.3 Stopping spend is never blocked
@@ -73,6 +75,6 @@ The S1a spike carries a minimal version of 1 and 2 from build-order step 1 (spik
 | S3 | Deploy and Images agents size and price their own plans |
 
 ## 5. Open questions
-- **CQ1** Pin tenant-swarm's module by commit (default), or publish it as a package both repos install?
+- ~~**CQ1** Pin a private spend module by commit, or publish it as a package?~~ **Answered 2026-10-20:** neither; avd-swarm ships its own public guard (§2), so the spike runs from this repo alone.
 - **CQ2** Should a run that crosses a month count against the month it started in (today's rule), or be split by day?
 - ~~**CQ3** Should `spend.cap.reached` trip `halt-agents` too?~~ **Answered 2026-10-19:** token spend has its own metered cap that trips `halt-agents` (§3.7); `spend.cap.reached` for Azure resources stays at `halt-actions`.

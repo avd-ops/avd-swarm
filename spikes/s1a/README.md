@@ -2,9 +2,9 @@
 
 What it answers, what it costs and why: [docs/spikes/s1a.md](../../docs/spikes/s1a.md). This page is the order to run it in.
 
-Run every block in **Azure Cloud Shell (PowerShell)**, signed in to your personal tenant with the sandbox subscription selected. Each block is self-contained: it updates both repos, so a disconnected session just needs the block pasted again. State between blocks lives in `~/clouddrive/avdswarm-spike/`.
+Run every block in **Azure Cloud Shell (PowerShell)**, signed in to a lab tenant with a sandbox subscription selected: never a production one. Each block is self-contained: it updates the repo, so a disconnected session just needs the block pasted again. State between blocks lives in `~/clouddrive/avdswarm-spike/`.
 
-The spend tooling lives in a private repo (tenant-swarm), so the first block signs the GitHub CLI in once (device code, works from the iPad).
+Everything it needs is in this public repo. The spend run comes from [spend/spend_guard.py](../../spend/README.md): it refuses the run before anything is deployed when a line is unpriced, the estimate is over the run cap, or the month to date plus the estimate is over your monthly cap, and it keeps the teardown evidence and the actual cost in a run record under `~/clouddrive/avdswarm-spend/`. You need an account that can create an Entra app registration (Cloud Application Administrator or above) and Owner on the subscription.
 
 **Stop rule:** if a block says `STOP`, or the run is past 6 hours, go straight to block 9.
 
@@ -15,7 +15,7 @@ if (Test-Path ~/avd-swarm) { git -C ~/avd-swarm pull -q } else { git clone -q ht
 & ~/avd-swarm/spikes/s1a/Invoke-Spike.ps1
 ```
 
-`Invoke-Spike.ps1` runs blocks 1 to 9 in order. It asks twice: before opening the spend run (after showing the estimate) and before teardown, so you can do the Q5 portal steps while the agent exists. It picks the Hosts agent's allowlist from the Q3 tool list (the read-only host pool and session host tools; override with `-AllowedTools`). If a step fails it tears down and closes the run; `-KeepOnFailure` leaves it up. After a disconnect, run the same command again and it resumes. `-TeardownOnly` just cleans up. Everything it prints is saved as `~/clouddrive/avdswarm-spike/transcript-*.txt`.
+`Invoke-Spike.ps1` runs blocks 1 to 9 in order. It asks for your monthly cap if you don't pass `-MonthlyCap`, then asks twice: before opening the spend run (after showing the estimate) and before teardown, so you can do the Q5 portal steps while the agent exists. It picks the Hosts agent's allowlist from the Q3 tool list (the read-only host pool and session host tools; override with `-AllowedTools`). If a step fails it tears down and closes the run; `-KeepOnFailure` leaves it up. After a disconnect, run the same command again and it resumes; if the run is past its 6 planned hours by then, it tears down instead. `-TeardownOnly` just cleans up. Everything it prints is saved as `~/clouddrive/avdswarm-spike/transcript-*.txt`.
 
 ### Without Foundry quota: `-Provider Anthropic`
 
@@ -32,33 +32,32 @@ The blocks below are the same steps one at a time, for when you want to stop bet
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-gh auth status *> $null; if ($LASTEXITCODE) { gh auth login --hostname github.com --git-protocol https --web }; gh auth setup-git
-foreach ($r in 'avd-swarm', 'tenant-swarm') { if (Test-Path ~/$r) { git -C ~/$r pull -q } else { gh repo clone "nickprignano/$r" ~/$r -- -q } }
+if (Test-Path ~/avd-swarm) { git -C ~/avd-swarm pull -q } else { git clone -q https://github.com/nickprignano/avd-swarm ~/avd-swarm }
 $Spike = "$HOME/clouddrive/avdswarm-spike"; New-Item -ItemType Directory -Force $Spike | Out-Null
 az account show --query '{subscription:name, id:id, user:user.name}' -o table   # check this is the sandbox before going on
 $estimate = & ~/avd-swarm/spikes/s1a/scripts/Get-SpikeEstimate.ps1 | Select-Object -Last 1 | ConvertFrom-Json
 $estimate | Format-List
 ```
 
-If `unpricedLines` is 0, open the run. Otherwise read the warnings first and decide: price the line by hand and add it to the amount and note, or add `-AllowUnpriced`.
+If `unpricedLines` is 0, open the run. Otherwise read the warnings first and decide: price the line by hand and add it to the amount and note, or add `--allow-unpriced`. Put your own monthly cap for this subscription in `$MonthlyCap`.
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-gh auth status *> $null; if ($LASTEXITCODE) { gh auth login --hostname github.com --git-protocol https --web }; gh auth setup-git
-foreach ($r in 'avd-swarm', 'tenant-swarm') { if (Test-Path ~/$r) { git -C ~/$r pull -q } else { gh repo clone "nickprignano/$r" ~/$r -- -q } }
-$Spike = "$HOME/clouddrive/avdswarm-spike"
-$env:AZURE_SUBSCRIPTION_ID = az account show --query id -o tsv
+if (Test-Path ~/avd-swarm) { git -C ~/avd-swarm pull -q } else { git clone -q https://github.com/nickprignano/avd-swarm ~/avd-swarm }
+$Spike = "$HOME/clouddrive/avdswarm-spike"; New-Item -ItemType Directory -Force $Spike | Out-Null
+$MonthlyCap = 150   # yours, in the subscription's billing currency
 $estimate = & ~/avd-swarm/spikes/s1a/scripts/Get-SpikeEstimate.ps1 | Select-Object -Last 1 | ConvertFrom-Json
-& ~/tenant-swarm/scripts/spend/Start-SpendRun.ps1 -Sandbox personal -Kind other -Purpose 'avd-swarm S1a spike' -Hours 6 `
-  -ManualAmount $estimate.manualAmount -ManualNote $estimate.manualNote -RunCap 20 -MonthlyCap 150 -Funding personal-card `
-  -LedgerPath ~/clouddrive/spend-ledger
-$run = Get-ChildItem ~/clouddrive/spend-ledger/personal -Recurse -Filter *.json | Sort-Object LastWriteTime | Select-Object -Last 1 | Get-Content -Raw | ConvertFrom-Json
+$out = python3 ~/avd-swarm/spend/spend_guard.py open --purpose 'avd-swarm S1a spike' --resource-group rg-avdswarm-spike --hours 6 `
+  --estimate $estimate.manualAmount --estimate-note $estimate.manualNote --unpriced-lines $estimate.unpricedLines `
+  --run-cap 20 --monthly-cap $MonthlyCap
+$out
+$run = $out[-1] | ConvertFrom-Json
 if ($run.status -ne 'open') { throw "No open run: $($run.runId) is $($run.status)" }
 $run.runId | Set-Content "$Spike/run-id"
 "Run $($run.runId) is open."
 ```
 
-Set `-MonthlyCap` to your real monthly cap if it isn't 150. A refusal here ends the spike with nothing deployed.
+A refusal here ends the spike with nothing deployed; the refused run is still recorded. `python3 ~/avd-swarm/spend/spend_guard.py status` lists your runs.
 
 ## 2. Deploy the resource group, the models and Q1
 
@@ -66,8 +65,7 @@ Creates `rg-avdswarm-spike` in North Central US with a same-day exemption from t
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-gh auth status *> $null; if ($LASTEXITCODE) { gh auth login --hostname github.com --git-protocol https --web }; gh auth setup-git
-foreach ($r in 'avd-swarm', 'tenant-swarm') { if (Test-Path ~/$r) { git -C ~/$r pull -q } else { gh repo clone "nickprignano/$r" ~/$r -- -q } }
+if (Test-Path ~/avd-swarm) { git -C ~/avd-swarm pull -q } else { git clone -q https://github.com/nickprignano/avd-swarm ~/avd-swarm }
 $Spike = "$HOME/clouddrive/avdswarm-spike"; $RunId = Get-Content "$Spike/run-id"
 & ~/avd-swarm/spikes/s1a/scripts/Start-Spike.ps1 -RunId $RunId | Select-Object -Last 1 | Tee-Object "$Spike/state.json"
 if (-not (Test-Path ~/avdswarm-spike-venv)) { python3 -m venv ~/avdswarm-spike-venv }
@@ -84,8 +82,7 @@ Every Claude deployment carries `modelProviderData` (organization name, country,
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-gh auth status *> $null; if ($LASTEXITCODE) { gh auth login --hostname github.com --git-protocol https --web }; gh auth setup-git
-foreach ($r in 'avd-swarm', 'tenant-swarm') { if (Test-Path ~/$r) { git -C ~/$r pull -q } else { gh repo clone "nickprignano/$r" ~/$r -- -q } }
+if (Test-Path ~/avd-swarm) { git -C ~/avd-swarm pull -q } else { git clone -q https://github.com/nickprignano/avd-swarm ~/avd-swarm }
 $Spike = "$HOME/clouddrive/avdswarm-spike"; $s = Get-Content "$Spike/state.json" | ConvertFrom-Json
 ~/avdswarm-spike-venv/bin/python ~/avd-swarm/spikes/s1a/tools/list_mcp_tools.py --url $s.mcpUrl --app-id $s.mcpAppId | Tee-Object "$Spike/mcp-tools.txt"
 ```
@@ -96,8 +93,7 @@ The first call can take a minute while the Container App scales up from zero. Fr
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-gh auth status *> $null; if ($LASTEXITCODE) { gh auth login --hostname github.com --git-protocol https --web }; gh auth setup-git
-foreach ($r in 'avd-swarm', 'tenant-swarm') { if (Test-Path ~/$r) { git -C ~/$r pull -q } else { gh repo clone "nickprignano/$r" ~/$r -- -q } }
+if (Test-Path ~/avd-swarm) { git -C ~/avd-swarm pull -q } else { git clone -q https://github.com/nickprignano/avd-swarm ~/avd-swarm }
 $Spike = "$HOME/clouddrive/avdswarm-spike"; $s = Get-Content "$Spike/state.json" | ConvertFrom-Json
 $allowed = '<tool-1>,<tool-2>'   # from block 3
 ~/avdswarm-spike-venv/bin/python ~/avd-swarm/spikes/s1a/tools/deploy_agent.py --project-endpoint $s.projectEndpoint --resource $s.foundryName `
@@ -114,8 +110,7 @@ $a = Get-Content "$Spike/agent.json" | ConvertFrom-Json
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-gh auth status *> $null; if ($LASTEXITCODE) { gh auth login --hostname github.com --git-protocol https --web }; gh auth setup-git
-foreach ($r in 'avd-swarm', 'tenant-swarm') { if (Test-Path ~/$r) { git -C ~/$r pull -q } else { gh repo clone "nickprignano/$r" ~/$r -- -q } }
+if (Test-Path ~/avd-swarm) { git -C ~/avd-swarm pull -q } else { git clone -q https://github.com/nickprignano/avd-swarm ~/avd-swarm }
 $Spike = "$HOME/clouddrive/avdswarm-spike"; $s = Get-Content "$Spike/state.json" | ConvertFrom-Json
 ~/avdswarm-spike-venv/bin/python ~/avd-swarm/spikes/s1a/tools/run_evals.py --project-endpoint $s.projectEndpoint --out "$Spike/evals.jsonl" --only p01,p02
 ```
@@ -134,8 +129,7 @@ The portal steps for agents are new and may be named differently; record what yo
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-gh auth status *> $null; if ($LASTEXITCODE) { gh auth login --hostname github.com --git-protocol https --web }; gh auth setup-git
-foreach ($r in 'avd-swarm', 'tenant-swarm') { if (Test-Path ~/$r) { git -C ~/$r pull -q } else { gh repo clone "nickprignano/$r" ~/$r -- -q } }
+if (Test-Path ~/avd-swarm) { git -C ~/avd-swarm pull -q } else { git clone -q https://github.com/nickprignano/avd-swarm ~/avd-swarm }
 $Spike = "$HOME/clouddrive/avdswarm-spike"; $s = Get-Content "$Spike/state.json" | ConvertFrom-Json
 ~/avdswarm-spike-venv/bin/python ~/avd-swarm/spikes/s1a/tools/run_evals.py --project-endpoint $s.projectEndpoint --out "$Spike/evals.jsonl" `
   --only q01,q02,q03,q04,q05,q06,q07,q08,q09,q10
@@ -145,18 +139,21 @@ Start-Sleep -Seconds 300   # Azure Monitor metrics lag a few minutes
 
 ## 8. Keep the evidence
 
-`~/clouddrive/avdswarm-spike/` now holds `state.json`, `mcp-tools.txt`, `agent.json`, `evals.jsonl` and `tokens.json`. They contain resource names and IDs, so they don't go into this repo: paste them here in the thread, or into the private evidence folder, and the results get written into the plan.
+`~/clouddrive/avdswarm-spike/` now holds `state.json`, `mcp-tools.txt`, `agent.json`, `evals.jsonl` and `tokens.json`. They contain resource names and IDs, so they never go into this repo, an issue or a pull request: keep them somewhere private, and write only the results (pass or fail, token counts, cost) into the plan's result table.
 
 ## 9. Tear down and close the run
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-gh auth status *> $null; if ($LASTEXITCODE) { gh auth login --hostname github.com --git-protocol https --web }; gh auth setup-git
-foreach ($r in 'avd-swarm', 'tenant-swarm') { if (Test-Path ~/$r) { git -C ~/$r pull -q } else { gh repo clone "nickprignano/$r" ~/$r -- -q } }
+if (Test-Path ~/avd-swarm) { git -C ~/avd-swarm pull -q } else { git clone -q https://github.com/nickprignano/avd-swarm ~/avd-swarm }
 $Spike = "$HOME/clouddrive/avdswarm-spike"; $RunId = Get-Content "$Spike/run-id"
-$env:AZURE_SUBSCRIPTION_ID = az account show --query id -o tsv
-& ~/avd-swarm/spikes/s1a/scripts/Remove-Spike.ps1 -RunId $RunId
-& ~/tenant-swarm/scripts/spend/Stop-SpendRun.ps1 -Sandbox personal -RunId $RunId -LedgerPath ~/clouddrive/spend-ledger
+& ~/avd-swarm/spikes/s1a/scripts/Remove-Spike.ps1 -RunId $RunId | Select-Object -Last 1 | Set-Content "$Spike/teardown-$RunId.json"
+python3 ~/avd-swarm/spend/spend_guard.py close --run-id $RunId --teardown "$Spike/teardown-$RunId.json"
 ```
 
-Then delete the report-only Conditional Access policy from step 6 if you made one. Leftovers turn the run red: clean up and run this block again. Three days later the daily check settles the run's actual cost; commit `~/clouddrive/spend-ledger` to tenant-swarm's `ledger` branch so the monthly statement sees the run (tenant-swarm docs/spend.md).
+Then delete the report-only Conditional Access policy from step 6 if you made one. Leftovers close the run red: clean up and run this block again. Three days later, settle the run's actual cost from Cost Management (it reads the resource group's charges by day, and flags any after the close day):
+
+```powershell
+$Spike = "$HOME/clouddrive/avdswarm-spike"; $RunId = (Get-ChildItem "$Spike/teardown-*.json" | Sort-Object LastWriteTime | Select-Object -Last 1).BaseName -replace '^teardown-', ''
+python3 ~/avd-swarm/spend/spend_guard.py settle --run-id $RunId
+```

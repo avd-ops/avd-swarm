@@ -16,7 +16,7 @@ param location string = 'eastus2'
 @description('Region for the AVD objects. The landing zone region, so they need no policy exemption.')
 param avdLocation string = resourceGroup().location
 
-@description('Spend run ID, tagged on every resource (tenant-swarm docs/spend.md).')
+@description('Spend run ID from spend/spend_guard.py, tagged on every resource (docs/spend.md).')
 param runId string
 
 @description('foundry: Claude in Foundry and hosted agents. anthropic: the fallback, Anthropic\'s API from a Container App.')
