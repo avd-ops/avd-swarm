@@ -360,8 +360,6 @@ The phases above stay; this is the smallest path that proves the idea, in the or
 
 **v1 is steps 1 to 3** (proposed 2026-10-20, [v1-review.md](v1-review.md)): the spike, read-only agents beside the brain's Tier 1, and the first two writes with every control in front of them. Step 4 is after v1.
 
-**v1 is steps 1 to 3** (proposed 2026-10-20, [v1-review.md](v1-review.md)): the spike, read-only agents beside the brain's Tier 1, and the first two writes with every control in front of them. Step 4 is after v1.
-
 S1a's Foundry run can follow whenever quota arrives, since the spike carries its own meter. The checks built in step 1 for later steps (the agent PR check, the auditor's rules) are pure functions with tests, so the rules are fixed before anything uses them.
 
 ## 10. Open questions
