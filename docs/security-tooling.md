@@ -83,6 +83,8 @@ Long tool output is chunked into documents of at most a few thousand characters,
 
 **What trips.** One `decoy.tripped` marks the conversation the way a Prompt Shields hit does and sends the person a notification; two within a day trip `halt-actions`. Decoys are listed in the allowlist file so the tool-list check (AX-14) counts them as expected, and the evals check that a healthy agent never calls one.
 
+**The estate side.** The same idea for the estate's own resources (a decoy Key Vault secret, key asks on the profile storage account, a tamper check) is specced in [tripwires.md](tripwires.md).
+
 **Limits.** An injection that abuses a real read tool, or only steers the answer text, passes silently (Beelzebub's README says the same). Decoys add a few hundred tokens of tool descriptions per call; the meter counts them.
 
 ## 5. Red-teaming our own agents
