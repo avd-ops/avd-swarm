@@ -50,7 +50,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from meter import Meter, SpendRefused, estimate_input_tokens
-from shield import DECOY_ERROR, SCOPE as CONTENT_SAFETY_SCOPE, Shield, decoys_for
+from shield import DECOY_ERROR, MODES as SHIELD_MODES, SCOPE as CONTENT_SAFETY_SCOPE, Shield, decoys_for
 
 log = logging.getLogger("avdswarm.spike.api")
 logging.basicConfig(level=logging.INFO)
@@ -73,6 +73,8 @@ MAX_TOKENS = 16000
 meter = Meter(cap_usd=float(os.environ.get("TOKEN_SPEND_CAP_USD", "15")))
 CONTENT_SAFETY_ENDPOINT = os.environ.get("CONTENT_SAFETY_ENDPOINT", "")  # empty: the scan is off
 PROMPT_SHIELDS_MODE = os.environ.get("PROMPT_SHIELDS_MODE", "observe")
+if PROMPT_SHIELDS_MODE not in SHIELD_MODES:  # fail at start, not on every question
+    raise SystemExit(f"PROMPT_SHIELDS_MODE must be one of {SHIELD_MODES}, not {PROMPT_SHIELDS_MODE!r}")
 LOGIN = f"https://login.microsoftonline.com/{TENANT}"
 
 COORDINATOR_SYSTEM = (

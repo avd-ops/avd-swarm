@@ -222,6 +222,8 @@ resource agentsApp 'Microsoft.App/containerApps@2024-03-01' = if (provider == 'a
   name: 'ca-avdswarm-agents-${suffix}'
   location: location
   tags: tags
+  // The scan's role assignment exists before the app starts (it can still take minutes to apply; scan errors are counted).
+  dependsOn: [contentSafetyUser]
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: { '${agentsIdentity.id}': {} }

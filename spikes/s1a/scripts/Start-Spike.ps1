@@ -38,6 +38,9 @@ param(
     [switch] $PromptShields,
     [ValidateSet('observe', 'enforce')][string] $PromptShieldsMode = 'observe'
 )
+if ($PromptShields -and $Provider -ne 'Anthropic') {
+    throw '-PromptShields applies to -Provider Anthropic only: Foundry runs its own guardrails. Nothing was deployed.'
+}
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'Spike.psm1') -Force
 

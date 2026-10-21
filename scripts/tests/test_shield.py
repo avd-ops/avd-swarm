@@ -42,17 +42,28 @@ def run(coro):
 
 
 class Chunking(unittest.TestCase):
-    def test_chunks_and_cap(self):
-        docs, rest = shield.chunk("a" * 4_500, size=2_000, cap=4_000)
-        self.assertEqual([len(d) for d in docs], [2_000, 2_000])
+    def test_chunks_overlap_and_cap(self):
+        text = "".join(chr(97 + i % 26) for i in range(2_500))
+        segments, docs, rest = shield.chunk(text, size=900, overlap=100, cap=2_000)
+        self.assertEqual([len(x) for x in segments], [900, 900, 200])
+        self.assertEqual("".join(segments), text[:2_000])
+        self.assertEqual(docs[0], text[:1_000])  # the next segment's first 100 characters
+        self.assertEqual(docs[2], text[1_800:2_000])  # never past the cap
         self.assertEqual(len(rest), 500)
-        self.assertEqual(shield.chunk("", size=10, cap=10), ([], ""))
+        self.assertEqual(shield.chunk("", cap=10), ([], [], ""))
 
-    def test_batches_fit_one_call(self):
-        docs, _ = shield.chunk("x" * shield.RESULT_CAP_CHARS)
-        for batch in shield.batches(docs):
-            self.assertLessEqual(len(batch), shield.DOCS_PER_CALL)
-            shield.request_body(documents=batch)  # within the 10K-character limit, no error
+    def test_boundary_instruction_seen_whole(self):
+        text = "a" * 880 + ATTACK + "b" * 900
+        _, docs, _ = shield.chunk(text)
+        self.assertIn(ATTACK, docs[0])
+
+    def test_batches_fit_one_call_even_in_utf16(self):
+        for ch in ("x", "\U0001F600"):  # an emoji is two UTF-16 units
+            _, docs, _ = shield.chunk(ch * shield.RESULT_CAP_CHARS)
+            for batch in shield.batches(docs):
+                self.assertLessEqual(len(batch), shield.DOCS_PER_CALL)
+                shield.request_body(documents=batch)  # within the 10K-character limit, no error
+        shield.request_body(user_prompt="\U0001F600" * shield.PROMPT_CHARS)
 
     def test_records_round_up(self):
         self.assertEqual(shield.records(["a" * 1_000, "a" * 1_001, "a"]), 1 + 2 + 1)
@@ -63,6 +74,8 @@ class Chunking(unittest.TestCase):
         with self.assertRaises(ValueError):
             shield.request_body(documents=["a" * 6_000, "a" * 6_000])
         with self.assertRaises(ValueError):
+            shield.request_body(documents=["\U0001F600" * 5_001])
+        with self.assertRaises(ValueError):
             shield.request_body(user_prompt="a" * 10_001)
         self.assertEqual(shield.request_body(documents=["d"]), {"userPrompt": "", "documents": ["d"]})
 
@@ -72,6 +85,10 @@ class Chunking(unittest.TestCase):
 
 
 class Decisions(unittest.TestCase):
+    def test_one_verdict_per_segment(self):
+        with self.assertRaises(ValueError):
+            shield.assemble(["a", "b"], [True], "", "enforce", "e1")
+
     def test_observe_passes_everything(self):
         self.assertEqual(shield.assemble(["a", "b"], [True, False], "c", "observe", "e1"), "abc")
 
@@ -107,30 +124,35 @@ class Scanning(unittest.TestCase):
         self.assertNotIn("Ocp-Apim-Subscription-Key", headers)
 
     def test_observe_counts_hit_and_passes_text(self):
-        service, text = FakeService(), "a" * 2_000 + ATTACK + "b" * 100
+        service, text = FakeService(), "a" * 1_000 + ATTACK + "b" * 100
         s = make(service)
         self.assertEqual(run(s.scan_result(text, "hosts", "hostpool_list")), text)
         self.assertEqual(s.counts["shieldHits"], 1)
-        self.assertEqual(s.counts["scannedRecords"], 2 + 1)
+        self.assertEqual(s.counts["scannedRecords"], 2)  # two documents of up to 1,000 characters
         self.assertEqual(s.marked, "flagged")
-        self.assertEqual(s.events, [{"type": "injection.suspected", "agent": "hosts", "tool": "hostpool_list",
-                                     "count": 1, "evidence": s.events[0]["evidence"]}])
+        self.assertEqual(s.events, [{"type": "injection.suspected", "conversation": s.conversation, "agent": "hosts",
+                                     "tool": "hostpool_list", "count": 1, "evidence": s.events[0]["evidence"]}])
 
     def test_enforce_withholds_only_the_flagged_document(self):
-        clean = "a" * 2_000
+        # segments start at 0, 900, 1,800 and 2,700; only segment 2's document (1,800 to 2,800) holds the attack
         s = make(FakeService(), mode="enforce")
-        out = run(s.scan_result(clean + ATTACK, "hosts", "hostpool_list"))
-        self.assertTrue(out.startswith(clean))
-        self.assertNotIn(ATTACK, out)
-        self.assertIn("[withheld: possible prompt injection, evidence ", out)
+        out = run(s.scan_result("a" * 2_000 + ATTACK + "b" * 1_000, "hosts", "hostpool_list"))
+        stub = "[withheld: possible prompt injection, evidence " + s.events[0]["evidence"] + "]"
+        self.assertEqual(out, "a" * 1_800 + stub + "b" * 306)
         self.assertEqual(s.counts["withheldDocuments"], 1)
+
+    def test_enforce_withholds_the_segment_whose_overlap_holds_the_attack(self):
+        s = make(FakeService(), mode="enforce")
+        out = run(s.scan_result("a" * 1_850 + ATTACK + "b" * 100, "hosts", "t"))
+        self.assertNotIn(ATTACK, out)
+        self.assertEqual(s.counts["withheldDocuments"], 2)  # segment 1's document reaches into segment 2
 
     def test_long_result_is_batched_and_capped(self):
         service = FakeService()
         s = make(service)
         text = "a" * (shield.RESULT_CAP_CHARS + 500)
         self.assertEqual(run(s.scan_result(text, "hosts", "t")), text)  # observe passes the rest on
-        self.assertEqual(len(service.calls), 2)  # 10 documents, 5 per call
+        self.assertEqual(len(service.calls), 4)  # 20 documents, 5 per call
         self.assertEqual(s.counts["unscannedChars"], 500)
         self.assertEqual(s.marked, "unscanned")
 
@@ -140,10 +162,27 @@ class Scanning(unittest.TestCase):
         self.assertTrue(out.startswith("a" * shield.RESULT_CAP_CHARS))
         self.assertIn("[withheld: 7 characters past the scan cap", out)
 
-    def test_unreachable_passes_text_and_marks_unscanned(self):
-        s = make(FakeService(fail=True), mode="enforce")
+    def test_unreachable_observe_passes_text(self):
+        s = make(FakeService(fail=True))
         self.assertEqual(run(s.scan_result("x" + ATTACK, "hosts", "t")), "x" + ATTACK)
         self.assertEqual((s.counts["shieldErrors"], s.counts["unscannedChars"], s.marked), (1, 7, "unscanned"))
+
+    def test_unreachable_enforce_withholds(self):
+        s = make(FakeService(fail=True), mode="enforce")
+        out = run(s.scan_result("x" + ATTACK, "hosts", "t"))
+        self.assertNotIn(ATTACK, out)
+        self.assertTrue(out.startswith("[withheld: not scanned, evidence "))
+
+    def test_failure_partway_counts_each_character_once(self):
+        class FailSecond(FakeService):
+            async def post(self, url, headers, body):
+                if self.calls:
+                    self.calls.append(None)
+                    raise TimeoutError
+                return await super().post(url, headers, body)
+        s = make(FailSecond())
+        run(s.scan_result("a" * 9_000, "hosts", "t"))  # 10 segments: the first five scanned, the rest not
+        self.assertEqual((s.counts["scannedRecords"], s.counts["unscannedChars"]), (5, 9_000 - 5 * 900))
 
     def test_incomplete_response_counts_as_unscanned(self):
         s = make(FakeService(short=True))
@@ -171,6 +210,11 @@ class Scanning(unittest.TestCase):
         self.assertEqual(service.calls[0][2], {"userPrompt": "please " + ATTACK, "documents": []})
         self.assertEqual((s.counts["promptHits"], s.marked), (1, "flagged"))
 
+    def test_long_prompt_tail_counted_unscanned(self):
+        s = make(FakeService())
+        run(s.scan_prompt("a" * (shield.PROMPT_CHARS + 30), "coordinator"))
+        self.assertEqual((s.counts["unscannedChars"], s.marked), (30, "unscanned"))
+
 
 class Tripwire(unittest.TestCase):
     def test_counts_and_events_without_text(self):
@@ -180,7 +224,11 @@ class Tripwire(unittest.TestCase):
         self.assertEqual(s.tool_call("hostpool_list", ["hostpool_list"], "hosts"), "allowed")
         evidence = s.evidence()
         self.assertEqual((evidence["decoyCalls"], evidence["unknownToolCalls"], evidence["marked"]), (1, 1, "flagged"))
-        self.assertEqual(evidence["events"], [{"type": "decoy.tripped", "agent": "hosts", "tool": "export_session_recordings"}])
+        self.assertEqual(evidence["events"], [{"type": "decoy.tripped", "conversation": s.conversation, "agent": "hosts",
+                                               "tool": "export_session_recordings"}])
+
+    def test_conversations_are_told_apart(self):
+        self.assertNotEqual(make(FakeService()).conversation, make(FakeService()).conversation)
 
     def test_evidence_never_holds_text(self):
         s = make(FakeService())

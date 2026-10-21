@@ -49,7 +49,10 @@ param(
     [switch] $KeepOnFailure,
     [switch] $TeardownOnly,
     # Foundry: Claude in Foundry with hosted agents. Anthropic: the fallback (see the third example).
-    [ValidateSet('Foundry', 'Anthropic')][string] $Provider = 'Foundry'
+    [ValidateSet('Foundry', 'Anthropic')][string] $Provider = 'Foundry',
+    # Anthropic only: scan the question and tool results with Prompt Shields on a free-tier resource (red team R26).
+    [switch] $PromptShields,
+    [ValidateSet('observe', 'enforce')][string] $PromptShieldsMode = 'observe'
 )
 $ErrorActionPreference = 'Stop'
 
@@ -229,7 +232,7 @@ try {
 
     # ---------- Price it and open the spend run ----------
     Invoke-Step 'price-and-open-run' {
-        $estimateArgs = if ($Provider -eq 'Anthropic') { @{ Provider = 'Anthropic'; Region = 'northcentralus' } } else { @{} }
+        $estimateArgs = if ($Provider -eq 'Anthropic') { @{ Provider = 'Anthropic'; Region = 'northcentralus'; PromptShields = $PromptShields } } else { @{} }
         $estimate = & (Join-Path $Kit 'scripts/Get-SpikeEstimate.ps1') @estimateArgs | Select-Object -Last 1 | ConvertFrom-Json
         Write-Host "`nAzure lines: $($estimate.manualAmount) ($($estimate.unpricedLines) unpriced)`n$($estimate.manualNote)"
         if ($estimate.unpricedLines -gt 0 -and -not $AllowUnpriced) {
@@ -257,7 +260,8 @@ try {
     Invoke-Step 'deploy' {
         if ($Provider -eq 'Anthropic') {
             Write-Host 'Deploying the resource group, the MCP server, the agents app and the host pool, and creating the Agent ID blueprint; 5 to 15 minutes.'
-            & (Join-Path $Kit 'scripts/Start-Spike.ps1') -RunId $RunId -Provider Anthropic -Location northcentralus |
+            & (Join-Path $Kit 'scripts/Start-Spike.ps1') -RunId $RunId -Provider Anthropic -Location northcentralus `
+                -PromptShields:$PromptShields -PromptShieldsMode $PromptShieldsMode |
                 Select-Object -Last 1 | Set-Content "$Spike/state.json"
         }
         else {
