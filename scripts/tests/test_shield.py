@@ -172,6 +172,7 @@ class Scanning(unittest.TestCase):
         out = run(s.scan_result("x" + ATTACK, "hosts", "t"))
         self.assertNotIn(ATTACK, out)
         self.assertTrue(out.startswith("[withheld: not scanned, evidence "))
+        self.assertEqual(s.evidence()["lastError"], "ConnectionError: unreachable")
 
     def test_failure_partway_counts_each_character_once(self):
         class FailSecond(FakeService):

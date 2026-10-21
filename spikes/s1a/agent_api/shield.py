@@ -151,6 +151,7 @@ class Shield:
         "withheldDocuments": 0, "unknownToolCalls": 0, "decoyCalls": 0})
     events: list = field(default_factory=list)
     marked: str = ""  # '', 'flagged' or 'unscanned': why plans from this conversation would need the observer
+    last_error: str = ""  # the last failed call's error type and message (a status, never the scanned text)
 
     def __post_init__(self):
         if self.mode not in MODES:
@@ -180,8 +181,8 @@ class Shield:
             for batch in batches(documents):
                 hits += document_hits(await self._call(request_body(documents=batch)), len(batch))
                 self.counts["scannedRecords"] += records(batch)  # billed even if a later batch fails
-        except Exception:  # security-tooling.md section 3: observe passes it on, enforce withholds it
-            self.counts["shieldErrors"] += 1
+        except Exception as error:  # security-tooling.md section 3: observe passes it on, enforce withholds it
+            self.failed(error)
             self.counts["unscannedChars"] += sum(len(s) for s in segments[len(hits):]) + len(rest)
             self.mark("unscanned")
             return text if self.mode == "observe" else UNSCANNED_STUB.format(id=evidence_id)
@@ -208,8 +209,8 @@ class Shield:
         try:
             hit = prompt_hit(await self._call(request_body(user_prompt=scanned)))
             self.counts["scannedRecords"] += records([scanned])
-        except Exception:
-            self.counts["shieldErrors"] += 1
+        except Exception as error:
+            self.failed(error)
             self.counts["unscannedChars"] += len(scanned)
             self.mark("unscanned")
             return
@@ -217,6 +218,12 @@ class Shield:
             self.counts["promptHits"] += 1
             self.mark("flagged")
             self.events.append(self._event("injection.suspected", agent, "(operator prompt)", count=1))
+
+    def failed(self, error: Exception) -> None:
+        # Messages come from content_safety_post (status only), document_hits (counts) or the HTTP client
+        # (the URL); none carries the scanned text.
+        self.counts["shieldErrors"] += 1
+        self.last_error = f"{type(error).__name__}: {error}"[:200]
 
     def _event(self, kind: str, agent: str, tool: str, **extra) -> dict:
         return {"type": kind, "conversation": self.conversation, "agent": agent, "tool": tool, **extra}
@@ -235,4 +242,4 @@ class Shield:
     def evidence(self) -> dict:
         """Counts and events for the job's evidence: never the text."""
         return {"mode": self.mode if self.on else "off", "conversation": self.conversation, "marked": self.marked,
-                **self.counts, "events": list(self.events)}
+                **self.counts, "lastError": self.last_error, "events": list(self.events)}

@@ -329,6 +329,8 @@ async def answer(question: str, hosts_model: str, identity_app_id: str) -> dict:
         evidence["shield"] = guard.evidence()
         for event in guard.events:
             log.warning("security event %s", json.dumps(event))
+        if guard.counts["shieldErrors"]:  # SQ10: a 401 or 403 here means the keyless call or its role isn't working
+            log.warning("prompt shields failed %d time(s), last: %s", guard.counts["shieldErrors"], guard.last_error)
     return {"answer": text, "handedOff": handed_off, "seconds": round(time.monotonic() - started, 1),
             "usage": totals, "evidence": evidence}
 
