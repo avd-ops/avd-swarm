@@ -21,4 +21,4 @@ On 2026-10-21 the owner judged Azure SRE Agent (about $292 a month until deleted
 - Good: an adopter runs everything from this repo and a free GitHub account for about ten dollars a month plus tokens; every dependency is readable and forkable.
 - Good: spec section 3a's red-teamed SRE Agent controls are kept as the adapter's design and cost nothing while off.
 - Bad: three capabilities (runbooks, the check runner, the gateway package) are ours to build and keep; the parity checklists and the brain's freshness workflow keep that honest.
-- Supersedes the opening of spec section 3a (the 2026-10-20 interim choice), SQ11's "yes", and v1-review D10's default. Everything else in section 3a stands as the `sre-agent` adapter.
+- On acceptance it supersedes v1-review D10's default and turns spec section 3a into the `sre-agent` adapter page (WP0). The PR that proposes it records only the owner's 2026-10-21 decision in section 3a's opening and SQ11; the decision itself waits.
