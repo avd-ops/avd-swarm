@@ -18,7 +18,7 @@ param(
     [int] $Agents = 3,
     # Anthropic: the fallback. No hosted agents; one more Container App (the agents), and tokens billed by Anthropic.
     [ValidateSet('Foundry', 'Anthropic')][string] $Provider = 'Foundry',
-    # Anthropic only: the Prompt Shields scan's free-tier Content Safety resource (agent_api/shield.py).
+    # Anthropic only: the Prompt Shields scan's free-tier Content Safety resource (gateway/avd_gateway/shield.py).
     [switch] $PromptShields
 )
 $ErrorActionPreference = 'Stop'

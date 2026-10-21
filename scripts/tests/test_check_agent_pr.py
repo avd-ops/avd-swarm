@@ -51,7 +51,7 @@ class AgentPr(unittest.TestCase):
 
     def test_the_checks_and_their_policy_protect_themselves(self):
         for path in ("scripts/check_agent_pr.py", "scripts/check_workflows.py", "governance/protected-paths.yml",
-                     ".github/workflows/guard.yml", "scripts/tests/test_check_agent_pr.py", "spikes/s1a/agent_api/meter.py"):
+                     ".github/workflows/guard.yml", "scripts/tests/test_check_agent_pr.py", "gateway/avd_gateway/meter.py"):
             self.assertTrue(any(check_agent_pr.matches(path, p) for p in POLICY["protected"]), path)
 
 

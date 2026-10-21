@@ -1,0 +1,24 @@
+# Model prices the gateway meters with (gateway/avd_gateway/prices.py; spend.md section 3.7 item 2).
+# Protected path: an agent-authored PR can't change it, and a person's change is reviewed like any
+# guardrail. USD per million tokens. A model with no row here is refused, never guessed. Re-read each
+# provider's published prices before changing a row, and update `read` with the date.
+#
+# cacheWrite is the 5-minute cache write price. longContext, where a model has one, replaces the
+# whole row once a prompt (input plus cache read and write) passes `threshold` tokens.
+currency: USD
+unit: per-million-tokens
+providers:
+  anthropic:
+    source: https://platform.claude.com/docs/en/about-claude/pricing
+    read: 2026-10-06
+    models:
+      claude-opus-5-5: {input: 4.00, output: 20.00, cacheRead: 0.20, cacheWrite: 5.00}
+      claude-sonnet-5-5: {input: 2.00, output: 10.00, cacheRead: 0.20, cacheWrite: 2.50}
+      claude-haiku-5-5:
+        input: 0.10
+        output: 0.50
+        cacheRead: 0.01
+        cacheWrite: 0.125
+        longContext: {threshold: 100000, input: 0.50, output: 2.50, cacheRead: 0.05, cacheWrite: 0.625}
+  # foundry and azure-openai have no rows yet: they serve the model-host adapter (adapters/foundry),
+  # which is off by default. Add rows from the retail prices API when an adopter estimates it.

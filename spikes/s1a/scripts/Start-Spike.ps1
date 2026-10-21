@@ -33,7 +33,7 @@ param(
     # Anthropic: the fallback without Foundry (Anthropic's API from a Container App, Entra Agent ID through Graph).
     # No API key: the agents app calls Claude with Anthropic workload identity federation (its managed identity).
     [ValidateSet('Foundry', 'Anthropic')][string] $Provider = 'Foundry',
-    # Anthropic only: scan the question and every tool result with Prompt Shields (agent_api/shield.py, red team R26),
+    # Anthropic only: scan the question and every tool result with Prompt Shields (gateway/avd_gateway/shield.py, red team R26),
     # on a free-tier Content Safety resource with local auth disabled. Observe mode counts hits and changes nothing.
     [switch] $PromptShields,
     [ValidateSet('observe', 'enforce')][string] $PromptShieldsMode = 'observe'

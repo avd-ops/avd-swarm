@@ -195,13 +195,16 @@ param operatorObjectId string = ''
 @description('anthropic only: base URL of agent_api/ at the pushed commit (raw.githubusercontent.com); the container installs and runs it.')
 param agentCodeUrl string = ''
 
-@description('anthropic only: the run\'s cap on Claude spend in USD, metered from each response before the next call (agent_api/meter.py).')
+// The repo root at the same commit, for the gateway package and governance/model-prices.yml (agentCodeUrl ends in /spikes/s1a/agent_api).
+var repoCodeUrl = replace(agentCodeUrl, '/spikes/s1a/agent_api', '')
+
+@description('anthropic only: the run\'s cap on Claude spend in USD, metered from each response before the next call (gateway/avd_gateway/meter.py).')
 param tokenSpendCapUsd string = '15'
 
 @description('anthropic only: client ID of the app registration Entra issues Claude API tokens for (workload identity federation, Start-Spike.ps1 creates it).')
 param claudeAudienceAppId string = ''
 
-@description('anthropic only: scan the question and every tool result with Prompt Shields (agent_api/shield.py, red team R26). Off by default; the free tier allows one Content Safety F0 resource per subscription.')
+@description('anthropic only: scan the question and every tool result with Prompt Shields (gateway/avd_gateway/shield.py, red team R26). Off by default; the free tier allows one Content Safety F0 resource per subscription.')
 param promptShields bool = false
 
 @description('anthropic only: observe counts hits and passes text through; enforce withholds flagged documents.')
@@ -245,9 +248,10 @@ resource agentsApp 'Microsoft.App/containerApps@2024-03-01' = if (provider == 'a
           name: 'agents'
           image: 'docker.io/library/python:3.13-slim'
           command: ['sh', '-c']
-          // No image build: install the pinned requirements and fetch main.py, meter.py and shield.py from the pushed commit, then run it.
+          // No image build: install the pinned requirements, fetch main.py, the gateway package (meter and Prompt Shields scan) and the
+          // pinned model prices from the pushed commit, then run it.
           args: [
-            'pip install --no-cache-dir -q -r ${agentCodeUrl}/requirements.txt && python -c "import urllib.request as u; [u.urlretrieve(\'${agentCodeUrl}/\' + f, \'/tmp/\' + f) for f in (\'main.py\', \'meter.py\', \'shield.py\')]" && exec python /tmp/main.py'
+            'pip install --no-cache-dir -q -r ${agentCodeUrl}/requirements.txt && python -c "import os, urllib.request as u; os.makedirs(\'/tmp/avd_gateway\', exist_ok=True); u.urlretrieve(\'${agentCodeUrl}/main.py\', \'/tmp/main.py\'); [u.urlretrieve(\'${repoCodeUrl}/gateway/avd_gateway/\' + f, \'/tmp/avd_gateway/\' + f) for f in (\'__init__.py\', \'prices.py\', \'meter.py\', \'shield.py\')]; u.urlretrieve(\'${repoCodeUrl}/governance/model-prices.yml\', \'/tmp/model-prices.yml\')" && exec python /tmp/main.py'
           ]
           resources: { cpu: json('0.5'), memory: '1Gi' }
           env: [
