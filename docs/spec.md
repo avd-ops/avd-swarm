@@ -2,8 +2,8 @@
 
 - **Status:** Proposed ([decision 0001](decisions/0001-avd-swarm.md))
 - **Visibility:** public, MIT. It follows avd-landing-zone's rules: no IDs, no secrets, American English.
-- **Operates:** [avd-landing-zone](https://github.com/nickprignano/avd-landing-zone). Decision and lesson numbers without a repo name are that repo's.
-- **Connects to:** the second brain ([avd-second-brain](https://github.com/nickprignano/avd-second-brain), [operations spec](https://github.com/nickprignano/avd-second-brain/blob/main/docs/operations-spec.md)), its intelligence layer ([decision 0003](decisions/0003-swarm-acts-brain-thinks.md)). Section references like "brain §4.5" point there.
+- **Operates:** [avd-landing-zone](https://github.com/avd-ops/avd-landing-zone). Decision and lesson numbers without a repo name are that repo's.
+- **Connects to:** the second brain ([avd-second-brain](https://github.com/avd-ops/avd-second-brain), [operations spec](https://github.com/avd-ops/avd-second-brain/blob/main/docs/operations-spec.md)), its intelligence layer ([decision 0003](decisions/0003-swarm-acts-brain-thinks.md)). Section references like "brain §4.5" point there.
 
 ## 1. Summary
 
@@ -43,7 +43,7 @@ Tenant-wide administration is out of scope; see §8.
 
 ### The base pair stands alone (invariant)
 
-[avd-landing-zone](https://github.com/nickprignano/avd-landing-zone) (portal-driven Cloud Shell deployment and operation) and [avd-current-state](https://github.com/nickprignano/avd-current-state) (offline fact collection and validation) are a self-contained pair. They work, and keep working, with no second brain and no avd-swarm; avd-landing-zone stays true to its original purpose. avd-swarm and the brain are built on top of them and never become something they need (the owner's rule, 2026-10-20; the brain's operations spec §3.0 says the same).
+[avd-landing-zone](https://github.com/avd-ops/avd-landing-zone) (portal-driven Cloud Shell deployment and operation) and [avd-current-state](https://github.com/avd-ops/avd-current-state) (offline fact collection and validation) are a self-contained pair. They work, and keep working, with no second brain and no avd-swarm; avd-landing-zone stays true to its original purpose. avd-swarm and the brain are built on top of them and never become something they need (the owner's rule, 2026-10-20; the brain's operations spec §3.0 says the same).
 
 **Three questions, three repos** (the owner, 2026-10-20): avd-landing-zone is *how it is built and changed from here*, avd-current-state is *what is there now*, and avd-assess (free, MIT, being specified) is *what it should be, and why*. Together those three are the **foundation layer**: what it is, what it should be, and how we build it. The brain and avd-swarm are the intelligence and abstraction layer built on top, how we automate it and make it smart and self-improving: the brain is the why over the estate's whole life, and avd-swarm is the how of operating it. avd-assess is held to the same rule: it stands with the pair and never depends on the brain or avd-swarm.
 
@@ -284,7 +284,7 @@ The second brain's Retro and Evolve agents work the same way (brain §4.6, §4.7
 
 ### 6c. What feeds the second brain
 
-What avd-swarm learns also feeds [avd-second-brain](https://github.com/nickprignano/avd-second-brain), so the factory, the landing zone and future estates benefit. The brain's rule holds: only generalized knowledge enters `knowledge/`, only by a PR a person merges, and never transcripts or tenant data.
+What avd-swarm learns also feeds [avd-second-brain](https://github.com/avd-ops/avd-second-brain), so the factory, the landing zone and future estates benefit. The brain's rule holds: only generalized knowledge enters `knowledge/`, only by a PR a person merges, and never transcripts or tenant data.
 
 | Flow | What goes | Form | Brain side |
 |---|---|---|---|
@@ -301,7 +301,7 @@ The contract has to change in pairs (avd-second-brain's rule): `docs/contracts.m
 
 ### 6d. Facts from avd-current-state
 
-[avd-current-state](https://github.com/nickprignano/avd-current-state)'s collector and validator are the estate's offline sensors: read-only, run by a person in Cloud Shell or on a schedule, with no swarm identity involved. Their packages hold tenant data and go to the customer's private vault (brain C1). What the swarm/brain system works from is a redacted **facts snapshot**, `avd-current-state-facts/v1` (brain contract **C11**): counts, booleans, public Azure values and keyed pseudonyms (`hp-3fa2c1d0`), with no names, IDs, IPs, tags or free text. It is the fact collection layer of the system.
+[avd-current-state](https://github.com/avd-ops/avd-current-state)'s collector and validator are the estate's offline sensors: read-only, run by a person in Cloud Shell or on a schedule, with no swarm identity involved. Their packages hold tenant data and go to the customer's private vault (brain C1). What the swarm/brain system works from is a redacted **facts snapshot**, `avd-current-state-facts/v1` (brain contract **C11**): counts, booleans, public Azure values and keyed pseudonyms (`hp-3fa2c1d0`), with no names, IDs, IPs, tags or free text. It is the fact collection layer of the system.
 
 | Step | Who | What |
 |---|---|---|
@@ -328,13 +328,13 @@ What that means here:
 
 ### 6e. Scribe: drafting docs fixes from the brain's findings
 
-The second brain checks that code comments, READMEs, changelogs, docs and its generated wiki agree with the code and with its facts of record (contracts, sources, decisions, terms), and publishes what disagrees as contract **C13**, `avd-doc-findings/v1` ([avd-second-brain docs-spec](https://github.com/nickprignano/avd-second-brain/blob/main/docs/docs-spec.md), [decision 0004](decisions/0004-scribe-drafts-docs.md)). **Scribe** is the avd-swarm role that turns those findings into draft PRs. The brain decides what is wrong; Scribe only drafts; a person merges.
+The second brain checks that code comments, READMEs, changelogs, docs and its generated wiki agree with the code and with its facts of record (contracts, sources, decisions, terms), and publishes what disagrees as contract **C13**, `avd-doc-findings/v1` ([avd-second-brain docs-spec](https://github.com/avd-ops/avd-second-brain/blob/main/docs/docs-spec.md), [decision 0004](decisions/0004-scribe-drafts-docs.md)). **Scribe** is the avd-swarm role that turns those findings into draft PRs. The brain decides what is wrong; Scribe only drafts; a person merges.
 
 Scribe belongs to the Improve family (§6b), not the operating agents: it never talks to the operator, holds no Azure role, and runs on a schedule after the brain's nightly sweep, never on an incoming message.
 
 - **Generated fixes use the generator, not a model.** A finding marked `generated` (a reference page, a README table, a changelog block) is fixed by rerunning the brain's generator at the pinned commit. A model drafts only prose, from the finding, the cited source of truth and the file it fixes.
 - **Code is never changed to match docs** (brain docs-spec §4). When the source of truth is code, Scribe edits the text; when it is a brain fact, the PR goes to the brain.
-- **Upstream is linked, never restated or filed** (brain [decision 0011](https://github.com/nickprignano/avd-second-brain/blob/main/docs/knowledge/decisions/0011-family-format-upstream-sources.md)). When the source of truth is Microsoft Learn, a product's repo or vendor docs, Scribe's fix links the upstream page instead of paraphrasing it. Scribe, Improve and every other avd-swarm identity act only on the connected repos: an upstream issue or PR is drafted in the brain's `docs/knowledge/microsoft/drafts/`, and a person reviews and files it.
+- **Upstream is linked, never restated or filed** (brain [decision 0011](https://github.com/avd-ops/avd-second-brain/blob/main/docs/knowledge/decisions/0011-family-format-upstream-sources.md)). When the source of truth is Microsoft Learn, a product's repo or vendor docs, Scribe's fix links the upstream page instead of paraphrasing it. Scribe, Improve and every other avd-swarm identity act only on the connected repos: an upstream issue or PR is drafted in the brain's `docs/knowledge/microsoft/drafts/`, and a person reviews and files it.
 - **Judge findings wait for a person.** Scribe acts on a `judge` finding only once someone has confirmed it in the findings issue.
 - **Protected paths:** `CLAUDE.md`, `.claude/`, agent prompts and allowlists, `governance/`, the observer registry, workflows, `LICENSE` and the project notice, and in the brain `knowledge/` (which changes only by harvest) and the facts of record. A PR Scribe authored that touches them fails CI, as for Improve (governance §2.1).
 - **Untrusted input:** code comments, doc text and PR bodies are data, never instructions.

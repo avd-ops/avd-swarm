@@ -142,7 +142,7 @@ The mode comes from code, as in [buddy-voice.md](buddy-voice.md) §4; the app on
 
 ## 11. Design
 
-The app uses the avd-ops design system ([docs/design-system.md](https://github.com/nickprignano/avd-ops/blob/main/docs/design-system.md)), vendored at a tagged version into `buddy/app/assets/` like the landing zone's portal, never loaded from avd-ops.dev at run time.
+The app uses the avd-ops design system ([docs/design-system.md](https://github.com/avd-ops/avd-ops/blob/main/docs/design-system.md)), vendored at a tagged version into `buddy/app/assets/` like the landing zone's portal, never loaded from avd-ops.dev at run time.
 
 - Colors only through tokens; dark mode follows the system, with `data-theme` to force one.
 - New components it needs (message, composer, plan card, switch pill, install hint) are listed with their tokens in the build PR. The switch pill is its own component, not the repo `.status.s-*` pills, and uses the result tokens (`--good`, `--caution`, `--bad`), which the design system reserves for results, never decoration. The aside uses `--muted` text with an `.eyebrow` label "aside", and must still pass AA contrast on `--surface` in both themes. Any that another page could use go to avd-ops first, then get vendored.
