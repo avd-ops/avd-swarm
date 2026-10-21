@@ -1,6 +1,6 @@
 # avd-swarm v1 completeness review
 
-- **Date:** 2026-10-20. Reviewed `main` at `53f5fe4` and the open drafts that change the spec: #18 (claims on every edge, §4a), #21 (Well-Architected review), #23 (never delete the last copy), the recovery branch (decision 0006, `recovery.md`) and the "why" work (decision 0007, §6f). Paired with [avd-second-brain's v1 review](https://github.com/nickprignano/avd-second-brain/blob/main/docs/v1-review.md).
+- **Date:** 2026-10-20. Reviewed `main` at `53f5fe4` and the open drafts that change the spec: #18 (claims on every edge, §4a), #21 (Well-Architected review), #23 (never delete the last copy), the recovery branch (decision 0006, `recovery.md`) and the "why" work (decision 0007, §6f). Paired with [avd-second-brain's v1 review](https://github.com/avd-ops/avd-second-brain/blob/main/docs/v1-review.md).
 - **Status:** Proposed, ready to lock once the owner answers §8's decisions (each has a default). Red-teamed on 2026-10-20 (findings V1-1 to V1-38, §8). Offline review only: nothing was deployed, run or spent.
 - **What "complete" means here:** every part of v1 has a home, an owner and a rule; what is still undecided is listed with a default; nothing contradicts anything else. It does not mean built.
 
@@ -101,7 +101,7 @@ Every proposed change was checked for a place where avd-landing-zone or avd-curr
 
 ## 7. Decisions only the owner can make
 
-There is one list for both repos, in [avd-second-brain's v1 review §7](https://github.com/nickprignano/avd-second-brain/blob/main/docs/v1-review.md#7-decisions-only-the-owner-can-make). The ones that are avd-swarm's: v1 = steps 1 to 3 (D2), no MCP server of our own in v1 (D4), the policy engine spike (D6), Python for the agent service (D7), the Well-Architected scope cut (D8, answered: consume WARA), Azure SRE Agent (D10) and the red team's owner items D11 to D17 (SRE Agent's residual risk, the failover identity, public text). Each has a default the work follows until answered.
+There is one list for both repos, in [avd-second-brain's v1 review §7](https://github.com/avd-ops/avd-second-brain/blob/main/docs/v1-review.md#7-decisions-only-the-owner-can-make). The ones that are avd-swarm's: v1 = steps 1 to 3 (D2), no MCP server of our own in v1 (D4), the policy engine spike (D6), Python for the agent service (D7), the Well-Architected scope cut (D8, answered: consume WARA), Azure SRE Agent (D10) and the red team's owner items D11 to D17 (SRE Agent's residual risk, the failover identity, public text). Each has a default the work follows until answered.
 
 ## 8. Red team of the v1 specs (2026-10-20)
 

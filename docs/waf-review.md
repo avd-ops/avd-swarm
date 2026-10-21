@@ -3,7 +3,7 @@
 - **Status:** Proposed (2026-10-20). Design only: nothing here is built, scheduled or run, and it needs no spend until its first eval run, which is estimated in the [spend.md](spend.md) format first.
 - **Part of:** [spec.md](spec.md) (agents §4, write path §5, facts §6d), [governance.md](governance.md). Build order: §9a step 4, "designed, not scheduled", until a person moves it (§9 below).
 - **Pairs with:** avd-second-brain, which feeds the review its knowledge and facts and takes its findings into the Posture loop ([decision 0003](decisions/0003-swarm-acts-brain-thinks.md), §7 below).
-- **Consumes:** the [Azure/review-checklists](https://github.com/Azure/review-checklists) AVD checklist, Microsoft's [WARA](https://github.com/Azure/Well-Architected-Reliability-Assessment) collector, and avd-landing-zone's Well-Architected review, `Test-AvdLandingZoneReadiness.ps1 -WellArchitected` ([landing-zone decision 0009](https://github.com/nickprignano/avd-landing-zone/blob/master/build/decisions/0009-well-architected-review.md)).
+- **Consumes:** the [Azure/review-checklists](https://github.com/Azure/review-checklists) AVD checklist, Microsoft's [WARA](https://github.com/Azure/Well-Architected-Reliability-Assessment) collector, and avd-landing-zone's Well-Architected review, `Test-AvdLandingZoneReadiness.ps1 -WellArchitected` ([landing-zone decision 0009](https://github.com/avd-ops/avd-landing-zone/blob/master/build/decisions/0009-well-architected-review.md)).
 
 ## 1. Summary
 
@@ -26,7 +26,7 @@ Microsoft's assessments ([Azure Well-Architected Review](https://learn.microsoft
 - Ask the operator as little as possible: never a question that a read could answer.
 - Turn findings into governed plans or PRs from the same screen, with no new write path.
 - Repeat the review and show what changed since the last one (a milestone, as Microsoft's assessment calls it).
-- Link Microsoft Learn for the guidance instead of restating it ([avd-second-brain decision 0011](https://github.com/nickprignano/avd-second-brain/blob/main/docs/knowledge/decisions/0011-family-format-upstream-sources.md)).
+- Link Microsoft Learn for the guidance instead of restating it ([avd-second-brain decision 0011](https://github.com/avd-ops/avd-second-brain/blob/main/docs/knowledge/decisions/0011-family-format-upstream-sources.md)).
 
 ### Non-goals
 - Any change made by the review itself, or any "accept" or "fix" that completes inside the chat (spec §2).
@@ -113,7 +113,7 @@ The review doesn't compute scores (prior art check, 2026-10-20). It shows Micros
 
 ### 6a. How avd-buddy shows it (design pass)
 
-avd-buddy uses the family's [avd-ops design system](https://github.com/nickprignano/avd-ops/blob/main/docs/design-system.md) (v1.0.0), vendored into `buddy/` like the portal's copy, with no hex values, font CDNs or inline styles of its own. The review needs five patterns. They are built from existing tokens and components, and any new class goes into avd-ops first and is then vendored. These are proposals for that PR, not built yet.
+avd-buddy uses the family's [avd-ops design system](https://github.com/avd-ops/avd-ops/blob/main/docs/design-system.md) (v1.0.0), vendored into `buddy/` like the portal's copy, with no hex values, font CDNs or inline styles of its own. The review needs five patterns. They are built from existing tokens and components, and any new class goes into avd-ops first and is then vendored. These are proposals for that PR, not built yet.
 
 | Pattern | Built from | Notes |
 |---|---|---|
