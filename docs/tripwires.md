@@ -68,9 +68,9 @@ union isfuzzy=true
      | project TimeGenerated, OperationName, Uri = tostring(RequestUri), ResultSignature, Authorized = tostring(IsAddressAuthorized))
 | where ingestion_time() > since and TimeGenerated > ago(1d)
 | where OperationName in ("SecretGet", "SecretBackup")
-| extend Secret = extract(@"/secrets/([^/?]+)", 1, Uri)
+| extend Secret = extract(@"/secrets/([^/?]+)", 1, Uri), Ingested = ingestion_time()
 | where Secret in (names)
-| summarize Hits = count(), Last = max(TimeGenerated) by Secret, OperationName, ResultSignature, Authorized
+| summarize Hits = count(), Mark = max(Ingested) by Secret, OperationName, ResultSignature, Authorized
 ```
 
 - **Time window.** The high-water mark is on ingestion time, not event time, so a row that arrives late (Key Vault logs can arrive about ten minutes after the event) is still read once and never twice; the one-day floor only bounds the scan.
