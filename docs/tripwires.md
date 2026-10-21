@@ -63,12 +63,12 @@ let names = dynamic(["<decoy-name>", "<break-glass-name>"]);  // from the privat
 let since = todatetime("<high-water mark>");                   // last processed ingestion time, from the run store
 union isfuzzy=true
   (AzureDiagnostics | where ResourceProvider == "MICROSOFT.KEYVAULT"
-     | project TimeGenerated, OperationName, Uri = requestUri_s, ResultSignature, Authorized = tostring(column_ifexists("isAddressAuthorized_b", ""))),
+     | project TimeGenerated, Ingested = ingestion_time(), OperationName, Uri = requestUri_s, ResultSignature, Authorized = tostring(column_ifexists("isAddressAuthorized_b", ""))),
   (AZKVAuditLogs
-     | project TimeGenerated, OperationName, Uri = tostring(RequestUri), ResultSignature, Authorized = tostring(IsAddressAuthorized))
-| where ingestion_time() > since and TimeGenerated > ago(1d)
+     | project TimeGenerated, Ingested = ingestion_time(), OperationName, Uri = tostring(RequestUri), ResultSignature, Authorized = tostring(IsAddressAuthorized))
+| where Ingested > since and TimeGenerated > ago(1d)
 | where OperationName in ("SecretGet", "SecretBackup")
-| extend Secret = extract(@"/secrets/([^/?]+)", 1, Uri), Ingested = ingestion_time()
+| extend Secret = extract(@"/secrets/([^/?]+)", 1, Uri)
 | where Secret in (names)
 | summarize Hits = count(), Mark = max(Ingested) by Secret, OperationName, ResultSignature, Authorized
 ```
