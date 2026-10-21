@@ -12,7 +12,7 @@ A second red team (2026-10-19, [redteam.md](../redteam.md) R17 to R23) found tha
 - **Solo mode.** With one approver, the 72-hour time-lock and the guard's deterministic summary stand in for a second person on changes that raise capability ([governance](../governance.md) §2.6). AI reviews never count.
 - **Agents open PRs as GitHub Apps**, never with the default token, so the guard runs on them.
 - **Model calls are stopped and metered in one place:** a model client that checks the kill switch and a token meter before every call, plus the provider's own workspace limit ([spend.md](../spend.md) §3.7).
-- **Build order:** close the holes first at $0, then the adopter repo and its controls, then read-only agents, then the first actions (spec §9a).
+- **Build order:** close the holes first at $0, then read-only agents, then the adopter repo with its controls and the first actions (spec §9a; the order was settled there after this record was written: no write path exists before step 3).
 
 ## Consequences
 - Nick's own sandbox becomes an adopter: a private repo he creates, with the write path's variables and environments there, not here.

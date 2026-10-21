@@ -1,5 +1,7 @@
 # avd-swarm
 
+Part of [avd-ops](https://avd-ops.dev/), the open toolkit for Azure Virtual Desktop.
+
 > [!WARNING]
 > **Personal project. Research and learning only. Not for production. No warranty.**
 >
@@ -18,6 +20,7 @@ The write path never runs in this public repo: adopters run it from a private re
 
 - Spec: [docs/spec.md](docs/spec.md)
 - Decisions: [docs/decisions](docs/decisions)
+- Recovery tests and failover: [docs/recovery.md](docs/recovery.md)
 - Rules: [CLAUDE.md](CLAUDE.md)
 - Changes: [CHANGELOG.md](CHANGELOG.md)
 
