@@ -11,7 +11,7 @@ Everything it needs is in this public repo. The spend run comes from [spend/spen
 ## One command
 
 ```powershell
-if (Test-Path ~/avd-swarm) { git -C ~/avd-swarm pull -q } else { git clone -q https://github.com/nickprignano/avd-swarm ~/avd-swarm }
+if (Test-Path ~/avd-swarm) { git -C ~/avd-swarm pull -q } else { git clone -q https://github.com/avd-ops/avd-swarm ~/avd-swarm }
 & ~/avd-swarm/spikes/s1a/Invoke-Spike.ps1
 ```
 
@@ -20,7 +20,7 @@ if (Test-Path ~/avd-swarm) { git -C ~/avd-swarm pull -q } else { git clone -q ht
 ### Without Foundry quota: `-Provider Anthropic`
 
 ```powershell
-if (Test-Path ~/avd-swarm) { git -C ~/avd-swarm pull -q } else { git clone -q https://github.com/nickprignano/avd-swarm ~/avd-swarm }
+if (Test-Path ~/avd-swarm) { git -C ~/avd-swarm pull -q } else { git clone -q https://github.com/avd-ops/avd-swarm ~/avd-swarm }
 & ~/avd-swarm/spikes/s1a/Invoke-Spike.ps1 -Provider Anthropic
 ```
 
@@ -32,7 +32,7 @@ The blocks below are the same steps one at a time, for when you want to stop bet
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-if (Test-Path ~/avd-swarm) { git -C ~/avd-swarm pull -q } else { git clone -q https://github.com/nickprignano/avd-swarm ~/avd-swarm }
+if (Test-Path ~/avd-swarm) { git -C ~/avd-swarm pull -q } else { git clone -q https://github.com/avd-ops/avd-swarm ~/avd-swarm }
 $Spike = "$HOME/clouddrive/avdswarm-spike"; New-Item -ItemType Directory -Force $Spike | Out-Null
 az account show --query '{subscription:name, id:id, user:user.name}' -o table   # check this is the sandbox before going on
 $estimate = & ~/avd-swarm/spikes/s1a/scripts/Get-SpikeEstimate.ps1 | Select-Object -Last 1 | ConvertFrom-Json
@@ -43,7 +43,7 @@ If `unpricedLines` is 0, open the run. Otherwise read the warnings first and dec
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-if (Test-Path ~/avd-swarm) { git -C ~/avd-swarm pull -q } else { git clone -q https://github.com/nickprignano/avd-swarm ~/avd-swarm }
+if (Test-Path ~/avd-swarm) { git -C ~/avd-swarm pull -q } else { git clone -q https://github.com/avd-ops/avd-swarm ~/avd-swarm }
 $Spike = "$HOME/clouddrive/avdswarm-spike"; New-Item -ItemType Directory -Force $Spike | Out-Null
 $MonthlyCap = 150   # yours, in the subscription's billing currency
 $estimate = & ~/avd-swarm/spikes/s1a/scripts/Get-SpikeEstimate.ps1 | Select-Object -Last 1 | ConvertFrom-Json
@@ -65,7 +65,7 @@ Creates `rg-avdswarm-spike` in North Central US with a same-day exemption from t
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-if (Test-Path ~/avd-swarm) { git -C ~/avd-swarm pull -q } else { git clone -q https://github.com/nickprignano/avd-swarm ~/avd-swarm }
+if (Test-Path ~/avd-swarm) { git -C ~/avd-swarm pull -q } else { git clone -q https://github.com/avd-ops/avd-swarm ~/avd-swarm }
 $Spike = "$HOME/clouddrive/avdswarm-spike"; $RunId = Get-Content "$Spike/run-id"
 & ~/avd-swarm/spikes/s1a/scripts/Start-Spike.ps1 -RunId $RunId | Select-Object -Last 1 | Tee-Object "$Spike/state.json"
 if (-not (Test-Path ~/avdswarm-spike-venv)) { python3 -m venv ~/avdswarm-spike-venv }
@@ -82,7 +82,7 @@ Every Claude deployment carries `modelProviderData` (organization name, country,
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-if (Test-Path ~/avd-swarm) { git -C ~/avd-swarm pull -q } else { git clone -q https://github.com/nickprignano/avd-swarm ~/avd-swarm }
+if (Test-Path ~/avd-swarm) { git -C ~/avd-swarm pull -q } else { git clone -q https://github.com/avd-ops/avd-swarm ~/avd-swarm }
 $Spike = "$HOME/clouddrive/avdswarm-spike"; $s = Get-Content "$Spike/state.json" | ConvertFrom-Json
 ~/avdswarm-spike-venv/bin/python ~/avd-swarm/spikes/s1a/tools/list_mcp_tools.py --url $s.mcpUrl --app-id $s.mcpAppId | Tee-Object "$Spike/mcp-tools.txt"
 ```
@@ -93,7 +93,7 @@ The first call can take a minute while the Container App scales up from zero. Fr
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-if (Test-Path ~/avd-swarm) { git -C ~/avd-swarm pull -q } else { git clone -q https://github.com/nickprignano/avd-swarm ~/avd-swarm }
+if (Test-Path ~/avd-swarm) { git -C ~/avd-swarm pull -q } else { git clone -q https://github.com/avd-ops/avd-swarm ~/avd-swarm }
 $Spike = "$HOME/clouddrive/avdswarm-spike"; $s = Get-Content "$Spike/state.json" | ConvertFrom-Json
 $allowed = '<tool-1>,<tool-2>'   # from block 3
 ~/avdswarm-spike-venv/bin/python ~/avd-swarm/spikes/s1a/tools/deploy_agent.py --project-endpoint $s.projectEndpoint --resource $s.foundryName `
@@ -110,7 +110,7 @@ $a = Get-Content "$Spike/agent.json" | ConvertFrom-Json
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-if (Test-Path ~/avd-swarm) { git -C ~/avd-swarm pull -q } else { git clone -q https://github.com/nickprignano/avd-swarm ~/avd-swarm }
+if (Test-Path ~/avd-swarm) { git -C ~/avd-swarm pull -q } else { git clone -q https://github.com/avd-ops/avd-swarm ~/avd-swarm }
 $Spike = "$HOME/clouddrive/avdswarm-spike"; $s = Get-Content "$Spike/state.json" | ConvertFrom-Json
 ~/avdswarm-spike-venv/bin/python ~/avd-swarm/spikes/s1a/tools/run_evals.py --project-endpoint $s.projectEndpoint --out "$Spike/evals.jsonl" --only p01,p02
 ```
@@ -129,7 +129,7 @@ The portal steps for agents are new and may be named differently; record what yo
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-if (Test-Path ~/avd-swarm) { git -C ~/avd-swarm pull -q } else { git clone -q https://github.com/nickprignano/avd-swarm ~/avd-swarm }
+if (Test-Path ~/avd-swarm) { git -C ~/avd-swarm pull -q } else { git clone -q https://github.com/avd-ops/avd-swarm ~/avd-swarm }
 $Spike = "$HOME/clouddrive/avdswarm-spike"; $s = Get-Content "$Spike/state.json" | ConvertFrom-Json
 ~/avdswarm-spike-venv/bin/python ~/avd-swarm/spikes/s1a/tools/run_evals.py --project-endpoint $s.projectEndpoint --out "$Spike/evals.jsonl" `
   --only q01,q02,q03,q04,q05,q06,q07,q08,q09,q10
@@ -145,7 +145,7 @@ Start-Sleep -Seconds 300   # Azure Monitor metrics lag a few minutes
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-if (Test-Path ~/avd-swarm) { git -C ~/avd-swarm pull -q } else { git clone -q https://github.com/nickprignano/avd-swarm ~/avd-swarm }
+if (Test-Path ~/avd-swarm) { git -C ~/avd-swarm pull -q } else { git clone -q https://github.com/avd-ops/avd-swarm ~/avd-swarm }
 $Spike = "$HOME/clouddrive/avdswarm-spike"; $RunId = Get-Content "$Spike/run-id"
 & ~/avd-swarm/spikes/s1a/scripts/Remove-Spike.ps1 -RunId $RunId | Select-Object -Last 1 | Set-Content "$Spike/teardown-$RunId.json"
 python3 ~/avd-swarm/spend/spend_guard.py close --run-id $RunId --teardown "$Spike/teardown-$RunId.json"

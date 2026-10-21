@@ -5,7 +5,7 @@
 # Installed from the 2ndbrain template (nickprignano/2ndbrain); AVD pilot through 2026-10-31, review 2026-11-01.
 
 capture_hook = "block"
-kb_repos = ["nickprignano/avd-second-brain"]
+kb_repos = ["avd-ops/avd-second-brain"]
 
 # Auto-merge for low-risk PRs (avd-second-brain decision 0015). Off here: the kb-auto-merge workflow isn't
 # installed because the Guard forbids pull_request_target (check_workflows.py W3), and this repo

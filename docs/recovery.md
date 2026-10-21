@@ -3,7 +3,7 @@
 - **Status:** Proposed ([decision 0006](decisions/0006-recovery-tests-and-failover.md)). Spec only: nothing here is built, nothing has run, no spend.
 - **Date:** 2026-10-20
 - **Part of:** [spec.md](spec.md) (§4 agents, §5 write path, §5a catalog, §9a build order), [governance.md](governance.md) and [identities.md](identities.md).
-- **The why:** [avd-second-brain decision 0019](https://github.com/nickprignano/avd-second-brain/blob/main/docs/knowledge/decisions/0019-recovery-runs-through-the-swarm.md) records why recovery testing and failover belong in avd-swarm and what they must prove. This page is the how.
+- **The why:** [avd-second-brain decision 0019](https://github.com/avd-ops/avd-second-brain/blob/main/docs/knowledge/decisions/0019-recovery-runs-through-the-swarm.md) records why recovery testing and failover belong in avd-swarm and what they must prove. This page is the how.
 - **Builds on:** avd-landing-zone's recovery spec (`build/specs/recovery-spec.md`, draft PR #75): the inventory P1 to P9, tiers R0 to R2, `Get-AvdRecoveryStatus.ps1`, `Export-AvdConfiguration.ps1`, `Start-AvdRecoveryTest.ps1` and its tests T-profile, T-config, T-image, T-signin and T-failover; and contract C17's use case `recovery` (avd-second-brain draft PR #40). Section numbers prefixed "LZ" point at that spec.
 
 This is a personal project, not for production, provided as is.

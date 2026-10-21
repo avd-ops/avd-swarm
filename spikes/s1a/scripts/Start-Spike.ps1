@@ -191,7 +191,7 @@ if ($Provider -eq 'Anthropic') {
 
     # The agent code comes from the pushed commit; the container installs and runs it.
     $commit = git -C $PSScriptRoot rev-parse HEAD
-    $agentCodeUrl = "https://raw.githubusercontent.com/nickprignano/avd-swarm/$commit/spikes/s1a/agent_api"
+    $agentCodeUrl = "https://raw.githubusercontent.com/avd-ops/avd-swarm/$commit/spikes/s1a/agent_api"
     $scan = if ($PromptShields) { ", Prompt Shields in $PromptShieldsMode mode" } else { "" }
     Write-SpikeStep "Deploying infra/main.bicep (MCP server, agents Container App, logs, empty host pool$scan) with agent code at $commit; this takes several minutes"
     $deployment = Invoke-SpikeAz -Step 'deploy' -Arguments @('deployment', 'group', 'create', '-g', $SpikeResourceGroup,

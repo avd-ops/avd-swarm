@@ -2,7 +2,7 @@
 
 - **Status:** Accepted (by the owner on 2026-10-18, together with avd-second-brain decision 0003)
 - **Date:** 2026-10-18
-- **Pair:** [avd-second-brain decision 0003](https://github.com/nickprignano/avd-second-brain/blob/main/docs/knowledge/decisions/0003-brain-thinks-swarm-acts.md) says the same from the other side. The two change together.
+- **Pair:** [avd-second-brain decision 0003](https://github.com/avd-ops/avd-second-brain/blob/main/docs/knowledge/decisions/0003-brain-thinks-swarm-acts.md) says the same from the other side. The two change together.
 
 ## Context
 Decision 0001 gave avd-swarm its own write path and left the brain its own: two approval paths, two executors, two kill switches and two front ends for one estate. The owner decided on 2026-10-18: the second brain is the intelligence layer of the swarm, avd-swarm is the actor and control layer, and anything that changes in one is integrated into the other.

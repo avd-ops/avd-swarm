@@ -3,7 +3,7 @@
 - **Status:** Proposed
 
 ## Context
-The owner wants to run AVD estates, and eventually the whole tenant, from a chat window on any device instead of the Azure, Entra and Microsoft 365 portals. The second brain ([avd-landing-zone decision 0012](https://github.com/nickprignano/avd-landing-zone/blob/master/docs/decisions/0012-second-brain.md)) already watches a landing zone and heals it through approved playbooks, but its scope is deliberately narrow: no Graph, no deployments, no users. avd-swarm needs all of those. Details: [spec.md](../spec.md).
+The owner wants to run AVD estates, and eventually the whole tenant, from a chat window on any device instead of the Azure, Entra and Microsoft 365 portals. The second brain ([avd-landing-zone decision 0012](https://github.com/avd-ops/avd-landing-zone/blob/master/docs/decisions/0012-second-brain.md)) already watches a landing zone and heals it through approved playbooks, but its scope is deliberately narrow: no Graph, no deployments, no users. avd-swarm needs all of those. Details: [spec.md](../spec.md).
 
 ## Decision
 - Build **avd-swarm** in its own repository: a coordinator with specialist agents (readiness, deploy, hosts, images, users, cost) with a chat front end, **avd-buddy**, on Static Web Apps with Entra sign-in.
