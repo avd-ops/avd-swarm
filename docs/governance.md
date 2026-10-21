@@ -55,6 +55,7 @@ Write the policy in Rego or Cedar and evaluate it through Microsoft's Agent Gove
 | Budget | Refuse a plan whose spend block fails the spend gate ([spend.md](spend.md) §3.2): over the per-run cap, over the remaining monthly cap, any unpriced line, or no cap set |
 | Switch position | Refuse everything the current position forbids (§2.3) |
 | Observer verdict | When the policy requires it, wait for the observer to allow the plan (§2.2) |
+| Recovery | Recovery actions write only into the subscriptions, regions and resource groups `governance/recovery-scope.yml` lists for the landing zone, into new names, with test users only, and every one but the configuration snapshot needs the observer's verdict ([recovery.md](recovery.md) §4, §6) |
 | Compliance | Refuse a plan whose action may lower a Defender for Cloud control on its targets unless the policy allows it, and every such plan while the score is below its floor (§2.5) |
 
 Answers aren't plans, so the gate doesn't see them. Their limits, how many specialists one question may fan out to and the claim check's settings ([spec](spec.md) §4a), will live in `governance/answers.yml`, protected like the policy: an agent can't widen its own fan-out or loosen the check that marks its claims.
@@ -153,6 +154,8 @@ Deterministic triggers, evaluated by Azure Monitor alerts and the switch's Logic
 | The switch flag cleared while a layer is still missing | Trips again at the previous position |
 | A swarm identity creates or changes a policy exemption, a policy assignment, a Defender exemption or a Defender plan setting (Activity Log) | `halt-all` |
 | Two `compliance.regressed` events within 7 days | `halt-actions` |
+| A write by the recovery test identity outside a run resource group in a registered recovery scope ([recovery.md](recovery.md) §6.3) | `halt-all` |
+| A recovery test past its time box with resources still billing | as `spend.teardown.failed` |
 
 ### 2.5 Compliance gate (Defender for Cloud)
 
