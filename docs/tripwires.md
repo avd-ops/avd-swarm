@@ -1,6 +1,6 @@
 # Estate tripwires: a free kit (spec)
 
-- **Status:** Draft spec, 2026-10-21, red-teamed the same day (§9). Nothing here is built, and nothing that bills is turned on without the owner's go on a written estimate.
+- **Status:** Draft spec, 2026-10-21, red-teamed the same day (§9); open questions answered (§8). Nothing here is built, and nothing that bills is turned on without the owner's go on a written estimate.
 - **Part of:** [security-tooling.md](security-tooling.md) (decoy tools, §4, are the agent-side half of the same idea) and [governance.md](governance.md) §2.2 to §2.4 (observers, kill switch, watchdog).
 - **Pairs with:** avd-second-brain's operations KB page (the facts this spec rests on) and, at build time, its C8 incident categories.
 - **Scope:** one AVD estate: the resources an avd-landing-zone deployment owns. Directory decoys (a canary user, a decoy app credential) are tenant-level and out of scope here, as security-tooling §1 row 9 already says.
@@ -48,7 +48,7 @@ Each is one bait and one detection. All are estate-scoped and none touches the d
 
 **Not in the kit, and why:**
 - **A decoy blob.** The profile account is `FileStorage` (premium file shares only), so it has no blob service. A blob decoy would need a new account and blob logging, more than the signal is worth.
-- **A decoy file on the profile share.** Writing it needs a data-plane step over the private endpoint, and FSLogix, backup and endpoint protection scans all touch the share, so "never touched" is hard to promise. Revisit after a sandbox run shows what reads the share root (§8, Q5).
+- **A decoy file on the profile share.** Writing it needs a data-plane step over the private endpoint, and FSLogix, backup and endpoint protection scans all touch the share, so "never touched" is hard to promise. Revisit after the sandbox run in §8, Q5 shows what reads the share root.
 - **Directory decoys:** tenant-level, out of scope here.
 
 ## 4. Detection: the free path first
@@ -77,7 +77,7 @@ union isfuzzy=true
 - **The tamper check (T3)** re-reads, through ARM, that the decoy secret exists, is enabled and has not gained a version since the last deploy; that the vault's diagnostic setting still sends the audit category to the workspace; that the T2 alert and its action group exist and are enabled; and that the watchdog itself last ran on time. Anything missing, disabled or unwired is a trip. Writes that leave it intact (a normal redeploy PUTs every resource again, and ARM logs a write each time) are only a `tripwire.changed` notice. No identity is exempt, the deploy principal included, because it is exactly the one an attacker wants.
 - **What it emits:** `tripwire.tripped`, `tripwire.probe` or `tripwire.changed` (tripwire ID, operation, hit count). Never the caller's identity or IP: those stay in the workspace for the person.
 - **Cost:** querying the Analytics tier is free; a Consumption Logic App recurrence with a handful of actions an hour costs cents a month. **Latency:** up to an hour plus ingestion. That is the price of free.
-- **Which identity reads.** The switch's identity holds only take-away roles today (governance §2.3). Reading the landing zone's workspace is a new read role, so the build either adds Log Analytics Reader on that one workspace to §2.3 in writing, or runs the query from an agent identity that already has it and lets it only *recommend* a trip. Decided at build time with the owner (§8, Q7).
+- **Which identity reads.** The switch's identity holds only take-away roles today (governance §2.3). Reading the landing zone's workspace is a new read role, so the build either adds Log Analytics Reader on that one workspace to §2.3 in writing, or runs the query from an agent identity that already has it and lets it only *recommend* a trip. The owner chose the first (§8, Q7).
 
 **T2 needs no query.** It is a free Activity Log alert. Its action group calls the switch's trip endpoint as a **Secure webhook**: the call is signed in as Azure Monitor's first-party webhook service principal against an app registration made for the endpoint, and the Consumption workflow's authorization policy accepts only that caller, with SAS keys off. (Managed-identity action groups exist only for some action types and would need a write role on the switch, which governance R5 forbids.) The endpoint takes **alert rule IDs listed in the private tripwire list** and derives the position from that list; the payload never chooses a position, and an unknown rule ID is refused even with a valid token. It dedupes by `correlationId`.
 
@@ -120,15 +120,17 @@ A tripwire that has never fired is a guess. The drill is a Cloud Shell block a p
 
 It runs once after the kit is turned on and after any change to the vault, the account, the workspace or the alerts.
 
-## 8. Open questions for the owner
+## 8. Decisions (owner, 2026-10-21)
 
-- **Q1** Is the line right: estate-scoped tripwires (Key Vault, storage keys, tamper check) free and public here, directory decoys never here?
-- **Q2** §4.2's log search alert is the only recurring charge (about $0.50 a month per estate at 15 minutes, to be priced exactly). Offer it as an opt-in, or leave the landing zone at T2 and the swarm's hourly check?
-- **Q3** Is `halt-actions` on a single T1, T1b or T2 trip right, or too eager for a solo-mode estate?
-- **Q4** Hourly for the free check, or every 15 minutes (still cents in Logic App actions)?
-- **Q5** A sandbox run, later and with its own estimate and go, to confirm what calls `listKeys` and `SecretGet` in a healthy estate (portal blades, backup, the Entra Kerberos path, the Az cmdlets our scripts use) and what reads the profile share root.
-- **Q6** Build order: the landing zone and avd-current-state plumbing first (it works without the swarm), or after the swarm's step 2 watchdog exists?
-- **Q7** Which identity runs §4.1's query: a new Log Analytics Reader role on the switch's identity, or an agent identity that only recommends a trip?
+The owner took the recommendation on every open question:
+
+- **Q1 The line.** Estate-scoped tripwires (Key Vault, storage keys, tamper check) are free and public here; directory decoys never are.
+- **Q2 The paid alert.** §4.2 is offered as an opt-in, off by default (`tripwireAlertMinutes` 0), priced against one retail meter and turned on per estate only with the owner's go.
+- **Q3 Response.** `halt-actions` on a single T1, T1b or T2 trip, `halt-all` on T3, as §6 says. A trip in solo mode costs one reset; a missed trip costs more.
+- **Q4 Frequency.** Hourly for the free check; an estate that needs faster paging turns on §4.2.
+- **Q5 Sandbox run.** Yes, later, with its own written estimate and the owner's exact go: confirm what calls `listKeys` and `SecretGet` in a healthy estate (portal blades, backup, the Entra Kerberos path, the Az cmdlets our scripts use) and what reads the profile share root.
+- **Q6 Build order.** The landing zone and avd-current-state plumbing first, since it works without the swarm; the swarm's watchdog rows follow its step 2 watchdog.
+- **Q7 Identity.** Log Analytics Reader on the landing zone's one workspace for the switch's identity, written into governance §2.3 in the build PR. It is a read role, and the watchdog must be able to trip without waiting on an agent.
 
 ## 9. Red team (2026-10-21)
 
