@@ -2,7 +2,7 @@
 
 - **Status:** Proposed
 - **Date:** 2026-10-20
-- **Pair:** [avd-second-brain decision 0020](https://github.com/nickprignano/avd-second-brain/blob/main/docs/knowledge/decisions/0020-the-brain-is-the-why-layer.md) says the same from the other side, and adds the lifecycle record (brain contract C18). The two change together (decision 0003).
+- **Pair:** [avd-second-brain decision 0020](https://github.com/avd-ops/avd-second-brain/blob/main/docs/knowledge/decisions/0020-the-brain-is-the-why-layer.md) says the same from the other side, and adds the lifecycle record (brain contract C18). The two change together (decision 0003).
 
 ## Context
 The owner set the roles on 2026-10-20: the second brain understands why AVD is built and performing the way it is, from each environment's birth onwards (its use cases and the decisions made in building, configuring, expanding, contracting and fixing it); "swarm is the how". A plan today says what it changes, how, and how to roll it back. It doesn't say which decision it carries out, what else was considered, or which use case it serves, so after it runs the estate has changed and nobody can later say why.
