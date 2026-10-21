@@ -19,6 +19,6 @@ Month to date is Cost Management's actual cost for the subscription so far this 
 
 ## What it can't do
 
-Azure has no hard stop on spend: a budget only alerts. So the caps are enforced before the run opens, and the stop rule (the due time) is checked every time the spike resumes. Token spend is capped separately, before every model call, by the agent service's meter ([agent_api/meter.py](../spikes/s1a/agent_api/meter.py), [docs/spend.md](../docs/spend.md) section 3.7); give the Claude Console workspace a spend limit of its own as the backstop.
+Azure has no hard stop on spend: a budget only alerts. So the caps are enforced before the run opens, and the stop rule (the due time) is checked every time the spike resumes. Token spend is capped separately, before every model call, by the agent service's meter ([gateway/avd_gateway/meter.py](../gateway/avd_gateway/meter.py), [docs/spend.md](../docs/spend.md) section 3.7); give the Claude Console workspace a spend limit of its own as the backstop.
 
 Tests: `python3 -m unittest discover -s scripts/tests` (offline; no Azure calls).

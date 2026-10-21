@@ -1,0 +1,18 @@
+# The KQL catalog (spec section 4, Hosts agent reads): every query an agent or a runbook may run, by ID. The tool
+# layer's kql_catalog_run takes an ID and runs this file's query, never KQL a model wrote. Each query returns
+# counts or session host names, never user names or IP addresses (personal data reaches the model only when a
+# question needs it, spec section 6), and the runner never writes a host name into a job summary (R17).
+# Protected path once agents run (step 2): the folder is under the guard's protected list.
+queries:
+  - id: wvd-agent-health-latest-7d
+    file: wvd-agent-health-latest-7d.kql
+    tables: [WVDAgentHealthStatus]
+    returns: each session host's latest report in seven days, its status, failed health checks and a Problem flag (unhealthy or silent)
+  - id: wvd-connection-errors-last-24h
+    file: wvd-connection-errors-last-24h.kql
+    tables: [WVDErrors]
+    returns: counts per error code and source, no user names
+  - id: wvd-hosts-without-connections-7d
+    file: wvd-hosts-without-connections-7d.kql
+    tables: [WVDAgentHealthStatus, WVDConnections]
+    returns: session host names that reported in the last day with no connection in seven days

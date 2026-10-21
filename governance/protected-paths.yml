@@ -19,7 +19,11 @@ protected:
   - scripts/check_*.py
   - scripts/public-ids.txt
   - scripts/tests/**
-  - spikes/s1a/agent_api/meter.py
+  - gateway/**
+  - catalog/**
+  - contracts/**
+  - runner/avd_runner/runbook.py
+  - adapters/**
 append_only:
   - evals/**
   - spikes/s1a/evals/**

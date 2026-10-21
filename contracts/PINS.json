@@ -1,0 +1,12 @@
+{
+  "description": "Vendored contracts, each byte-identical to its source at the pinned commit: C15 (the fact register) from avd-assess, which authors the foundation contracts (avd-second-brain decision 0021). Runbooks cite fact IDs from it (scripts/check_runbooks.py checks the hash and the IDs). To update: copy the file from avd-assess at a new commit, then update the commit and the hash in the same PR.",
+  "sources": {
+    "avd-assess": {
+      "url": "https://github.com/avd-ops/avd-assess",
+      "commit": "34c50bb76e088136799eafcb09d631b3bf9354aa",
+      "files": {
+        "fact-register.json": "356a896f7e13b10a3674e8d8eda800bdfe147df473d69c3f306f874bbbcd5c96"
+      }
+    }
+  }
+}

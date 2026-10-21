@@ -151,7 +151,7 @@ Azure/Azure-Sentinel (MIT) has **no Azure Virtual Desktop solution and no huntin
 
 **"Model client: Prompt Shields scan and decoy tripwire, observe mode (S1a)"**, in this repo, after this proposal is accepted:
 
-- `spikes/s1a/agent_api/shield.py`: pure functions for chunking a tool result into documents, building the request, and deciding observe or enforce, plus the stub text; a `Shield` class that calls Content Safety with the managed identity's token (`DefaultAzureCredential`, no key) and counts hits.
+- `gateway/avd_gateway/shield.py` (moved from `spikes/s1a/agent_api/` by WP3): pure functions for chunking a tool result into documents, building the request, and deciding observe or enforce, plus the stub text; a `Shield` class that calls Content Safety with the managed identity's token (`DefaultAzureCredential`, no key) and counts hits.
 - `run_hosts()`: scan every tool result through it, count calls to tools outside the allowlist, and add one decoy tool; the spike's evidence gains `shieldHits`, `unknownToolCalls` and `decoyCalls` (counts only).
 - `spikes/s1a/infra/main.bicep`: a Content Safety resource on the free tier with local auth disabled and Cognitive Services User for the agent's identity, behind a parameter that defaults off.
 - Offline tests for the chunking and decisions (`test_shield.py`, like `test_meter.py`); no Azure call in CI.

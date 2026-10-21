@@ -1,0 +1,28 @@
+# The logic-apps adapter: a Logic App as a trigger source for the check runner only. Designed, not built; off by default.
+# Not the kill switch's own Consumption Logic App, which is core (core-and-adapters.md finding F11).
+name: logic-apps
+kind: scheduler
+status: designed
+addsTo: scheduled-checks
+replaces: []
+default: off
+meters:
+  - service: Logic Apps Automation (preview) or Logic Apps Standard
+    meter: workflow service plan or Automation capacity, plus executions
+    standing: true            # Standard and Automation bill while idle
+    monthlyUsdIdle: 37        # Automation idle, as the 2026-10-21 review read it; Standard costs more idle
+    source: https://learn.microsoft.com/azure/logic-apps/automation/compare-automation-services
+identity:
+  runsAs: the Logic App's managed identity
+  mustNotHold: [Contributor, Owner, User Access Administrator, Desktop Virtualization Contributor]
+  policyDeny: Azure Policy deny on Microsoft.Authorization/roleAssignments/write where the principal is the Logic App's identity and the role is anything but Storage Queue Data Message Sender on the runner's queue
+  watchdog: any write by the Logic App's identity outside the runner's queue trips halt-all
+switch:
+  run: it may put a runbook ID on the runner's queue on its schedule
+  halt-actions: as run (it only starts read-only runbooks)
+  halt-agents: the runner reads the flag first and drops the message; the queue grant is removed by the switch
+  halt-all: as halt-agents
+  residual: the workflow keeps firing on its schedule and bills executions until it is disabled by a person
+events: [scheduler.triggered]
+writes: none
+exitTests: []

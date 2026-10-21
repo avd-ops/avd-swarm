@@ -1,0 +1,27 @@
+# The apim adapter: API Management's AI gateway in front of the gateway package, never instead of it. Designed, not built; off by default.
+name: apim
+kind: gateway
+status: designed
+addsTo: model-gateway
+replaces: []
+default: off
+meters:
+  - service: Azure API Management
+    meter: Basic v2 unit (llm-token-limit and MCP need Basic v2 or above; Consumption can't run them)
+    standing: true
+    monthlyUsdIdle: 150
+    source: https://azure.microsoft.com/pricing/details/api-management/
+identity:
+  runsAs: the API Management instance's managed identity
+  mustNotHold: [Contributor, Owner, User Access Administrator]
+  policyDeny: Azure Policy deny on Microsoft.Authorization/roleAssignments/write where the principal is the instance's identity and the role is anything but Cognitive Services User on the model resource
+  watchdog: any write by the instance's identity trips halt-all
+switch:
+  run: model calls pass through it after the gateway package's own checks
+  halt-actions: as run
+  halt-agents: the gateway package refuses before any call reaches it
+  halt-all: as halt-agents; the agents' Container App is stopped
+  residual: the instance keeps billing until deleted; it holds no credential the switch needs to cut
+events: [gateway.apim.limited]
+writes: none
+exitTests: []

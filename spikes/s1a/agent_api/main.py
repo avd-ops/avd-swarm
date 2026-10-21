@@ -17,10 +17,10 @@ Endpoints, all requiring the operator's Entra token (audience: the MCP server's 
   GET  /ask/{id}          the job's status and, when done, the answer, usage and identity evidence
   POST /stop              the spike's kill switch: every later model call is refused until the app restarts
 
-Every Claude call goes through meter.py first: refused once stopped, or when the run's metered spend plus
+Every Claude call goes through the gateway package's meter first (gateway/avd_gateway/meter.py): refused once stopped, or when the run's metered spend plus
 the call's worst case would pass TOKEN_SPEND_CAP_USD (avd-swarm spend.md section 3.7).
 
-Untrusted text goes through shield.py when CONTENT_SAFETY_ENDPOINT is set: the question and every tool
+Untrusted text goes through the gateway's shield.py when CONTENT_SAFETY_ENDPOINT is set: the question and every tool
 result are scanned by Prompt Shields with the same managed identity, in PROMPT_SHIELDS_MODE (observe by
 default). The Hosts agent is also offered one decoy tool; calls to it and to tools outside the allowlist are
 counted whether or not the scan is on (docs/security-tooling.md sections 3 and 4, red team R26).
@@ -49,8 +49,9 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from meter import Meter, SpendRefused, estimate_input_tokens
-from shield import DECOY_ERROR, MODES as SHIELD_MODES, SCOPE as CONTENT_SAFETY_SCOPE, Shield, decoys_for
+from avd_gateway.meter import Meter, SpendRefused, estimate_input_tokens
+from avd_gateway.prices import PriceBook
+from avd_gateway.shield import DECOY_ERROR, MODES as SHIELD_MODES, SCOPE as CONTENT_SAFETY_SCOPE, Shield, decoys_for
 
 log = logging.getLogger("avdswarm.spike.api")
 logging.basicConfig(level=logging.INFO)
@@ -70,7 +71,9 @@ MODELS = {"claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"}
 MAX_STEPS = 20  # a tool loop ends here even if the model keeps calling tools (lesson 0008)
 MAX_TOKENS = 16000
 # The run's cap on Claude spend, checked before every call; docs/spikes/s1a.md section 3 puts the token upper bound near $15.
-meter = Meter(cap_usd=float(os.environ.get("TOKEN_SPEND_CAP_USD", "15")))
+# Prices come from governance/model-prices.yml at the same commit; an unpriced model is refused.
+meter = Meter(cap_usd=float(os.environ.get("TOKEN_SPEND_CAP_USD", "15")),
+              prices=PriceBook.load(os.environ.get("MODEL_PRICES_FILE", "/tmp/model-prices.yml")))
 CONTENT_SAFETY_ENDPOINT = os.environ.get("CONTENT_SAFETY_ENDPOINT", "")  # empty: the scan is off
 PROMPT_SHIELDS_MODE = os.environ.get("PROMPT_SHIELDS_MODE", "observe")
 if PROMPT_SHIELDS_MODE not in SHIELD_MODES:  # fail at start, not on every question
