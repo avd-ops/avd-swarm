@@ -12,6 +12,7 @@ Public (MIT) development repo for avd-swarm. Read [docs/spec.md](docs/spec.md) f
 - Graph reads only for AVD-related objects, and only for the Users agent. Tenant-wide work belongs in tenant-swarm.
 - Never commit a tenant, subscription, object or client ID; run `scripts/check-no-ids.sh` before pushing. Public Microsoft IDs go in `scripts/public-ids.txt` with a comment.
 - No secrets: OIDC federated credentials and managed identities only.
+- **Never delete the last copy** (avd-second-brain decision 0016). No plan, teardown or the `stop-spend` identity deletes the run store or data with no checked copy elsewhere; logs and teardown evidence are kept by default (`-TeardownLogs Keep`), and only the approving person can accept `-DiscardLastCopy`.
 - A custom MCP server is allowed if it exposes only read tools and plan proposals (spec SQ5).
 - Every plan passes the governance gate; `governance/` and the observer registry are protected paths. No agent can trip or reset the kill switch ([docs/governance.md](docs/governance.md)).
 - Conversations feed the Improve workflow (spec §6b), which only opens draft PRs and can't touch governance, the observer registry, the kill switch, CI or write roles.
