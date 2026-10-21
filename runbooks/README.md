@@ -47,7 +47,15 @@ The body starts with a `# ` title and says what the runbook checks, what clear m
 - `finding`: a fact fails. Facts with `onFail: investigate` go to the runbook's agent with the reads' results; the agent answers through the claim check (spec section 4a). `report` facts are recorded without a model.
 - `could-not-run`: a read failed or a fact couldn't be measured. Missing data never passes.
 
-Findings carry `threadStartedBy: schedule` or `alert`, and the gate refuses a plan whose only evidence is such a run (spec section 3a, red team V1-4). The check runner that runs them on their trigger is WP2.
+Findings carry `threadStartedBy: schedule` or `manual` (a workflow dispatch), and the gate refuses a plan whose only evidence is such a run, since neither is an operator in avd-buddy (spec section 3a, red team V1-4). `alert` joins with WP6, together with the gate rule and its test.
+
+## The check runner
+
+`templates/workflows/runbooks.yml` runs them in the adopter's private repo (a template: GitHub doesn't run it here). On each cron it stops unless the repo is private, signs in as the read-only runner identity ([identities.md](../docs/identities.md)), reads the kill switch flag and stops at `halt-agents` or above, picks the runbooks whose `trigger.schedule` is that cron, and asks the agent API to run each one (`POST /runbook`, `runner/avd_runner/api.py`). **The runner never calls a model**: the agent API runs the reads through the tool layer, checks the facts in code, and only for `investigate` facts asks the agent through the gateway with the runbook's budget (`runner/avd_runner/execute.py`). An unreachable agent API is `could-not-run`.
+
+What it writes (`runner/avd_runner/report.py`): a GitHub issue only when the outcome changes (open when a runbook stops being clear, comment when it changes while open, close when clear again), and a job summary. Both carry the runbook ID, the outcome and fact values only, never a host, user or resource name (R17); the agent's claims stay in the plan store and avd-buddy. Counts per runbook and outcome are the proposed C8 `checks` block for the brain. `scripts/check_runbooks.py` fails when a runbook's schedule has no cron in the template, or a cron starts no runbook.
+
+A Container Apps Job for alert-triggered runs uses the same code (WP6). The first scheduled run in the sandbox needs a spend estimate and the owner's exact go.
 
 ## Rules the checker enforces
 

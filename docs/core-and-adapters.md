@@ -6,7 +6,7 @@ Everything below is measured against one test: **can an adopter run the whole of
 
 Status: accepted by the owner on 2026-10-21 ("yes to direction and defaults", every item in [section 8](#8-what-needs-nick)). The work packages in section 7 may start in that order; the build order in [spec.md](spec.md) section 9a still decides when anything that spends money runs.
 
-Progress (2026-10-21): WP0 (spec sections 3, 3a, 3b, 3c, 6 and SQ5, SQ11), WP1 (`runbooks/`, `catalog/kql/`, `scripts/check_runbooks.py`), WP3 in library mode (`gateway/`) and WP5's manifests and check (`adapters/`, `scripts/check_adapters.py`) are built, offline only. WP2 and WP6 are next and are the first that spend money; WP4, WP5's drill rows and WP7 wait for step 2's exit, after WP8's red team.
+Progress (2026-10-21): WP0 (spec sections 3, 3a, 3b, 3c, 6 and SQ5, SQ11), WP1 (`runbooks/`, `catalog/kql/`, `scripts/check_runbooks.py`), WP3 in library mode (`gateway/`) and WP5's manifests and check (`adapters/`, `scripts/check_adapters.py`) are built, offline only; WP2's code is built offline (`runner/avd_runner/`, `templates/workflows/runbooks.yml`, the runner identity), and its first scheduled run waits on an estimate and the owner's go. WP6 is next; WP4, WP5's drill rows and WP7 wait for step 2's exit, after WP8's red team.
 
 ## 1. Verdict in five lines
 
