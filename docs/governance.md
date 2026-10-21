@@ -220,4 +220,4 @@ There is **one kill switch, this one** ([decision 0003](decisions/0003-swarm-act
 - **GQ4** Do plans that touch users carry user principal names to the observer, or pseudonyms?
 - **GQ2** Is a 15-minute observer silence right for a personally paid tenant where nights are quiet?
 - **GQ5** Which standards beyond the Microsoft cloud security benchmark does the pilot estate need? Each one needs Defender CSPM, a paid plan, so it comes with a cost estimate first (§2.5).
-- **GQ3** Should tenant-swarm share one kill switch with avd-swarm, or have its own?
+- ~~**GQ3**~~ Withdrawn: tenant-wide work is out of scope here (spec §8).

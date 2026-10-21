@@ -20,23 +20,23 @@ The agents read freely through allowlisted tools. They change nothing themselves
 - avd-swarm's one kill switch stops both (governance §3). The brain's Concierge is a read tool here; the front ends are avd-swarm's.
 - What avd-swarm learns and does goes back to the brain: insights, incidents and grading scores (C8), action outcomes and the switch position (C10), §6c.
 - The brain's docs findings (C13) reach Scribe, which drafts the fixes as PRs, §6e.
-- Facts about an estate come through the brain, redacted, never straight from their sources: its current state from avd-current-state (C11), and measured performance and sizing from avd-readiness-stratusphere when a question needs it (C12), §6d.
+- Facts about an estate come through the brain, redacted, never straight from their sources: its current state from avd-current-state (C11), and measured performance and sizing from a Stratusphere UX assessment when a question needs it (C12), §6d.
 - avd-swarm still runs without a brain, with its own actions and evals; a brain without avd-swarm only advises.
 
-It is also the development version of **tenant-swarm**, a private project for the whole tenant. What proves itself here moves there; see §8.
+Tenant-wide administration is out of scope; see §8.
 
 ## 2. Goals and non-goals
 
 ### Goals
 - Answer operator questions about the estate with evidence: cost to date and forecast, host health, sessions, image versions, user assignments, profile issues, drift, failed checks, readiness findings.
 - Turn "fix it" into a plan the operator can approve from the same screen.
-- Cover the AVD lifecycle end to end: assess (avd-readiness-stratusphere), inventory (avd-current-state), deploy and operate (avd-landing-zone).
+- Cover the AVD lifecycle end to end: assess (the avd-assess method), inventory (avd-current-state), deploy and operate (avd-landing-zone).
 - Work from a phone or tablet with nothing installed.
 - Cost close to nothing when idle, and stop itself at a budget.
 
 ### Non-goals
 - Any change without a person's approval of that exact change. There is no "confirm in chat" button.
-- Tenant-wide administration that isn't about AVD (all of Entra, Exchange, Teams, other workloads). That belongs to tenant-swarm.
+- Tenant-wide administration that isn't about AVD (all of Entra, Exchange, Teams, other workloads). It is out of scope here (§8).
 - Replacing Cloud Shell blocks for operators who prefer them (lesson 0015).
 
 ### The base pair stands alone (invariant)
@@ -315,13 +315,13 @@ What that means here:
 - **No new identity or spend.** The collector and validator already run read-only as the operator, and the facts script and the importer are offline. Nothing here needs an Azure resource.
 - **It changes in three places.** C11 lives in avd-second-brain's `docs/contracts.md` and schema, its producer in avd-current-state, and the gate rule here. A change to one is three linked PRs.
 
-**The forensic tier: avd-readiness-stratusphere (C12).** C11 says what is configured. When a question needs what users actually do (sizing, a size change, a performance complaint with no ARM-side cause, a migration), the next level is Stratusphere UX telemetry from [avd-readiness-stratusphere](https://github.com/nickprignano/avd-readiness-stratusphere): concurrency by hour, p95 demand per user and per host, logon time, UX score, profile size and latency, measured over 2 to 4 weeks. The factory pseudonymizes it at ingest and hands the brain `avd-forensic-facts/v1` (brain contract **C12**, specified): aggregates per host pool or persona, at least 10 users per group, coarser data for groups under 20 (brain C12 rules), never a user or a machine, keyed with the same estate key so a host pool's `hp-` pseudonym matches C11.
+**The forensic tier (C12).** C11 says what is configured. When a question needs what users actually do (sizing, a size change, a performance complaint with no ARM-side cause, a migration), the next level is Stratusphere UX telemetry from an assessment: concurrency by hour, p95 demand per user and per host, logon time, UX score, profile size and latency, measured over 2 to 4 weeks. The factory pseudonymizes it at ingest and hands the brain `avd-forensic-facts/v1` (brain contract **C12**, specified): aggregates per host pool or persona, at least 10 users per group, coarser data for groups under 20 (brain C12 rules), never a user or a machine, keyed with the same estate key so a host pool's `hp-` pseudonym matches C11.
 - **Same path as C11.** avd-swarm reads it only through the brain; a size-change or sizing proposal cites it by window, and the gate refuses one whose only evidence is a C12 window that ended more than 90 days ago, or one marked `low-confidence` by the factory's quality gate.
-- **Collecting it is an action, not a read.** It deploys the Hub appliance (and optionally Database and Collectors) and needs a license for the window. When the brain says a question needs forensic data, the Readiness agent proposes the collection as a plan: `Deploy-Stratusphere.ps1` and `Deploy-CidKey.ps1` as catalog actions, taken from [avd-liquidware](https://github.com/nickprignano/avd-liquidware) at a pinned commit once the instrument moves there (avd-readiness-stratusphere decision 0003), with the spend block priced for the whole window (spend.md), the approval in §5, and teardown evidence at the end. Until those actions are in the catalog, the agent offers the Cloud Shell blocks instead (§5).
+- **Collecting it is an action, not a read.** It deploys the Hub appliance (and optionally Database and Collectors) and needs a license for the window. When the brain says a question needs forensic data, the Readiness agent proposes the collection as a plan: `Deploy-Stratusphere.ps1` and `Deploy-CidKey.ps1` as catalog actions, taken from [avd-liquidware](https://github.com/nickprignano/avd-liquidware) at a pinned commit once the instrument moves there, with the spend block priced for the whole window (spend.md), the approval in §5, and teardown evidence at the end. Until those actions are in the catalog, the agent offers the Cloud Shell blocks instead (§5).
 
 **Facts are cited by register ID (brain C15).** Every fact a proposal cites, from C11, C12 or later tiers, is named by its ID in the fact register (`contracts/fact-register.json`, authored in avd-assess and vendored by avd-second-brain since brain decision 0021), for example `c11.hostPools.loadBalancer@hp-3fa2c1d0`. The gate refuses evidence that names an ID the pinned register doesn't have, or one still `proposed`. The foundation repos work with or without avd-swarm: what the swarm adds is guidance on top of their baseline, and the swarm never asks them for a field they don't already produce.
 
-**The target-state manifest is not a swarm input (brain C14).** avd-readiness-stratusphere's approved `avd-target-state/v1` manifest goes from the customer's engagement folder to avd-landing-zone's `ConvertFrom-AvdTargetState.ps1`, run by a person. The swarm doesn't read it, render it or deploy it; putting a manifest deployment in the catalog is a later decision with its own linked PRs.
+**The target-state manifest is not a swarm input (brain C14).** The assessment's approved `avd-target-state/v1` manifest goes from the customer's engagement folder to avd-landing-zone's `ConvertFrom-AvdTargetState.ps1`, run by a person. The swarm doesn't read it, render it or deploy it; putting a manifest deployment in the catalog is a later decision with its own linked PRs.
 
 ### 6e. Scribe: drafting docs fixes from the brain's findings
 
@@ -358,14 +358,9 @@ The sandboxes are paid for out of pocket, so spend control is a platform functio
 
 The design is in [spend.md](spend.md); its first piece, the public spend guard in [spend/](../spend/README.md), runs the S1a spike. Until the rest is built, the governance budget check refuses any plan without a cost estimate.
 
-## 8. Relationship to tenant-swarm
+## 8. Scope
 
-| | avd-swarm (this repo) | tenant-swarm |
-|---|---|---|
-| Scope | Everything about AVD, including its users, groups and licenses | The whole tenant: subscriptions, Entra, Microsoft 365 |
-| Purpose | Prove the pattern against a real AVD estate | Daily tenant operations for one owner |
-
-The pattern moves to tenant-swarm once avd-swarm has a record of approved, verified changes. Tenant-specific values never land in either repo: both keep them in repository variables, and CI fails on hardcoded IDs.
+avd-swarm covers everything about AVD, including its users, groups and licenses, and proves the pattern against a real AVD estate. Tenant-wide administration (all of Entra, Microsoft 365 and other workloads) is out of scope here. Tenant-specific values never land in this repo: they live in repository variables, and CI fails on hardcoded IDs.
 
 ## 9. Phases
 

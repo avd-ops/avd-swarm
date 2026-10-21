@@ -55,7 +55,7 @@ The brain side of v1 is its Tier 1 (Notice) plus a deterministic Concierge read 
 | X1 | Decision 0002 said four layers and "reset through one workflow"; governance §2.3 has six layers and a Cloud Shell reset (R6) | Decision 0002 notes the amendment and points to governance | Fixed here |
 | X2 | Decision 0005 put the adopter repo before the read-only agents; spec §9a puts it in step 3 | Decision 0005 follows §9a | Fixed here |
 | X3 | Governance §2.6 said the time-lock is built in step 2; §9a builds it in step 3 | Step 3 | Fixed here |
-| X4 | Spec §4's Cost agent read "tenant-swarm's spend ledger"; spend.md §2 replaced it with the public spend guard | The spend guard's run records | Fixed here |
+| X4 | Spec §4's Cost agent read a private spend ledger; spend.md §2 replaced it with the public spend guard | The spend guard's run records | Fixed here |
 | X5 | identities.md said stop-spend can stop or deallocate; governance said stop, deallocate and delete | Stop, deallocate and delete, run-tagged only (and never the run store, #23) | Fixed here |
 | X6 | redteam.md listed AX-12 (spend module in a private repo) as open; CQ1 closed it | Closed | Fixed here |
 | X7 | R1 named the credential subject in this public repo; R17 moved the write path to the adopter's repo | Adopter's repo | Fixed here |

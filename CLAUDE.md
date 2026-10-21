@@ -9,7 +9,7 @@ Public (MIT) development repo for avd-swarm. Read [docs/spec.md](docs/spec.md) f
 - Agents read and propose; they never write. Every change, a brain playbook included, is a plan a person approves in the `approve` environment (spec §5).
 - avd-swarm never reads avd-current-state packages, Stratusphere exports, a vault or a facts snapshot file. Estate facts reach it only from the brain, as cited C11 (current state) or C12 (forensic) evidence named by C15 fact register IDs (the register is authored in avd-assess with the other foundation contracts, brain decision 0021); the C14 target-state manifest is not a swarm input, and the gate re-reads live state before any change (spec §6d).
 - **Stay in the AVD lane** (avd-second-brain decision 0012; lanes in its `docs/knowledge/family.yaml`, `not_here`). If an ask belongs to another project (any Terraform, Packer or other HCL and everything Nerdio: nerdio-hcl; the Liquidware tier: avd-liquidware; general Claude API and model research is outside this project), say which project and repo own it, link it, and stop. Before researching, read the owner's `llms.txt` and link what it already knows. CI fails on an HCL file (Guard, `no-hcl`).
-- Graph reads only for AVD-related objects, and only for the Users agent. Tenant-wide work belongs in tenant-swarm.
+- Graph reads only for AVD-related objects, and only for the Users agent. Tenant-wide work is out of scope here.
 - Never commit a tenant, subscription, object or client ID; run `scripts/check-no-ids.sh` before pushing. Public Microsoft IDs go in `scripts/public-ids.txt` with a comment.
 - No secrets: OIDC federated credentials and managed identities only.
 - **Never delete the last copy** (avd-second-brain decision 0016). No plan, teardown or the `stop-spend` identity deletes the run store or data with no checked copy elsewhere; logs and teardown evidence are kept by default (`-TeardownLogs Keep`), and only the approving person can accept `-DiscardLastCopy`.
@@ -18,4 +18,4 @@ Public (MIT) development repo for avd-swarm. Read [docs/spec.md](docs/spec.md) f
 - Conversations feed the Improve workflow (spec §6b), which only opens draft PRs and can't touch governance, the observer registry, the kill switch, CI or write roles.
 - American English in docs, output and comments.
 - **Personal project, not for production, as is, not affiliated with the author's employer, Liquidware or Microsoft.** The LICENSE, the README warning and the notice at the top of every entry point stay.
-- Public repo: nothing tenant-swarm-specific and no private evidence (spike outputs stay in Cloud Shell or the private evidence folder).
+- Public repo: nothing from private projects and no private evidence (spike outputs stay in Cloud Shell or the private evidence folder).
