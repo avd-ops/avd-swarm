@@ -19,6 +19,11 @@ Endpoints, all requiring the operator's Entra token (audience: the MCP server's 
 
 Every Claude call goes through meter.py first: refused once stopped, or when the run's metered spend plus
 the call's worst case would pass TOKEN_SPEND_CAP_USD (avd-swarm spend.md section 3.7).
+
+Untrusted text goes through shield.py when CONTENT_SAFETY_ENDPOINT is set: the question and every tool
+result are scanned by Prompt Shields with the same managed identity, in PROMPT_SHIELDS_MODE (observe by
+default). The Hosts agent is also offered one decoy tool; calls to it and to tools outside the allowlist are
+counted whether or not the scan is on (docs/security-tooling.md sections 3 and 4, red team R26).
 """
 
 from __future__ import annotations
@@ -45,6 +50,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from meter import Meter, SpendRefused, estimate_input_tokens
+from shield import DECOY_ERROR, MODES as SHIELD_MODES, SCOPE as CONTENT_SAFETY_SCOPE, Shield, decoys_for
 
 log = logging.getLogger("avdswarm.spike.api")
 logging.basicConfig(level=logging.INFO)
@@ -65,6 +71,10 @@ MAX_STEPS = 20  # a tool loop ends here even if the model keeps calling tools (l
 MAX_TOKENS = 16000
 # The run's cap on Claude spend, checked before every call; docs/spikes/s1a.md section 3 puts the token upper bound near $15.
 meter = Meter(cap_usd=float(os.environ.get("TOKEN_SPEND_CAP_USD", "15")))
+CONTENT_SAFETY_ENDPOINT = os.environ.get("CONTENT_SAFETY_ENDPOINT", "")  # empty: the scan is off
+PROMPT_SHIELDS_MODE = os.environ.get("PROMPT_SHIELDS_MODE", "observe")
+if PROMPT_SHIELDS_MODE not in SHIELD_MODES:  # fail at start, not on every question
+    raise SystemExit(f"PROMPT_SHIELDS_MODE must be one of {SHIELD_MODES}, not {PROMPT_SHIELDS_MODE!r}")
 LOGIN = f"https://login.microsoftonline.com/{TENANT}"
 
 COORDINATOR_SYSTEM = (
@@ -207,6 +217,24 @@ async def setup(request: Request) -> JSONResponse:
                          "blueprintTokenClaims": claims_of(graph)})
 
 
+async def content_safety_token() -> str:
+    """The agents' managed identity, Cognitive Services User on the Content Safety resource: no key exists."""
+    return (await managed_identity.get_token(CONTENT_SAFETY_SCOPE)).token
+
+
+async def content_safety_post(url: str, headers: dict, body: dict) -> dict:
+    async with httpx.AsyncClient(timeout=10) as http:
+        response = await http.post(url, headers=headers, json=body)
+    if response.status_code != 200:  # status only: the body could echo the scanned text
+        raise RuntimeError(f"Prompt Shields returned {response.status_code}")
+    return response.json()
+
+
+def new_shield() -> Shield:
+    return Shield(endpoint=CONTENT_SAFETY_ENDPOINT, token=content_safety_token, post=content_safety_post,
+                  mode=PROMPT_SHIELDS_MODE)
+
+
 def add_usage(totals: dict, model: str, usage) -> None:
     entry = totals.setdefault(model, {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "calls": 0})
     entry["input"] += usage.input_tokens or 0
@@ -237,7 +265,8 @@ async def ask_claude(model: str, effort: str, system: str, tools: list, messages
     return response
 
 
-async def run_hosts(question: str, model: str, identity_app_id: str, totals: dict, evidence: dict) -> str:
+async def run_hosts(question: str, model: str, identity_app_id: str, totals: dict, evidence: dict,
+                    guard: Shield) -> str:
     token = await agent_identity_token(identity_app_id, f"api://{MCP_APP_ID}/.default")
     evidence["mcpTokenClaims"] = claims_of(token)
     async with streamablehttp_client(MCP_URL, headers={"Authorization": f"Bearer {token}"}) as (read, write, _):
@@ -253,6 +282,7 @@ async def run_hosts(question: str, model: str, identity_app_id: str, totals: dic
             tools = [{"name": t.name, "description": t.description or "", "input_schema": t.inputSchema}
                      for t in sorted(offered, key=lambda t: t.name) if t.name in HOSTS_ALLOWED_TOOLS]
             evidence["hostsTools"] = [t["name"] for t in tools]
+            tools += decoys_for([t.name for t in offered])  # after the evidence: hostsTools stays the allowlist
             messages: list = [{"role": "user", "content": question}]
             for _ in range(MAX_STEPS):
                 response = await ask_claude(model, HOSTS_EFFORT, HOSTS_SYSTEM, tools, messages, totals)
@@ -266,12 +296,14 @@ async def run_hosts(question: str, model: str, identity_app_id: str, totals: dic
                 results = []
                 for call in calls:
                     evidence.setdefault("toolCalls", []).append(call.name)
-                    if call.name not in HOSTS_ALLOWED_TOOLS:
-                        results.append({"type": "tool_result", "tool_use_id": call.id, "is_error": True,
-                                        "content": f"{call.name} is not allowed"})
+                    kind = guard.tool_call(call.name, HOSTS_ALLOWED_TOOLS, "hosts")
+                    if kind != "allowed":
+                        error = DECOY_ERROR.format(name=call.name) if kind == "decoy" else f"{call.name} is not allowed"
+                        results.append({"type": "tool_result", "tool_use_id": call.id, "is_error": True, "content": error})
                         continue
                     result = await session.call_tool(call.name, call.input)
                     content = "\n".join(c.text for c in result.content if getattr(c, "type", "") == "text")
+                    content = await guard.scan_result(content, "hosts", call.name)
                     results.append({"type": "tool_result", "tool_use_id": call.id, "is_error": bool(result.isError),
                                     "content": content or "(no text)"})
                 messages.append({"role": "user", "content": results})
@@ -281,15 +313,24 @@ async def run_hosts(question: str, model: str, identity_app_id: str, totals: dic
 async def answer(question: str, hosts_model: str, identity_app_id: str) -> dict:
     totals: dict = {}
     evidence: dict = {}
+    guard = new_shield()
     started = time.monotonic()
-    coordinator = await ask_claude(COORDINATOR_MODEL, COORDINATOR_EFFORT, COORDINATOR_SYSTEM, [HANDOFF_TOOL],
-                                   [{"role": "user", "content": question}], totals)
-    handed_off = any(b.type == "tool_use" and b.name == "handoff_to_hosts" for b in coordinator.content)
-    evidence["coordinatorStopReason"] = coordinator.stop_reason
-    if handed_off:
-        text = await run_hosts(question, hosts_model, identity_app_id, totals, evidence)
-    else:
-        text = text_of(coordinator)
+    try:
+        await guard.scan_prompt(question, "coordinator")
+        coordinator = await ask_claude(COORDINATOR_MODEL, COORDINATOR_EFFORT, COORDINATOR_SYSTEM, [HANDOFF_TOOL],
+                                       [{"role": "user", "content": question}], totals)
+        handed_off = any(b.type == "tool_use" and b.name == "handoff_to_hosts" for b in coordinator.content)
+        evidence["coordinatorStopReason"] = coordinator.stop_reason
+        if handed_off:
+            text = await run_hosts(question, hosts_model, identity_app_id, totals, evidence, guard)
+        else:
+            text = text_of(coordinator)
+    finally:  # the spike has no observer yet: the log stands in for governance section 2.2, even when a step fails
+        evidence["shield"] = guard.evidence()
+        for event in guard.events:
+            log.warning("security event %s", json.dumps(event))
+        if guard.counts["shieldErrors"]:  # SQ10: a 401 or 403 here means the keyless call or its role isn't working
+            log.warning("prompt shields failed %d time(s), last: %s", guard.counts["shieldErrors"], guard.last_error)
     return {"answer": text, "handedOff": handed_off, "seconds": round(time.monotonic() - started, 1),
             "usage": totals, "evidence": evidence}
 
@@ -360,7 +401,8 @@ async def ask_status(request: Request) -> JSONResponse:
 
 async def health(_request: Request) -> JSONResponse:
     return JSONResponse({"ok": True, "allowedTools": HOSTS_ALLOWED_TOOLS, "claudeConfigured": CLAUDE_CONFIGURED,
-                         "meter": meter.status()})
+                         "meter": meter.status(),
+                         "promptShields": PROMPT_SHIELDS_MODE if CONTENT_SAFETY_ENDPOINT else "off"})
 
 
 app = Starlette(routes=[

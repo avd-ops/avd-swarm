@@ -17,7 +17,9 @@ param(
     # One hosted agent per model the Hosts agent is compared on (Opus, Sonnet, Haiku).
     [int] $Agents = 3,
     # Anthropic: the fallback. No hosted agents; one more Container App (the agents), and tokens billed by Anthropic.
-    [ValidateSet('Foundry', 'Anthropic')][string] $Provider = 'Foundry'
+    [ValidateSet('Foundry', 'Anthropic')][string] $Provider = 'Foundry',
+    # Anthropic only: the Prompt Shields scan's free-tier Content Safety resource (agent_api/shield.py).
+    [switch] $PromptShields
 )
 $ErrorActionPreference = 'Stop'
 
@@ -62,6 +64,10 @@ $note = [System.Collections.Generic.List[string]]::new()
 $billedBy = if ($Provider -eq 'Anthropic') { 'billed by Anthropic, not Azure' } else { 'billed through Azure' }
 $note.Add("Tokens upper bound $('{0:N2}' -f $TokenUpperBound) ($billedBy; Opus 5.5 4/20, Sonnet 5.5 2/10, Haiku 5.5 0.10/0.50 per 1M; docs/spikes/s1a.md section 3)")
 $unpriced = 0
+if ($PromptShields -and $Provider -eq 'Anthropic') {
+    # F0 has no meter: past its monthly quota calls are refused, never billed, and the scan counts them as unscanned.
+    $note.Add('Content Safety F0 (Prompt Shields): 0.00 (free tier, 5,000 text records a month, about 2,000 expected; one F0 resource of a kind per subscription)')
+}
 foreach ($line in $lines) {
     Write-Host "Pricing $($line.Name) in $Region..."
     $seen = @(Get-RetailMeter -Filter $line.Filter)

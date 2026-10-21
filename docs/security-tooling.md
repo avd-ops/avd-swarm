@@ -1,6 +1,6 @@
 # AI security tooling: defending the swarm, and security signal for operators
 
-- **Status:** Proposed (2026-10-19). Research only: nothing was installed or run, and no tenant, subscription or spend setting changed.
+- **Status:** Accepted (2026-10-19). The first PR (§8) is built in the S1a spike, off by default and not yet run (2026-10-21).
 - **Sources:** the tools' own pages: [Prompt Shields](https://learn.microsoft.com/azure/ai-services/content-safety/concepts/jailbreak-detection), [PyRIT](https://github.com/microsoft/PyRIT), [garak](https://github.com/NVIDIA/garak), [promptfoo](https://github.com/promptfoo/promptfoo), [Beelzebub](https://github.com/beelzebub-labs/beelzebub), [Sentinel MCP custom tools](https://learn.microsoft.com/azure/sentinel/datalake/sentinel-mcp-create-custom-tool) and the [Canarytokens Entra ID token](https://docs.canarytokens.org/guide/entraid-token). What applies to the AVD repos is in avd-second-brain's [AI agents page](https://github.com/nickprignano/avd-second-brain/blob/main/docs/knowledge/agents/README.md#securing-the-agents-and-avd-security-signal). This page links to them rather than repeating them, and only says how the tools fit avd-swarm.
 - **Checked against:** [spec.md](spec.md) (§3, §5, §6, §9a), [governance.md](governance.md) (§2.2 to §2.4), [redteam.md](redteam.md) (R1 to R25, open AX items) and the S1a spike's model client (`spikes/s1a/agent_api/main.py`).
 - **Rules that apply:** keyless only (managed identity, Entra Agent ID or workload identity federation; no API keys or client secrets), no new AI vendor, least-privilege roles, no tenant or customer names, and the license of every tool checked before its code is used.
@@ -51,13 +51,13 @@ Long tool output is chunked into documents of at most a few thousand characters,
 - **Observe mode** (step 1, and step 2 until the false-positive rate is known): the result goes through unchanged and the hit is counted. The S1a eval set and the garak run (§5) give the first false-positive and catch rates.
 - **Enforce mode:** the flagged document is replaced by a fixed stub (`[withheld: possible prompt injection, evidence <id>]`), the conversation is marked, and any plan proposed in a marked conversation gets `observer: required` (governance §2.2), so a second check sees it before a person approves.
 - **Events:** a new security event, `injection.suspected`, carries the agent, the tool, the count and the conversation ID, never the text (governance §2.2 rule). A watchdog row trips `halt-actions` at N hits an hour. The brain gets the counts through C8's incidents section, which already lists "suspected prompt injection" (spec §6c).
-- **Content Safety unreachable:** reads continue with the result marked unscanned, and plans from a conversation with unscanned results are marked the same way as flagged ones. Improve and Scribe fail closed: they skip the input.
+- **Content Safety unreachable or refusing** (throttled past the quota, an error): in observe mode reads continue with the result marked unscanned; in enforce mode the result is withheld with a "not scanned" stub, so text that makes the scan fail can't reach the model. Plans from a conversation with unscanned results are marked the same way as flagged ones. Improve and Scribe fail closed: they skip the input.
 
 **Identity and roles.** One Content Safety resource per deployment with local (key) auth disabled. The agents' managed identity (the Container App's, or each Entra Agent ID in Foundry) gets **Cognitive Services User** on that resource only. Content Safety supports Microsoft Entra ID for the API ([overview](https://learn.microsoft.com/azure/ai-services/content-safety/overview)); the quickstart shows only keys, so the S1a run confirms the keyless call works.
 
 **Limits to say out loud.** It detects manipulation attempts only, not harmful or wrong content; "no attack" doesn't mean safe; it is trained mostly on English. It is one more signal, which is why enforce mode routes to the observer instead of trusting the verdict.
 
-**Region.** The sandbox's policy allows resource groups in North Central US only. Learn's region table for Prompt Shields wasn't readable from here, so confirm North Central US before the S1a run. If it isn't offered there, the resource needs a policy exemption or another region, and that is Nick's call.
+**Region.** Prompt Shields in Azure AI Content Safety is offered in North Central US and East US 2, among others ([region availability](https://learn.microsoft.com/azure/ai-services/content-safety/region-availability)), so it fits the sandbox's region and the S1a Container App's. Each call takes one user prompt of up to 10K characters and up to five documents totaling 10K characters (same page, service limits), which sets the chunk size in `shield.py`.
 
 **Cost.** Billed per 1,000 text records, a record being up to 1,000 characters; the free tier gives 5,000 records a month ([pricing](https://azure.microsoft.com/pricing/details/cognitive-services/content-safety/)). The S1a run's 10 eval questions at roughly ten tool results of up to five records each is about 500 records, inside the free tier. The standard-tier price wasn't shown for the region checked, so the step 2 estimate takes it from the pricing calculator, in spend.md's format.
 
@@ -160,6 +160,6 @@ It adds no spend by itself. The S1a estimate gains a free-tier line, and the run
 
 ## 9. Open questions
 
-- **SQ10** Is Prompt Shields offered in North Central US, and does the keyless call work from a Container App's managed identity? (S1a)
+- **SQ10** Does the keyless call work from a Container App's managed identity? (S1a.) Region answered 2026-10-21: North Central US and East US 2 both offer it (§3).
 - **SQ11** What N for the `injection.suspected` watchdog row? Set it from step 2's observe-mode counts, not now.
 - **SQ12** How do AVD reverse-connect logons appear in `SecurityEvent` 4624 (logon type and source address)? Needed before the direct-RDP hunt can tell a gateway logon from a bypass.

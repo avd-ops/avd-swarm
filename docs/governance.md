@@ -73,6 +73,7 @@ An observer is any system outside avd-swarm's trust boundary that watches what t
 |---|---|---|
 | Change workflow | `plan.proposed`, `plan.gated` (each rule's result), `plan.approved`, `plan.rejected`, `plan.expired`, `action.started`, `action.verified`, `action.failed`, `action.rolled-back` | Plan ID and hash, action, targets as resource IDs, parameters, who approved, timings, outcome |
 | Security | `identity.token-issued` (write identity), `write.observed` (any write by a swarm identity, from the Activity Log), `role.changed`, `credential.changed`, `guardrail.changed` (`governance/`, prompts, allowlists, the action catalog), `gate.refused` | Identity, scope, the matching plan ID or "none" |
+| Untrusted text (R26) | `injection.suspected` (a Prompt Shields hit on a tool result or the operator's message), `decoy.tripped` (a call to a decoy tool) | Agent, tool name, hit count, conversation ID; never the text ([security-tooling.md](security-tooling.md) §3 and §4) |
 | Activity counters | `agents.activity` every 5 minutes | Tool calls, plans proposed and token use per agent, as counts only |
 | Liveness | `switch.changed`, `heartbeat` (every 5 minutes) | Switch position, component health |
 
@@ -152,6 +153,8 @@ Deterministic triggers, evaluated by Azure Monitor alerts and the switch's Logic
 | `spend.cap.reached`: month to date reached the monthly cap | `halt-actions`, except plans that stop spend |
 | `spend.teardown.failed`: a run's teardown didn't finish | `halt-actions` for new runs in that sandbox |
 | One operator's reads spike far above their usual rate (a stolen avd-buddy session) | `halt-agents` (R15) |
+| More than N `injection.suspected` events in an hour (N set from step 2's observe-mode counts, security-tooling SQ11) | `halt-actions` (R26) |
+| One `decoy.tripped`: the conversation is marked and the person notified; two within 24 hours | `halt-actions` (R26) |
 | The switch flag cleared while a layer is still missing | Trips again at the previous position |
 | A swarm identity creates or changes a policy exemption, a policy assignment, a Defender exemption or a Defender plan setting (Activity Log) | `halt-all` |
 | Two `compliance.regressed` events within 7 days | `halt-actions` |
