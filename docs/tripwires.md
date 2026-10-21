@@ -60,20 +60,20 @@ The watchdog (governance §2.4) already runs deterministic rules on a schedule. 
 ```kusto
 // T1, T1b. Reads both table shapes; matches the exact secret path, never a prefix.
 let names = dynamic(["<decoy-name>", "<break-glass-name>"]);  // from the private tripwire list, never a public file
-let since = todatetime("<high-water mark>");                   // last processed TimeGenerated, from the run store
+let since = todatetime("<high-water mark>");                   // last processed ingestion time, from the run store
 union isfuzzy=true
   (AzureDiagnostics | where ResourceProvider == "MICROSOFT.KEYVAULT"
      | project TimeGenerated, OperationName, Uri = requestUri_s, ResultSignature, Authorized = tostring(column_ifexists("isAddressAuthorized_b", ""))),
   (AZKVAuditLogs
      | project TimeGenerated, OperationName, Uri = tostring(RequestUri), ResultSignature, Authorized = tostring(IsAddressAuthorized))
-| where TimeGenerated > since and TimeGenerated > ago(2h)
+| where ingestion_time() > since and TimeGenerated > ago(1d)
 | where OperationName in ("SecretGet", "SecretBackup")
 | extend Secret = extract(@"/secrets/([^/?]+)", 1, Uri)
 | where Secret in (names)
 | summarize Hits = count(), Last = max(TimeGenerated) by Secret, OperationName, ResultSignature, Authorized
 ```
 
-- **Time window.** The high-water mark means a hit is counted once; the two-hour floor covers Key Vault's ingestion delay (logs can arrive about ten minutes late) without re-reading history.
+- **Time window.** The high-water mark is on ingestion time, not event time, so a row that arrives late (Key Vault logs can arrive about ten minutes after the event) is still read once and never twice; the one-day floor only bounds the scan.
 - **The tamper check (T3)** re-reads, through ARM, that the decoy secret exists, is enabled and has not gained a version since the last deploy; that the vault's diagnostic setting still sends the audit category to the workspace; that the T2 alert and its action group exist and are enabled; and that the watchdog itself last ran on time. Anything missing, disabled or unwired is a trip. Writes that leave it intact (a normal redeploy PUTs every resource again, and ARM logs a write each time) are only a `tripwire.changed` notice. No identity is exempt, the deploy principal included, because it is exactly the one an attacker wants.
 - **What it emits:** `tripwire.tripped`, `tripwire.probe` or `tripwire.changed` (tripwire ID, operation, hit count). Never the caller's identity or IP: those stay in the workspace for the person.
 - **Cost:** querying the Analytics tier is free; a Consumption Logic App recurrence with a handful of actions an hour costs cents a month. **Latency:** up to an hour plus ingestion. That is the price of free.
