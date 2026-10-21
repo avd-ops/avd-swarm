@@ -24,6 +24,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "runner"))
 from avd_runner.runbook import RunbookError, parse, shape_errors  # noqa: E402
 
 ACTION_CATALOG = "catalog/actions"  # build step 3; until it exists, runMode: propose is refused
+RUNNER_TEMPLATE = "templates/workflows/runbooks.yml"
+RUNNER_LIVE = ".github/workflows/runbooks.yml"
 
 
 def load_yaml(path: Path) -> dict:
@@ -104,20 +106,41 @@ def runbook_errors(root: Path, path: Path, ctx: dict) -> list[str]:
     return [f"{rel}: {e}" for e in errors]
 
 
+def template_crons(root: Path, rel: str = RUNNER_TEMPLATE) -> set[str] | None:
+    path = root / rel
+    if not path.is_file():
+        return None
+    workflow = load_yaml(path)
+    on = workflow.get("on", workflow.get(True)) or {}  # PyYAML reads the bare key `on` as True
+    return {" ".join(str(c.get("cron", "")).split()) for c in (on.get("schedule") or [])}
+
+
 def check(root: Path) -> list[str]:
     errors, ctx = repo_errors(root)
     paths = sorted(p for p in (root / "runbooks").rglob("*.md") if p.name != "README.md")
-    ids = {}
+    ids, schedules = {}, set()
     for path in paths:
         errors += runbook_errors(root, path, ctx)
     for path in paths:
         try:
-            rid = parse(str(path), path.read_text(encoding="utf-8")).meta.get("id")
+            meta = parse(str(path), path.read_text(encoding="utf-8")).meta
         except (RunbookError, yaml.YAMLError):
             continue
+        rid = meta.get("id")
         if rid in ids:
             errors.append(f"{path.relative_to(root)}: id {rid} is also {ids[rid]}")
         ids[rid] = path.relative_to(root)
+        trigger = meta.get("trigger") if isinstance(meta.get("trigger"), dict) else {}
+        if "schedule" in trigger:
+            schedules.add(" ".join(str(trigger["schedule"]).split()))
+    for rel in (RUNNER_TEMPLATE, RUNNER_LIVE):  # the template here, and the adopter's live copy
+        crons = template_crons(root, rel)
+        if crons is None:
+            continue
+        for cron in sorted(schedules - crons):
+            errors.append(f"{rel}: no cron for \"{cron}\", so a runbook with that schedule would never run")
+        for cron in sorted(crons - schedules):
+            errors.append(f"{rel}: cron \"{cron}\" starts no runbook")
     return errors
 
 

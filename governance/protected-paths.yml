@@ -22,7 +22,7 @@ protected:
   - gateway/**
   - catalog/**
   - contracts/**
-  - runner/avd_runner/runbook.py
+  - runner/**
   - adapters/**
 append_only:
   - evals/**
