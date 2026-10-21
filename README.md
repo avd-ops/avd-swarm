@@ -14,7 +14,7 @@ An agent-based platform for managing Azure and Entra ID without the portals, sta
 
 It covers AVD and the users, groups and licenses AVD needs. Tenant-wide administration is out of scope here.
 
-**Build order** ([spec §9a](docs/spec.md#9a-build-order-proposed-2026-10-19-after-the-second-red-team)): 1. the S1a spike on Anthropic's API with its own token cap; 2. read-only Hosts and Cost agents beside the brain's Tier 1; 3. the first two write actions from a private adopter repo, to ten verified changes. **Everything after step 3 (brain proposals through C9, Improve, the judge machinery, the compliance gate, standing exceptions) is designed, not scheduled.** Don't build it from the spec until step 3 is done and the owner says so.
+**Build order** ([spec §9a](docs/spec.md#9a-build-order-proposed-2026-10-19-after-the-second-red-team)): 1. the S1a spike on Anthropic's API with its own token cap; 2. read-only Hosts and Cost agents beside the brain's Tier 1, with runbooks on a schedule; 3. the first two write actions from a private adopter repo, to ten verified changes. **Everything after step 3 (brain proposals through C9, Improve, the judge machinery, the compliance gate, standing exceptions) is designed, not scheduled.** Don't build it from the spec until step 3 is done and the owner says so.
 
 The write path never runs in this public repo: adopters run it from a private repo synced from a release tag ([spec §5b](docs/spec.md#5b-where-the-write-path-runs-the-project-and-its-adopters)).
 
@@ -31,10 +31,10 @@ The S1a spike runs from this repo alone, in Azure Cloud Shell (PowerShell), in a
 
 ```powershell
 if (Test-Path ~/avd-swarm) { git -C ~/avd-swarm pull -q } else { git clone -q https://github.com/nickprignano/avd-swarm ~/avd-swarm }
-& ~/avd-swarm/spikes/s1a/Invoke-Spike.ps1
+& ~/avd-swarm/spikes/s1a/Invoke-Spike.ps1 -Provider Anthropic
 ```
 
-It needs Claude quota in Microsoft Foundry (East US 2); without it, `-Provider Anthropic` runs the same questions on Anthropic's API with no API key. What you need first and what each path costs: the [runbook](spikes/s1a/README.md) and [docs/spikes/s1a.md](docs/spikes/s1a.md).
+`-Provider Anthropic` is the default path ([decision 0009](docs/decisions/0009-open-source-core-optional-adapters.md)): a Container App calls Claude on Anthropic's API through workload identity federation, with no API key. Leave it off to run the same questions in a Foundry hosted agent instead (the `model-host: foundry` adapter), which needs Claude quota in Microsoft Foundry (East US 2). What you need first and what each path costs: the [runbook](spikes/s1a/README.md) and [docs/spikes/s1a.md](docs/spikes/s1a.md).
 
 ## Entry points
 
