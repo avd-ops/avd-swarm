@@ -42,6 +42,8 @@ Every plan passes the gate before it is shown for approval, and again in the job
 
 Write the policy in Rego or Cedar and evaluate it through Microsoft's Agent Governance Toolkit (MIT), so the same policy refuses early inside the agents and decides with authority in the job. The toolkit's own kill switch runs inside the agent process, so it doesn't replace §2.3. Borrow Azure SRE Agent's allow, ask and deny rule format.
 
+**Limits on the toolkit, written before the spike** (red team V1-6): it evaluates `governance/policy.yml` and returns allow or deny, nothing more. Its own approval, approver quorum, kill switch and MCP gateway are never used, so its approval can never stand in for the GitHub Environment and its in-process switch can never stand in for §2.3's layers. It is pinned by version and hash, installed from a lock file or vendored, and the `approve` job runs it with no network. If it can't run offline in the Actions job, the gate stays our own code.
+
 | Check | Example rule |
 |---|---|
 | Action allowlist | Only actions in the catalog, at the level the catalog allows |
@@ -53,7 +55,10 @@ Write the policy in Rego or Cedar and evaluate it through Microsoft's Agent Gove
 | Budget | Refuse a plan whose spend block fails the spend gate ([spend.md](spend.md) §3.2): over the per-run cap, over the remaining monthly cap, any unpriced line, or no cap set |
 | Switch position | Refuse everything the current position forbids (§2.3) |
 | Observer verdict | When the policy requires it, wait for the observer to allow the plan (§2.2) |
+| Recovery | Recovery actions write only into the subscriptions, regions and resource groups `governance/recovery-scope.yml` lists for the landing zone, into new names, with test users only, and every one but the configuration snapshot needs the observer's verdict ([recovery.md](recovery.md) §4, §6) |
 | Compliance | Refuse a plan whose action may lower a Defender for Cloud control on its targets unless the policy allows it, and every such plan while the score is below its floor (§2.5) |
+
+Answers aren't plans, so the gate doesn't see them. Their limits, how many specialists one question may fan out to and the claim check's settings ([spec](spec.md) §4a), will live in `governance/answers.yml`, protected like the policy: an agent can't widen its own fan-out or loosen the check that marks its claims.
 
 A refusal tells the operator which rule refused and why. Changing a rule is a PR; a PR an agent authored that touches `governance/` fails CI, and a person's change that raises capability waits out the time-lock (§2.6).
 
@@ -84,6 +89,8 @@ The counters let an observer see a runaway (an agent calling tools a thousand ti
 
 **Failing closed.** If an observer with required verdicts stops acknowledging events or heartbeats for 15 minutes, the switch moves to `halt-actions` until it is back. Reads keep working.
 
+**Observers in v1** (red team V1-18). v1 has no observer outside avd-swarm's trust boundary: the watchdog runs in the switch's own Logic App, and the person's channel is a notification. No v1 plan needs a verdict (drain and restart touch one host and no identity), so the 15-minute silence rule and required verdicts are exercised first in step 4's red team. A budget's action group that calls `trip` is registered as an observer with its own managed identity, and the trip endpoint refuses unauthenticated calls (V1-37).
+
 **Possible observers**, in the order worth building:
 1. The **watchdog** (§2.4), the minimum and always on.
 2. A **second-opinion model** on a different provider or account from the agents, reviewing each structured plan against the policy and recent plans. It never sees the conversation, so text that steered the agents can't steer it. It holds no tools, only `verdict` and `trip`.
@@ -106,16 +113,16 @@ The counters let an observer see a runaway (an agent calling tools a thousand ti
 2. **Credentials:** at `halt-actions` and above, the federated credential of the `approve` identity is deleted, so Azure issues no write token whatever the code does.
 3. **Roles:** at `halt-agents` and above, the agents' role assignments are removed and the Foundry agents disabled.
 4. **Conditional Access:** at `halt-agents` and above, a policy blocks the agents' Entra Agent IDs from getting tokens at all. Turning that policy on needs a permission that can edit any Conditional Access policy, so the switch's Logic App never holds it (R5): this layer is added by the person's Cloud Shell trip block, and by the watchdog only through an alert to the person.
-5. **Front end:** at `halt-all`, avd-buddy's API is stopped.
+5. **Front end and published tools:** at `halt-all`, avd-buddy's API is stopped, and so is the tool layer's Container App when it is published as an MCP server (the Logic App's `containerApps/stop/action` covers both). At `halt-agents` and above, the published tool layer checks the flag on every call and refuses every caller that isn't a person: Azure SRE Agent, Foundry's Toolbox, Claude Code (red team V1-3). The drill checks that an MCP call from each registered connector is refused at each position.
 6. **Model calls, on every provider** (R21). Removing roles and disabling Foundry agents doesn't stop agents that call Claude through Anthropic's API (spec §6): that path signs in with a managed identity's Entra token for an audience app, which needs no Azure role, and Conditional Access for workload identities doesn't apply to managed identities. So at `halt-agents` and above:
    - **the model client checks the flag before every call** and refuses when the position forbids agents or the flag can't be read. It is the only way agent code reaches a model (spend.md §3.7), so this is also where the token meter sits;
    - **the switch stops the compute that calls the model:** its Logic App stops the agents' Container App (a custom role with only `Microsoft.App/containerApps/stop/action`), which ends in-flight conversations, as well as disabling the Foundry agents;
    - **the person's trip block cuts the provider credential:** it archives the Anthropic federation rule the agents' identity uses, so no process can exchange a new token. The rule is created with a 10-minute token lifetime (`token_lifetime_seconds: 600`), so an access token issued before the trip stops working within 10 minutes. The Logic App can't do this itself: the Anthropic Admin API needs an `org:admin` credential, the kind of standing capability this design never gives a machine (R5). The watchdog pages the person to run it;
    - **the provider cap stays as the outer wall:** a dedicated Anthropic workspace with a monthly spend limit and token rate limits (spend.md §3.7), which no swarm identity can raise.
 
-   The brain's own model calls (its Critic, Diagnose and Concierge) go through the same client, so the same flag stops them (§3).
+   The brain's later model calls (Tier 3's Critic and Concierge agents) go through the same client, which avd-swarm owns and the brain consumes as a pinned package, never a copy. In v1 the brain's only model call is Tier 1's Diagnose, which runs as Claude Code in GitHub Actions with its own client, so that workflow's first step reads the flag and exits at `halt-agents` or above or when it can't read it; its spend is capped by the action's max turns and a workspace limit (red team V1-8; brain contract C10).
 
-**Stopping spend is never blocked** ([spend.md](spend.md) §3.3). Every position, `halt-all` included, still allows Stop, Lock and teardown plans for resources inside a run, still approved by a person. Because `halt-actions` and above delete the `approve` credential, those plans run through a separate `stop-spend` environment and identity. Its custom role can only deallocate, stop and delete, and only resources tagged with a run ID, never the run store or anything tagged `avd-evidence: keep` ([spend.md](spend.md) §3.3). The switch never removes it, and the watchdog trips `halt-all` if it writes anything else.
+**Stopping spend is never blocked** ([spend.md](spend.md) §3.3). Every position, `halt-all` included, still allows Stop, Lock and teardown plans for resources inside a run, still approved by a person. Because `halt-actions` and above delete the `approve` credential, those plans run through a separate `stop-spend` environment and identity. Its custom role can only deallocate, stop and delete. Azure RBAC conditions don't apply to those control-plane actions, so the role can't be limited by tag (red team V1-14): it is limited by **scope**. A run deploys into its own run resource groups, the stop-spend role is assigned on those groups only, and the run store lives in its own resource group with a `CanNotDelete` lock. Anything tagged `avd-evidence: keep` is protected by an Azure Policy `denyAction` on `delete`, which no swarm identity can change (no swarm identity holds policy write). The tags stay as evidence for the leftovers check. The switch never removes the stop-spend identity, and the watchdog trips `halt-all` if it writes outside the run resource groups.
 
 **Who can trip it:** a person (a button in avd-buddy, a Cloud Shell block, or a GitHub workflow), any registered observer, and the watchdog. **No agent can trip or reset it.** An agent can recommend a trip, and a person or an observer decides.
 
@@ -123,7 +130,7 @@ The counters let an observer see a runaway (an agent calling tools a thousand ti
 
 **Drill (R13).** Once a month, in a test environment, a workflow trips each position, checks that every layer took effect (including that an agent running on Anthropic's API makes no further model call), and resumes. A failed drill blocks deployments of S2 and later.
 
-**Independence:** the switch runs as its own Consumption Logic App with its own managed identity, holding custom roles that can only take capability away (R5): tag write on the swarm's resource group, `federatedIdentityCredentials/delete` on the `approve` identity, `roleAssignments/delete` scoped to the agents' assignments, and `containerApps/stop/action` on the agents' Container App. It can't create a credential or grant a role. It doesn't depend on Foundry, the agents, avd-buddy or any private endpoint. A failed trip pages the owner.
+**Independence:** the switch runs as its own Consumption Logic App with its own managed identity, holding custom roles that can only take capability away (R5): tag write on the swarm's resource group, `federatedIdentityCredentials/delete` on the `approve` identity, `roleAssignments/delete` on the AVD resource groups with a delegation condition that limits it to the agent identities' principal IDs (a role can't be scoped to particular assignments, and without the condition the switch could remove the landing zone's deploy identity or the operator; red team V1-15), and `containerApps/stop/action` on the agents' Container App. It can't create a credential or grant a role. It doesn't depend on Foundry, the agents, avd-buddy or any private endpoint. A failed trip pages the owner. The drill checks that a trip removes no assignment held by a principal that isn't a swarm agent.
 
 ### 2.4 Watchdog rules
 
@@ -133,6 +140,7 @@ Deterministic triggers, evaluated by Azure Monitor alerts and the switch's Logic
 |---|---|
 | A write by the `approve` identity with no matching approved plan (Activity Log) | `halt-all` |
 | A write by any swarm identity outside the registered scope | `halt-all` |
+| A role assignment to Azure SRE Agent's identity, or any write by it (spec §3a) | `halt-all`, and page the person |
 | Daily token spend cap reached, from the token meter (spend.md §3.7), never from Cost Management's delayed data | `halt-agents` |
 | Model usage metered, or reported by the provider for the swarm's workspace, after `halt-agents` or above took effect | `halt-all`, and page the person to cut the provider credential |
 | More than N plans proposed in an hour, or N rejections in a row | `halt-actions` |
@@ -146,6 +154,8 @@ Deterministic triggers, evaluated by Azure Monitor alerts and the switch's Logic
 | The switch flag cleared while a layer is still missing | Trips again at the previous position |
 | A swarm identity creates or changes a policy exemption, a policy assignment, a Defender exemption or a Defender plan setting (Activity Log) | `halt-all` |
 | Two `compliance.regressed` events within 7 days | `halt-actions` |
+| A write by the recovery test identity outside a run resource group in a registered recovery scope ([recovery.md](recovery.md) §6.3) | `halt-all` |
+| A recovery test past its time box with resources still billing | as `spend.teardown.failed` |
 
 ### 2.5 Compliance gate (Defender for Cloud)
 
@@ -196,7 +206,7 @@ Branch protection in solo mode: PRs required, status checks required (the guard 
 
 **What CODEOWNERS is for.** A `CODEOWNERS` file names the owner on every protected path, so GitHub requests their review and shows it. It is not what keeps a protected path safe in solo mode; the guard's agent check, the time-lock and the watchdog's merged-around-the-rules trigger (§2.4) are.
 
-The time-lock check is built in step 2 of the build order (spec §9a). Until then, no protected path holds anything that can act: there is no write path, catalog or observer to loosen.
+The time-lock check is built in step 3 of the build order (spec §9a), with the adopter repo it guards. Until then, no protected path holds anything that can act: there is no write path, catalog or observer to loosen.
 
 ## 3. Relationship to the second brain
 
