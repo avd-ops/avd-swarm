@@ -9,7 +9,7 @@ The owner wants to run AVD estates, and eventually the whole tenant, from a chat
 - Build **avd-swarm** in its own repository: a coordinator with specialist agents (readiness, deploy, hosts, images, users, cost) with a chat front end, **avd-buddy**, on Static Web Apps with Entra sign-in.
 - It connects to the brain but doesn't depend on it. When a brain is deployed, avd-swarm reads its episodes and proposes its playbooks. Otherwise, it uses its own plan-and-approve path.
 - Agents read through allowlisted tools, including Graph for AVD-related objects. Every change is a plan a person approves in the GitHub Environment `approve`, the only place a write identity gets a token.
-- Tenant-wide administration that isn't about AVD belongs to **tenant-swarm**, which adopts this pattern once it has proven itself here.
+- Tenant-wide administration that isn't about AVD is out of scope here.
 
 ## Alternatives considered
 - **avd-swarm as the brain's Concierge agent with a front end:** keeps one write path, but it would be limited to the brain's scope and wait on brain Tier 3.

@@ -7,7 +7,7 @@ models the Hosts agent is compared on). Prints one JSON line with
 everything the later steps need.
 
 .DESCRIPTION
-Run it after Start-SpendRun.ps1 has opened the run, with that run's ID. Every write is to the
+Run it after spend/spend_guard.py open has opened the run, with that run's ID. Every write is to the
 spike's own resource group, except the policy exemption (scoped to that group), the MCP server's
 Entra app registration, and your own role assignments on the Foundry resource.
 #>

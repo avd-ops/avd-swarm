@@ -37,7 +37,7 @@ Status labels come from the cited pages. When a page gave no status, the entry s
 **Microsoft MCP Server for Enterprise (Graph).** It is in public preview, **read-only** and delegated, with the tools `microsoft_graph_get`, `suggest_queries` and `list_properties`. It is limited to 100 calls per minute per user, its calls are logged under its own app ID in Graph activity logs, and it has no extra cost.
 - Source: https://learn.microsoft.com/graph/mcp-server/overview
 - It overlaps the Users agent but is **tenant-wide**: it cannot limit reads to AVD groups.
-- Recommendation: **watch** for avd-swarm and **reuse** in tenant-swarm. For avd-swarm, keep a narrow custom Graph tool scoped to the AVD groups, as the CLAUDE.md rule requires.
+- Recommendation: **watch**. For avd-swarm, keep a narrow custom Graph tool scoped to the AVD groups, as the CLAUDE.md rule requires.
 
 **Azure SRE Agent.** This is the closest Microsoft product to avd-swarm. It is a chat ops agent with:
 - **Review and Autonomous run modes.** Writes are approved in chat by an "SRE Agent Administrator".
@@ -61,11 +61,11 @@ Status labels come from the cited pages. When a page gave no status, the entry s
 
 **Agent 365.** It provides a registry covering Foundry, Copilot Studio and third-party agents, a Tools view where admins can block MCP servers and approve tool requests, and monitoring. Its GA status (reportedly May 2026) and licensing are not confirmed in the sources read.
 - Sources: https://redmondmag.com/blogs/redmond-dispatch/2026/09/microsoft-agent-365-adds-centralized-controls.aspx and https://www.epcgroup.net/blog/microsoft-agent-365-general-availability-may-2026-registry-sync-aws-google-cloud
-- Recommendation: **watch**. It fits tenant-swarm more than avd-swarm.
+- Recommendation: **watch**. It is mostly tenant-wide, which is out of scope here.
 
 **Security Copilot Entra agents.** The Conditional Access Optimization agent and the Identity Risk Management agent (preview) are billed in SCUs. They run on fixed identities whose permissions can't be changed.
 - Source: https://learn.microsoft.com/en-us/entra/security-copilot/entra-agents
-- Recommendation: **ignore** for avd-swarm, since it is tenant-wide; tenant-swarm should **watch** them.
+- Recommendation: **ignore**, since it is tenant-wide and out of scope here.
 
 **Windows 365 and AVD AI features.** Copilot in Intune gives Cloud PC insights and has four Intune agents, none of them for Windows 365. Nothing AVD-specific was found.
 - Source: https://learn.microsoft.com/en-us/intune/copilot/
@@ -139,5 +139,5 @@ Several products cover parts of this: Azure Copilot with its agents (portal), Az
 7. **§5:** state that Foundry's `require_approval` and `mcp_approval_request` are never the write approval. They may only be defense in depth on `propose_change`.
 8. **Governance §2.1:** consider writing `policy.yml` in Rego or Cedar, evaluated through the Agent Governance Toolkit, so the same policy runs in agent middleware (early refusal) and in the job (authoritative).
 9. **Governance §2.2:** add Foundry guardrails (indirect injection and task adherence on tool calls and responses) and Foundry tracing as inputs. List the Copilot Studio webhook as the rejected alternative, since it sends text and fails open.
-10. **Users agent:** keep a narrow AVD-scoped Graph tool. Microsoft MCP Server for Enterprise is read-only but tenant-wide; adopt it in tenant-swarm.
+10. **Users agent:** keep a narrow AVD-scoped Graph tool. Microsoft MCP Server for Enterprise is read-only but tenant-wide, so it doesn't fit.
 11. **§1 positioning:** say plainly that avd-swarm's value is the governed write path. Revisit the build-or-reuse choice for read and chat if Azure SRE Agent adds AVD and out-of-band approval.

@@ -4,7 +4,7 @@
 - **Sources:** the tools' own pages: [Prompt Shields](https://learn.microsoft.com/azure/ai-services/content-safety/concepts/jailbreak-detection), [PyRIT](https://github.com/microsoft/PyRIT), [garak](https://github.com/NVIDIA/garak), [promptfoo](https://github.com/promptfoo/promptfoo), [Beelzebub](https://github.com/beelzebub-labs/beelzebub), [Sentinel MCP custom tools](https://learn.microsoft.com/azure/sentinel/datalake/sentinel-mcp-create-custom-tool) and the [Canarytokens Entra ID token](https://docs.canarytokens.org/guide/entraid-token). What applies to the AVD repos is in avd-second-brain's [AI agents page](https://github.com/nickprignano/avd-second-brain/blob/main/docs/knowledge/agents/README.md#securing-the-agents-and-avd-security-signal). This page links to them rather than repeating them, and only says how the tools fit avd-swarm.
 - **Checked against:** [spec.md](spec.md) (§3, §5, §6, §9a), [governance.md](governance.md) (§2.2 to §2.4), [redteam.md](redteam.md) (R1 to R25, open AX items) and the S1a spike's model client (`spikes/s1a/agent_api/main.py`).
 - **Rules that apply:** keyless only (managed identity, Entra Agent ID or workload identity federation; no API keys or client secrets), no new AI vendor, least-privilege roles, no tenant or customer names, and the license of every tool checked before its code is used.
-- **Scope:** tenant-wide security (all of Entra, Defender XDR across the tenant, deception for a tenant's sign-in page) belongs to tenant-swarm (spec §8) and isn't designed here.
+- **Scope:** tenant-wide security (all of Entra, Defender XDR across the tenant, deception for a tenant's sign-in page) is out of scope (spec §8) and isn't designed here.
 
 ## 1. Ranked recommendation
 
@@ -18,7 +18,7 @@
 | 6 | **The same hunts as Sentinel MCP custom tools** | **Pilot later**, operator-side only | Only for tenants already on the Sentinel data lake with Defender licenses; agent sign-in to it isn't keyless today (§6.3) | After step 3, per adopter |
 | 7 | promptfoo red-team mode | **Skip** | Generates attacks through its vendor's cloud by default; PyRIT and garak cover the need with no new vendor | n/a |
 | 8 | Beelzebub's code | **Skip** (take the idea) | GPL-3.0; the decoy-tool idea needs about 30 lines of our own | n/a |
-| 9 | Hosted honeytokens for Entra | **Not here** | Tenant-level deception is tenant-swarm's; a hosted third-party service is prior art only under the family's partner rule | n/a |
+| 9 | Hosted honeytokens for Entra | **Not here** | Tenant-level deception is out of scope; a hosted third-party service is prior art only under the family's partner rule | n/a |
 
 **What none of this replaces:** the controls that already hold (red team "What held up"): no write token before a person approves, agents with no write tools, plans rendered from the plan store, and an observer that never sees text. Prompt Shields and decoys lower the odds that a fooled agent misleads an operator or proposes a bad plan; they don't stand in for the gate.
 
