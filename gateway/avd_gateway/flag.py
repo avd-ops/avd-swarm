@@ -36,6 +36,22 @@ def arm_flag_reader(get_json: Callable[[str], dict], subscription: str, resource
     return lambda: position_from_tags(get_json(url).get("tags"), tag)
 
 
+REQUIRED_REFUSALS = ("halt-agents", "halt-all")
+
+
+def refusals(config: dict) -> tuple[str, ...]:
+    """The positions that refuse model calls, from governance/gateway.yml. Fails closed: a value that isn't a
+    list of positions, or one that leaves out halt-agents or halt-all, is a configuration error, never a
+    quieter switch (governance section 2.3)."""
+    value = (config.get("flag") or {}).get("refuseModelCallsAt")
+    if not isinstance(value, list) or not all(isinstance(p, str) and p in POSITIONS for p in value):
+        raise ValueError(f"flag.refuseModelCallsAt must be a list of positions from {POSITIONS}")
+    missing = [p for p in REQUIRED_REFUSALS if p not in value]
+    if missing:
+        raise ValueError(f"flag.refuseModelCallsAt must include {missing}: those positions forbid agents")
+    return tuple(value)
+
+
 def check(read: FlagReader, refuse_at: tuple[str, ...] | list[str]) -> str:
     """Returns the position when model calls are allowed; raises SpendRefused otherwise."""
     try:

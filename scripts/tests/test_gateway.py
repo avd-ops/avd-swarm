@@ -165,9 +165,12 @@ class Ledger(unittest.TestCase):
         with self.assertRaises(SpendRefused):
             ledger.Ledger(Racing(), caps, lambda: NOON).reserve("agent-api", 0.5)
 
-    def test_caps_must_be_positive(self):
+    def test_caps_must_be_positive_finite_numbers(self):
+        for bad in (0, float("nan"), float("inf"), True, "5"):
+            with self.assertRaises(ValueError, msg=repr(bad)):
+                ledger.Caps.from_config(config(daily=bad))
         with self.assertRaises(ValueError):
-            ledger.Caps.from_config(config(daily=0))
+            ledger.Caps.from_config(config(callers={"agent-api": {"dailyUsd": True}}))
 
 
 class FakeTable:
@@ -175,16 +178,15 @@ class FakeTable:
 
     def __init__(self):
         self.entities = {}
+        self.queries = 0
 
-    def get_entity(self, partition_key, row_key):
-        from azure.core.exceptions import ResourceNotFoundError
-        if (partition_key, row_key) not in self.entities:
-            raise ResourceNotFoundError("not found")
-        value, etag = self.entities[(partition_key, row_key)]
-
-        class Entity(dict):
-            metadata = {"etag": etag}
-        return Entity(usd=value)
+    def query_entities(self, query_filter, parameters):
+        assert query_filter == "PartitionKey eq @p"
+        self.queries += 1
+        for (partition, key), (value, etag) in self.entities.items():
+            if partition == parameters["p"]:
+                entity = type("Entity", (dict,), {"metadata": {"etag": etag}})(RowKey=key, usd=value)
+                yield entity
 
     def submit_transaction(self, operations):
         from azure.data.tables import TableTransactionError
@@ -209,11 +211,14 @@ except ImportError:
 @unittest.skipUnless(HAVE_TABLES, "azure-data-tables isn't installed; the guard's CI installs only PyYAML")
 class TableStoreShape(unittest.TestCase):
     def test_create_then_update_with_etag(self):
-        store = ledger.TableStore(FakeTable())
+        table = FakeTable()
+        store = ledger.TableStore(table)
         led = ledger.Ledger(store, ledger.Caps.from_config(config()), lambda: NOON)
         when = led.reserve("agent-api", 0.3)
+        self.assertEqual(table.queries, 1)  # one round trip reads all three rows
         led.settle("agent-api", when, 0.3, 0.2)
         self.assertAlmostEqual(store.read("2026-10", ["day-2026-10-21"])["day-2026-10-21"][0], 0.2)
+        self.assertEqual(store.read("2026-11", ["day-2026-11-01"]), {"day-2026-11-01": (0.0, None)})
 
 
 class GatewayFlow(unittest.TestCase):
@@ -293,6 +298,24 @@ class GatewayFlow(unittest.TestCase):
         gw, _, _ = gateway()
         with self.assertRaises(SpendRefused):
             gw.open_run("improve")
+
+    def test_a_switch_config_that_would_fail_open_is_refused(self):
+        for value in ("halt-agents", ["halt-agent", "halt-all"], ["halt-all"], None, ["halt-agents", "halt-all", "stop"]):
+            cfg = config()
+            cfg["flag"]["refuseModelCallsAt"] = value
+            with self.assertRaises(ValueError, msg=repr(value)):
+                gateway(cfg=cfg)
+        cfg = config()
+        cfg["flag"]["refuseModelCallsAt"] = ["halt-actions", "halt-agents", "halt-all"]
+        gw, _, _ = gateway(position="halt-actions", cfg=cfg)
+        with self.assertRaises(SpendRefused):  # stricter is allowed
+            gw.before_call(gw.open_run("agent-api"), "claude-haiku-5-5", 10, 10)
+
+    def test_a_budget_must_be_a_finite_positive_number(self):
+        gw, _, _ = gateway()
+        for bad in (float("nan"), float("inf"), 0, -1, True):
+            with self.assertRaises(SpendRefused, msg=repr(bad)):
+                gw.open_run("agent-api", budget_usd=bad)
 
     def test_from_files(self):
         gw = Gateway.from_files(PRICES, CONFIG, ledger.MemoryStore(), lambda: "run")

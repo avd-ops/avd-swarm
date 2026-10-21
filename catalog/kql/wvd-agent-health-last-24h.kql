@@ -1,8 +1,0 @@
-// Session hosts whose latest AVD agent report in the last 24 hours isn't Available, with the health checks that failed.
-// Columns: learn.microsoft.com/azure/azure-monitor/reference/tables/wvdagenthealthstatus
-WVDAgentHealthStatus
-| where TimeGenerated > ago(24h)
-| summarize arg_max(TimeGenerated, *) by SessionHostName
-| where Status != "Available"
-| project SessionHostName, Status, LastHeartBeat, AgentVersion, SessionHostHealthCheckResult, TimeGenerated
-| order by SessionHostName asc

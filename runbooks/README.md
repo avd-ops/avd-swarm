@@ -4,7 +4,7 @@ A runbook is a diagnostic procedure as code: a Markdown page a person reads, und
 
 | Runbook | Agent | Trigger | Checks |
 |---|---|---|---|
-| [hosts.agent-unhealthy](hosts/agent-unhealthy.md) | Hosts | weekdays 06:00 UTC | no session host's AVD agent reports anything but `Available` |
+| [hosts.agent-unhealthy](hosts/agent-unhealthy.md) | Hosts | weekdays 06:00 UTC | agents report, and no session host is unhealthy or silent (a shut-down host is neither) |
 | [hosts.connection-errors](hosts/connection-errors.md) | Hosts | weekdays 06:15 UTC | fewer than 25 AVD errors in the last day |
 | [cost.idle-hosts](cost/idle-hosts.md) | Cost | Mondays 07:00 UTC | no running host without a connection in seven days |
 
@@ -20,7 +20,7 @@ trigger:
 agent: hosts
 reads:                             # each in the agent's allowlist (governance/allowlists/<agent>.yml)
   - id: health
-    kql: wvd-agent-health-last-24h # KQL only by catalog ID (catalog/kql/catalog.yml), never inline
+    kql: wvd-agent-health-latest-7d # KQL only by catalog ID (catalog/kql/catalog.yml), never inline
   - id: hosts
     tool: virtualdesktop_hostpool_sessionhost_list
 expect:                            # checked in code before a model sees anything

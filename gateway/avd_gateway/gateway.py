@@ -13,6 +13,7 @@ caller is the app role of its Entra identity, never a key.
 from __future__ import annotations
 
 import itertools
+import math
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Callable
@@ -61,9 +62,8 @@ class Gateway:
         config = yaml.safe_load(Path(config_path).read_text(encoding="utf-8"))
         return cls(PriceBook.load(prices_path), config, Ledger(store, Caps.from_config(config)), read_flag, **kwargs)
 
-    @property
-    def refuse_at(self) -> list[str]:
-        return list((self.config.get("flag") or {}).get("refuseModelCallsAt") or flags.POSITIONS[2:])
+    def __post_init__(self):
+        self.refuse_at = list(flags.refusals(self.config))  # raises on a config that would fail open
 
     def open_run(self, caller: str, run_id: str | None = None, provider: str = "anthropic",
                  budget_usd: float | None = None) -> Run:
@@ -71,10 +71,10 @@ class Gateway:
         caps = self.ledger.caps
         if caller not in caps.callers:
             raise SpendRefused(f"caller {caller!r} has no cap in governance/gateway.yml; refusing")
-        cap = caps.per_run_usd if budget_usd is None else float(budget_usd)
-        if cap <= 0:
-            raise SpendRefused("a run's budget must be positive")
-        meter = Meter(cap_usd=min(cap, caps.daily_usd), prices=self.prices, provider=provider)
+        cap = caps.per_run_usd if budget_usd is None else budget_usd
+        if isinstance(cap, bool) or not isinstance(cap, (int, float)) or not math.isfinite(cap) or cap <= 0:
+            raise SpendRefused("a run's budget must be a positive, finite number")
+        meter = Meter(cap_usd=min(float(cap), caps.daily_usd), prices=self.prices, provider=provider)
         return Run(caller, run_id or f"run-{next(self._ids)}", provider, meter)
 
     def before_call(self, run: Run, model: str, input_tokens: int, max_tokens: int) -> Ticket:

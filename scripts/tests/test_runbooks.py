@@ -24,7 +24,7 @@ trigger:
 agent: hosts
 reads:
   - id: health
-    kql: wvd-agent-health-last-24h
+    kql: wvd-agent-health-latest-7d
   - id: hosts
     tool: virtualdesktop_hostpool_sessionhost_list
 expect:
@@ -81,8 +81,8 @@ class Shape(unittest.TestCase):
         self.assertError(GOOD.replace("runMode: read-only", "runMode: propose"), "names exactly one catalog action")
 
     def test_read_is_a_tool_or_a_catalog_kql_never_both(self):
-        self.assertError(GOOD.replace("    kql: wvd-agent-health-last-24h",
-                                      "    kql: wvd-agent-health-last-24h\n    tool: virtualdesktop_hostpool_list"), "exactly one of tool or kql")
+        self.assertError(GOOD.replace("    kql: wvd-agent-health-latest-7d",
+                                      "    kql: wvd-agent-health-latest-7d\n    tool: virtualdesktop_hostpool_list"), "exactly one of tool or kql")
         self.assertError(GOOD.replace("  - id: hosts\n", "  - id: health\n"), "used twice")
 
     def test_facts_name_a_read_and_a_measure(self):
@@ -96,6 +96,16 @@ class Shape(unittest.TestCase):
 
     def test_cites_are_pinned(self):
         self.assertError(GOOD.replace("@f59a1c5207f89ba71f4752fe2a52a091ca6fd376", "@main"), "cites")
+
+    def test_wrong_types_are_findings_not_crashes(self):
+        for old, new in (("from: health", "from: [health]"), ("op: eq", "op: [eq]"), ("agent: hosts", "agent: [hosts]"),
+                         ("tool: virtualdesktop_hostpool_sessionhost_list", "tool: [x]"), ("runMode: read-only", "runMode: [x]"),
+                         ("onFail: report", "onFail: {a: b}")):
+            self.assertTrue(shape_errors(rb(GOOD.replace(old, new))), new)
+
+    def test_nan_budget_and_values_refused(self):
+        self.assertError(GOOD.replace("tokensUsd: 0.50", "tokensUsd: .nan"), "budget")
+        self.assertError(GOOD.replace("value: 100", "value: .inf"), "value must be a number")
 
     def test_body_needs_a_title(self):
         self.assertError(GOOD.replace("# Sample", "Sample"), "title a person reads")
@@ -155,7 +165,7 @@ class Repo(unittest.TestCase):
 
     def test_kql_must_be_in_the_catalog(self):
         errors = self.with_copy(lambda r: self.write(r, "runbooks/hosts/sample.md", GOOD.replace(
-            "kql: wvd-agent-health-last-24h", "kql: anything-goes")))
+            "kql: wvd-agent-health-latest-7d", "kql: anything-goes")))
         self.assertTrue(any("isn't in catalog/kql/catalog.yml" in e for e in errors), errors)
 
     def test_kql_must_be_allowed_for_the_agent(self):
@@ -163,7 +173,7 @@ class Repo(unittest.TestCase):
             self.write(r, "runbooks/cost/sample.md", GOOD.replace("hosts.sample", "cost.sample")
                        .replace("agent: hosts", "agent: cost").replace("virtualdesktop_hostpool_sessionhost_list", "cost_forecast_month"))
         errors = self.with_copy(edit)
-        self.assertTrue(any("KQL wvd-agent-health-last-24h isn't in the cost allowlist" in e for e in errors), errors)
+        self.assertTrue(any("KQL wvd-agent-health-latest-7d isn't in the cost allowlist" in e for e in errors), errors)
 
     def test_path_must_match_id(self):
         errors = self.with_copy(lambda r: self.write(r, "runbooks/hosts/other-name.md", GOOD))

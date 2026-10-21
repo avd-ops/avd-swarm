@@ -10,6 +10,7 @@ or written, the call is refused. The watchdog reads the same rows on its own (go
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable, Protocol
@@ -68,16 +69,10 @@ class TableStore:
         self.table = table_client
 
     def read(self, partition, keys):
-        from azure.core.exceptions import ResourceNotFoundError
-        out = {}
-        for key in keys:
-            try:
-                entity = self.table.get_entity(partition_key=partition, row_key=key)
-            except ResourceNotFoundError:
-                out[key] = (0.0, None)
-                continue
-            out[key] = (float(entity["usd"]), entity.metadata["etag"])
-        return out
+        # One round trip: the month's partition holds a row per day and per caller-day, a few hundred at most.
+        found = {e["RowKey"]: (float(e["usd"]), e.metadata["etag"])
+                 for e in self.table.query_entities("PartitionKey eq @p", parameters={"p": partition})}
+        return {key: found.get(key, (0.0, None)) for key in keys}
 
     def write(self, partition, rows):
         from azure.core import MatchConditions
@@ -106,11 +101,12 @@ class Caps:
     @classmethod
     def from_config(cls, config: dict) -> "Caps":
         caps = config.get("caps") or {}
-        callers = {name: float((c or {})["dailyUsd"]) for name, c in (config.get("callers") or {}).items()}
-        values = (caps.get("perRunUsd"), caps.get("dailyUsd"), caps.get("monthlyUsd"), *callers.values())
-        if any(isinstance(v, bool) or not isinstance(v, (int, float)) or v <= 0 for v in values):
-            raise ValueError("every cap in governance/gateway.yml must be a positive number")
-        return cls(float(caps["perRunUsd"]), float(caps["dailyUsd"]), float(caps["monthlyUsd"]), callers)
+        raw = {name: (c or {}).get("dailyUsd") for name, c in (config.get("callers") or {}).items()}
+        values = (caps.get("perRunUsd"), caps.get("dailyUsd"), caps.get("monthlyUsd"), *raw.values())
+        if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or v <= 0 for v in values):
+            raise ValueError("every cap in governance/gateway.yml must be a positive, finite number")
+        return cls(float(caps["perRunUsd"]), float(caps["dailyUsd"]), float(caps["monthlyUsd"]),
+                   {name: float(v) for name, v in raw.items()})
 
 
 def utc_now() -> datetime:

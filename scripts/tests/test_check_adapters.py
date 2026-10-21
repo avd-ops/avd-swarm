@@ -105,6 +105,15 @@ class Repo(unittest.TestCase):
         errors = check_adapters.check(tmp)
         self.assertTrue(any("needs adapter foundry" in e for e in errors), errors)
 
+    def test_reads_the_providers_of_the_root_it_checks(self):
+        tmp = self.copy_repo()
+        path = tmp / "gateway/avd_gateway/providers.py"
+        path.write_text(path.read_text().replace('"azure-openai", "entra-managed-identity", (), "foundry"',
+                                                 '"azure-openai", "entra-managed-identity", (), "openai-host"'))
+        errors = check_adapters.check(tmp)
+        self.assertTrue(any("needs adapter openai-host" in e for e in errors), errors)
+        self.assertEqual(check_adapters.check(ROOT), [])  # and the repo's own copy is still the one under ROOT
+
     def test_an_adapter_needs_its_page(self):
         tmp = self.copy_repo()
         (tmp / "adapters/apim/README.md").unlink()

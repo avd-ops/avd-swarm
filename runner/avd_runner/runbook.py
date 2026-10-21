@@ -11,6 +11,7 @@ scripts/check_runbooks.py, and the runner (WP2) calls evaluate() with the reads'
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
 
@@ -67,7 +68,11 @@ def parse(path: str, text: str) -> Runbook:
 
 
 def _number(value) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def _text(value) -> bool:
+    return isinstance(value, str) and bool(value.strip())
 
 
 def shape_errors(rb: Runbook) -> list[str]:
@@ -78,6 +83,8 @@ def shape_errors(rb: Runbook) -> list[str]:
     if errors:
         return errors
 
+    if not isinstance(m["agent"], str) or not NAME.match(m["agent"]):
+        errors.append("agent must be an agent's name, like hosts")
     if not isinstance(m["id"], str) or not ID.match(m["id"]):
         errors.append("id must be <agent>.<name> in lowercase, like hosts.agent-unhealthy")
     elif m["id"].split(".")[0] != m["agent"]:
@@ -103,7 +110,7 @@ def shape_errors(rb: Runbook) -> list[str]:
     if "manual" in trigger and trigger["manual"] is not True:
         errors.append("trigger.manual must be true")
     mode = trigger.get("runMode")
-    if mode not in RUN_MODES:
+    if not isinstance(mode, str) or mode not in RUN_MODES:
         errors.append(f"trigger.runMode must be one of {RUN_MODES}")
     if "proposes" in m and mode != "propose":
         errors.append("proposes needs runMode: propose")
@@ -123,6 +130,8 @@ def shape_errors(rb: Runbook) -> list[str]:
             errors.append(f"{where} has unknown keys {sorted(set(read) - {'id', 'tool', 'kql'})}")
         if ("tool" in read) == ("kql" in read):
             errors.append(f"{where} needs exactly one of tool or kql")
+        elif not _text(read.get("tool", read.get("kql"))):
+            errors.append(f"{where}: tool or kql must be a name")
         rid = read.get("id")
         if not isinstance(rid, str) or not NAME.match(rid):
             errors.append(f"{where} needs an id")
@@ -142,15 +151,15 @@ def shape_errors(rb: Runbook) -> list[str]:
             errors.append(f"{where} has unknown keys")
         if not isinstance(fact.get("fact"), str) or not NAME.match(fact.get("fact", "")):
             errors.append(f"{where} needs a fact name")
-        if fact.get("from") not in seen:
+        if not isinstance(fact.get("from"), str) or fact["from"] not in seen:
             errors.append(f"{where}.from must name one of this runbook's reads")
         if not isinstance(fact.get("measure"), str) or not MEASURE.match(fact["measure"]):
             errors.append(f"{where}.measure must be rows, or sum:, max: or min: and a column")
-        if fact.get("op") not in OPS:
+        if not isinstance(fact.get("op"), str) or fact["op"] not in OPS:
             errors.append(f"{where}.op must be one of {sorted(OPS)}")
         if not _number(fact.get("value")):
             errors.append(f"{where}.value must be a number")
-        if fact.get("onFail") not in ON_FAIL:
+        if not isinstance(fact.get("onFail"), str) or fact["onFail"] not in ON_FAIL:
             errors.append(f"{where}.onFail must be one of {ON_FAIL}")
 
     evidence = m.get("evidence", [])

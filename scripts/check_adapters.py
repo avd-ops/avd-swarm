@@ -13,17 +13,20 @@ Usage: python3 scripts/check_adapters.py [repo root]
 
 from __future__ import annotations
 
+import importlib
 import re
 import sys
 from pathlib import Path
 
 import yaml
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "gateway"))
+from avd_gateway.flag import POSITIONS  # noqa: E402  the switch positions every manifest must answer for
+
 KINDS = ("investigator", "incident", "scheduler", "gateway", "model-host", "policy-engine")
 CORE = ("investigate", "scheduled-checks", "alert-triggered-runs", "model-gateway", "tool-governance",
         "model-host", "policy-evaluation")
 STATUSES = ("designed", "built")
-POSITIONS = ("run", "halt-actions", "halt-agents", "halt-all")
 FIELDS = {"name", "kind", "status", "addsTo", "replaces", "default", "meters", "identity", "switch", "events",
           "writes", "exitTests"}
 EVENT = re.compile(r"^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$")
@@ -97,6 +100,21 @@ def manifest_errors(name: str, m: dict) -> list[str]:
     return errors
 
 
+def providers_under(root: Path) -> dict:
+    """The gateway's PROVIDERS from this root's own copy, not whichever avd_gateway was imported first."""
+    saved = {k: v for k, v in sys.modules.items() if k == "avd_gateway" or k.startswith("avd_gateway.")}
+    for k in saved:
+        del sys.modules[k]
+    sys.path.insert(0, str(root / "gateway"))
+    try:
+        return importlib.import_module("avd_gateway.providers").PROVIDERS
+    finally:
+        sys.path.remove(str(root / "gateway"))
+        for k in [k for k in sys.modules if k == "avd_gateway" or k.startswith("avd_gateway.")]:
+            del sys.modules[k]
+        sys.modules.update(saved)
+
+
 def check(root: Path) -> list[str]:
     errors, names = [], set()
     adapters = root / "adapters"
@@ -126,12 +144,7 @@ def check(root: Path) -> list[str]:
 
     # Every adapter the gateway's providers need is a registered model-host adapter.
     if (root / "gateway/avd_gateway/providers.py").is_file():
-        sys.path.insert(0, str(root / "gateway"))
-        try:
-            from avd_gateway.providers import PROVIDERS
-        finally:
-            sys.path.pop(0)
-        for provider in PROVIDERS.values():
+        for provider in providers_under(root).values():
             if provider.adapter and provider.adapter not in names:
                 errors.append(f"gateway/avd_gateway/providers.py: {provider.name} needs adapter {provider.adapter}, which has no manifest")
     return errors

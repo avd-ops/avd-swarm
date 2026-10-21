@@ -195,8 +195,8 @@ param operatorObjectId string = ''
 @description('anthropic only: base URL of agent_api/ at the pushed commit (raw.githubusercontent.com); the container installs and runs it.')
 param agentCodeUrl string = ''
 
-// The repo root at the same commit, for the gateway package and governance/model-prices.yml (agentCodeUrl ends in /spikes/s1a/agent_api).
-var repoCodeUrl = replace(agentCodeUrl, '/spikes/s1a/agent_api', '')
+@description('anthropic only: base URL of the repo root at the same commit (raw.githubusercontent.com), for the gateway package and governance/model-prices.yml.')
+param repoCodeUrl string = ''
 
 @description('anthropic only: the run\'s cap on Claude spend in USD, metered from each response before the next call (gateway/avd_gateway/meter.py).')
 param tokenSpendCapUsd string = '15'

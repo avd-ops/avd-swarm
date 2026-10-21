@@ -1,0 +1,14 @@
+// Every session host's latest AVD agent report in the last seven days, with a Problem column (1 or 0):
+//   not Available and not Shutdown: the agent says something is wrong (a deallocated host is not unhealthy, spec section 5a);
+//   Silent: not Shutdown, yet no report for two hours, so the agent or the VM stopped reporting.
+// A host absent from the result never reported in seven days; an empty result means no agent reports at all
+// (no hosts, or the diagnostic setting is gone), which the runbook treats as its own finding, never as clear.
+// The two-hour silence threshold and the Shutdown status of a deallocated host are assumptions to confirm on the
+// first sandbox run. Columns: learn.microsoft.com/azure/azure-monitor/reference/tables/wvdagenthealthstatus
+WVDAgentHealthStatus
+| where TimeGenerated > ago(7d)
+| summarize arg_max(TimeGenerated, *) by SessionHostName
+| extend Silent = Status != "Shutdown" and TimeGenerated < ago(2h)
+| extend Problem = iff(Silent or Status !in ("Available", "Shutdown"), 1, 0)
+| project SessionHostName, Status, Silent, Problem, LastReport = TimeGenerated, LastHeartBeat, AgentVersion, SessionHostHealthCheckResult
+| order by Problem desc, SessionHostName asc

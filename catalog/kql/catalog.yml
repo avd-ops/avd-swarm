@@ -4,10 +4,10 @@
 # question needs it, spec section 6), and the runner never writes a host name into a job summary (R17).
 # Protected path once agents run (step 2): the folder is under the guard's protected list.
 queries:
-  - id: wvd-agent-health-last-24h
-    file: wvd-agent-health-last-24h.kql
+  - id: wvd-agent-health-latest-7d
+    file: wvd-agent-health-latest-7d.kql
     tables: [WVDAgentHealthStatus]
-    returns: session host names, status and failed health checks, latest report per host
+    returns: each session host's latest report in seven days, its status, failed health checks and a Problem flag (unhealthy or silent)
   - id: wvd-connection-errors-last-24h
     file: wvd-connection-errors-last-24h.kql
     tables: [WVDErrors]
