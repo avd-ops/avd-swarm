@@ -1,6 +1,6 @@
 # 0009. avd-swarm is an open-source core; paid Microsoft agent services are optional adapters
 
-- **Status:** Proposed (waits on the owner's yes to [core-and-adapters.md](../core-and-adapters.md))
+- **Status:** Accepted (the owner, 2026-10-21: "yes to direction and defaults"; plan in [core-and-adapters.md](../core-and-adapters.md))
 - **Date:** 2026-10-21
 - **Applies:** [avd-second-brain decision 0023](https://github.com/avd-ops/avd-second-brain/blob/main/docs/knowledge/decisions/0023-family-format-best-open-source-or-build.md) to this repo.
 
@@ -21,4 +21,4 @@ On 2026-10-21 the owner judged Azure SRE Agent (about $292 a month until deleted
 - Good: an adopter runs everything from this repo and a free GitHub account for about ten dollars a month plus tokens; every dependency is readable and forkable.
 - Good: spec section 3a's red-teamed SRE Agent controls are kept as the adapter's design and cost nothing while off.
 - Bad: three capabilities (runbooks, the check runner, the gateway package) are ours to build and keep; the parity checklists and the brain's freshness workflow keep that honest.
-- On acceptance it supersedes v1-review D10's default and turns spec section 3a into the `sre-agent` adapter page (WP0). The PR that proposes it records only the owner's 2026-10-21 decision in section 3a's opening and SQ11; the decision itself waits.
+- It supersedes v1-review D10's default and turns spec section 3a into the `sre-agent` adapter page (WP0). The PR that proposes it records only the owner's 2026-10-21 decision in section 3a's opening and SQ11; the decision itself waits.

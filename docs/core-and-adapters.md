@@ -4,7 +4,7 @@ Fable review, 2026-10-21, of `avd-ops/avd-swarm` at `b49c03b` (main). Review and
 
 Everything below is measured against one test: **can an adopter run the whole of avd-swarm from this public repo and a free GitHub account, paying only for the tokens it uses, with every paid Microsoft service a switch they may leave off?**
 
-Status: proposed. It waits on the owner's yes ([section 8](#8-what-needs-nick)); until then the build order in [spec.md](spec.md) section 9a stands and nothing in this plan is scheduled.
+Status: accepted by the owner on 2026-10-21 ("yes to direction and defaults", every item in [section 8](#8-what-needs-nick)). The work packages in section 7 may start in that order; the build order in [spec.md](spec.md) section 9a still decides when anything that spends money runs.
 
 ## 1. Verdict in five lines
 

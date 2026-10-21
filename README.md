@@ -19,7 +19,7 @@ It covers AVD and the users, groups and licenses AVD needs. Tenant-wide administ
 The write path never runs in this public repo: adopters run it from a private repo synced from a release tag ([spec §5b](docs/spec.md#5b-where-the-write-path-runs-the-project-and-its-adopters)).
 
 - Spec: [docs/spec.md](docs/spec.md)
-- Open-source core and optional adapters (proposed): [docs/core-and-adapters.md](docs/core-and-adapters.md)
+- Open-source core and optional adapters (accepted 2026-10-21): [docs/core-and-adapters.md](docs/core-and-adapters.md)
 - Decisions: [docs/decisions](docs/decisions)
 - Recovery tests and failover: [docs/recovery.md](docs/recovery.md)
 - Rules: [CLAUDE.md](CLAUDE.md)
