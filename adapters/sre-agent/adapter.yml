@@ -1,0 +1,27 @@
+# The sre-agent adapter: Azure SRE Agent as an extra investigator (spec section 3a). Designed, not built; off by default.
+name: sre-agent
+kind: investigator
+status: designed
+addsTo: investigate
+replaces: []
+default: off
+meters:
+  - service: Azure SRE Agent
+    meter: agent units (always-on, plus active use)
+    standing: true            # bills until the agent is deleted
+    monthlyUsdIdle: 292       # list price as the 2026-10-21 review read it; re-read before any estimate
+    source: https://learn.microsoft.com/azure/sre-agent/pricing-billing
+identity:
+  runsAs: SRE Agent's system-assigned managed identity, plus avd-buddy's separate sreagent Azure MCP Server identity (Standard User)
+  mustNotHold: [Monitoring Contributor, Contributor, Owner, User Access Administrator, SRE Agent Administrator]
+  policyDeny: Azure Policy deny on Microsoft.Authorization/roleAssignments/write where the principal is SRE Agent's identity and the role is anything but Reader or Desktop Virtualization Reader
+  watchdog: a role assignment to SRE Agent's identity, or any write by it, trips halt-all and pages
+switch:
+  run: avd-buddy may start and read SRE Agent threads; SRE Agent may call the tool layer's MCP server (read tools and propose_change)
+  halt-actions: as run; any plan it proposes can't be approved
+  halt-agents: avd-buddy stops calling it; the published tool layer refuses its calls
+  halt-all: avd-buddy's API and the tool layer's Container App are stopped
+  residual: SRE Agent itself keeps running its own investigations, read-only by the Policy deny; stopping it needs its Administrator role, held by a break-glass account only
+events: [sreagent.thread.started, sreagent.tool.called]
+writes: none
+exitTests: []

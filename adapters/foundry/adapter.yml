@@ -1,0 +1,28 @@
+# The foundry adapter: Claude in Foundry, or the workflow as a Foundry hosted agent, as the model host. Designed, not built; off by default.
+# The gateway's foundry and azure-openai providers need it on (gateway/avd_gateway/providers.py).
+name: foundry
+kind: model-host
+status: designed
+addsTo: model-host
+replaces: []
+default: off
+meters:
+  - service: Microsoft Foundry (Claude in Foundry, preview; hosted agents)
+    meter: tokens at Foundry's Claude prices, hosted agent compute while running, the resource and project
+    standing: true            # a small standing cost for the resource and project
+    monthlyUsdIdle: null      # read from the retail prices API when an adopter estimates it
+    source: https://prices.azure.com/api/retail/prices
+identity:
+  runsAs: the Foundry project's managed identity and the hosted agent's identity
+  mustNotHold: [Contributor, Owner, User Access Administrator, Desktop Virtualization Contributor]
+  policyDeny: Azure Policy deny on Microsoft.Authorization/roleAssignments/write where the principal is a Foundry identity and the role is anything but Reader, Desktop Virtualization Reader or Log Analytics Reader on the AVD resource groups
+  watchdog: any write by a Foundry identity trips halt-all
+switch:
+  run: the gateway calls Claude in Foundry with an Entra token; the hosted agent may run the workflow
+  halt-actions: as run
+  halt-agents: the gateway refuses every call; the switch disables the hosted agents and removes their roles
+  halt-all: as halt-agents
+  residual: the deployment's tokens-per-minute quota is the rate ceiling; Foundry's own spend is outside the Anthropic workspace limit, so the gateway's caps are the only cap on it
+events: [model.usage]
+writes: none
+exitTests: []

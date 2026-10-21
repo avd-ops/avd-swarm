@@ -44,6 +44,8 @@ jobs:
         run: python3 -m unittest discover -s scripts/tests -v
       - name: Runbooks read only what their agent's allowlist and the KQL catalog allow (spec section 3c)
         run: python3 scripts/check_runbooks.py
+      - name: Adapters are off by default, write nothing and nothing depends on them (decision 0009)
+        run: python3 scripts/check_adapters.py
       - name: No write path in a public repo, no default-token PRs, no untrusted credentials (spec section 5b)
         env:
           REPO_PRIVATE: ${{ github.event.repository.private }}
