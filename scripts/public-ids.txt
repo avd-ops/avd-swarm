@@ -9,3 +9,13 @@
 00000003-0000-0000-c000-000000000000
 # a97b65f3-24c7-4388-baec-2e87135dc908  built-in role: Cognitive Services User
 a97b65f3-24c7-4388-baec-2e87135dc908
+# c6a89b2d-59bc-44d0-9896-0f6e12d7b80a  built-in role: Storage Queue Data Message Sender
+c6a89b2d-59bc-44d0-9896-0f6e12d7b80a
+# 8a0f0c08-91a1-4084-bc3d-661d67233fed  built-in role: Storage Queue Data Message Processor
+8a0f0c08-91a1-4084-bc3d-661d67233fed
+# acdd72a7-3385-48ef-bd42-f606fba81ae7  built-in role: Reader
+acdd72a7-3385-48ef-bd42-f606fba81ae7
+# 43d0d8ad-25c7-4714-9337-8ba259a9fe05  built-in role: Monitoring Reader
+43d0d8ad-25c7-4714-9337-8ba259a9fe05
+# 19e7f393-937e-4f77-808e-94535e297925  built-in role: Storage Queue Data Reader
+19e7f393-937e-4f77-808e-94535e297925

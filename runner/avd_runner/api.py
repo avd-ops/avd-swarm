@@ -1,11 +1,13 @@
 # avd-swarm agent API: the runbook endpoint's logic. Personal project, not for production, provided as is; not affiliated with the author's employer, Liquidware or Microsoft.
-"""POST /runbook {"runbook": "<id>", "startedBy": "schedule" | "manual"} -> a finding.
+"""POST /runbook {"runbook": "<id>", "startedBy": "schedule" | "manual" | "alert"} -> a finding.
 
 The agent API is the only process that calls a model (core-and-adapters.md section 3.4), so the runbook
 endpoint lives there: it loads the runbook from the commit it was deployed from (never from the request),
 runs it with the tool layer's reads, and hands `investigate` facts to the runbook's agent through the
-gateway with the runbook's budget. Only the check runner's identity may call it (Entra app role, checked
-by the caller's token before this function runs). This module is the endpoint's pure part; the web
+gateway with the runbook's budget. Only the check runner's and the alert job's identities may call it
+(the `runbook.run` Entra app role, checked by the caller's token before this function runs; docs/identities.md).
+The web layer should also hold each caller to its own startedBy: the runner sends schedule or manual, the
+alert job sends alert. This module is the endpoint's pure part; the web
 framework and the token check sit around it.
 """
 

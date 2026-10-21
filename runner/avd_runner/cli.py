@@ -10,6 +10,8 @@
   title --id ID                   the runbook's issue title; exit 2 for an ID that isn't a runbook here
   run --id ID --out FILE          asks the agent API to run one runbook and writes the finding; a transport
                                   failure or a reply that isn't a finding is written as could-not-run, never clear
+  alert-job                       the alert path's Container Apps Job (avd_runner/alert.py), configured by its
+                                  environment
   issue --finding FILE [--open-outcome O] --summary FILE
                                   prints the action (open, comment, close or none) and the outcome on one line,
                                   and writes the summary Markdown
@@ -38,6 +40,8 @@ from . import report  # noqa: E402
 from .api import load_all  # noqa: E402
 from .execute import STARTED_BY  # noqa: E402
 
+WORKFLOW_STARTED_BY = tuple(s for s in STARTED_BY if s != "alert")  # alert runs come from the alert job only
+
 REFUSED = 3
 UNREADABLE = 4
 UNKNOWN_RUNBOOK = 2
@@ -64,8 +68,13 @@ def arm_get_json(url: str) -> dict:
 
 
 def flag_position(subscription: str, resource_group: str, tag: str, refuse_at: list[str]) -> tuple[int, str]:
-    """(0, position) when agents may run, (REFUSED, why) at a refusing position, (UNREADABLE, why) otherwise."""
-    read = flags.arm_flag_reader(arm_get_json, subscription, resource_group, tag)
+    return flag_position_with(arm_get_json, subscription, resource_group, tag, refuse_at)
+
+
+def flag_position_with(get_json, subscription: str, resource_group: str, tag: str, refuse_at: list[str]) -> tuple[int, str]:
+    """(0, position) when agents may run, (REFUSED, why) at a refusing position, (UNREADABLE, why) otherwise.
+    get_json signs in as the caller: the Azure CLI here, the managed identity in the alert job."""
+    read = flags.arm_flag_reader(get_json, subscription, resource_group, tag)
     try:
         position = read()
     except Exception as error:
@@ -76,8 +85,12 @@ def flag_position(subscription: str, resource_group: str, tag: str, refuse_at: l
         return REFUSED, str(refused)
 
 
-def post_runbook(url: str, resource: str, runbook: str, started_by: str) -> dict:
-    token = az("account", "get-access-token", "--resource", resource, "--query", "accessToken", "-o", "tsv").strip()
+def az_token(resource: str) -> str:
+    return az("account", "get-access-token", "--resource", resource, "--query", "accessToken", "-o", "tsv").strip()
+
+
+def post_runbook(url: str, resource: str, runbook: str, started_by: str, token=az_token) -> dict:
+    token = token(resource)
     request = urllib.request.Request(f"{url.rstrip('/')}/runbook", method="POST",
                                      data=json.dumps({"runbook": runbook, "startedBy": started_by}).encode(),
                                      headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
@@ -122,8 +135,9 @@ def main(argv: list[str] | None = None) -> int:
     t.add_argument("--id", required=True)
     r = sub.add_parser("run")
     r.add_argument("--id", required=True)
-    r.add_argument("--started-by", default="schedule", choices=STARTED_BY)
+    r.add_argument("--started-by", default="schedule", choices=WORKFLOW_STARTED_BY)
     r.add_argument("--out", required=True)
+    sub.add_parser("alert-job")
     i = sub.add_parser("issue")
     i.add_argument("--finding", required=True)
     i.add_argument("--open-outcome", default=None)
@@ -139,6 +153,9 @@ def main(argv: list[str] | None = None) -> int:
         code, detail = flag_position(args.subscription, args.resource_group, args.tag, list(flags.refusals(config)))
         print({0: f"switch: {detail}", REFUSED: f"skipped: {detail}"}.get(code, f"::error::{detail}"))
         return code
+    if args.command == "alert-job":
+        from .alert import main as alert_main
+        return alert_main()
     if args.command in ("title", "run") and args.id not in load_all(ROOT):
         print(f"::error::{args.id!r} isn't a runbook in this repo", file=sys.stderr)
         return UNKNOWN_RUNBOOK
