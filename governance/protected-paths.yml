@@ -20,6 +20,10 @@ protected:
   - scripts/public-ids.txt
   - scripts/tests/**
   - gateway/**
+  - catalog/**
+  - contracts/**
+  - runner/avd_runner/runbook.py
+  - adapters/**
 append_only:
   - evals/**
   - spikes/s1a/evals/**

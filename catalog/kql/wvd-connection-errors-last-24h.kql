@@ -1,0 +1,7 @@
+// Connection and feed errors in the last 24 hours, counted by code and source; no user names leave the workspace.
+// Columns: learn.microsoft.com/azure/azure-monitor/reference/tables/wvderrors
+WVDErrors
+| where TimeGenerated > ago(24h)
+| summarize Errors = count(), FirstSeen = min(TimeGenerated), LastSeen = max(TimeGenerated)
+    by ActivityType, Source, CodeSymbolic, ServiceError
+| order by Errors desc

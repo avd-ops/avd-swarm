@@ -1,0 +1,12 @@
+# The Cost agent's read allowlist (spec section 4; SQ2). Protected path. Runbooks may read only what it names.
+# status: draft until step 2 builds the tool layer's cost reads: the Cost Management forecast and query REST
+# calls under Cost Management Reader, wrapped as tool layer functions (SQ2), never the ARM MCP server's write tools.
+agent: cost
+status: draft
+tools:
+  - cost_month_to_date_by_resource
+  - cost_forecast_month
+  - virtualdesktop_hostpool_sessionhost_list
+  - kql_catalog_run
+kql:
+  - wvd-hosts-without-connections-7d
