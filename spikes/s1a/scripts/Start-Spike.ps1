@@ -32,7 +32,11 @@ param(
     [ValidateRange(1, 1000)][int] $Capacity = 50,
     # Anthropic: the fallback without Foundry (Anthropic's API from a Container App, Entra Agent ID through Graph).
     # No API key: the agents app calls Claude with Anthropic workload identity federation (its managed identity).
-    [ValidateSet('Foundry', 'Anthropic')][string] $Provider = 'Foundry'
+    [ValidateSet('Foundry', 'Anthropic')][string] $Provider = 'Foundry',
+    # Anthropic only: scan the question and every tool result with Prompt Shields (agent_api/shield.py, red team R26),
+    # on a free-tier Content Safety resource with local auth disabled. Observe mode counts hits and changes nothing.
+    [switch] $PromptShields,
+    [ValidateSet('observe', 'enforce')][string] $PromptShieldsMode = 'observe'
 )
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'Spike.psm1') -Force
@@ -185,11 +189,13 @@ if ($Provider -eq 'Anthropic') {
     # The agent code comes from the pushed commit; the container installs and runs it.
     $commit = git -C $PSScriptRoot rev-parse HEAD
     $agentCodeUrl = "https://raw.githubusercontent.com/nickprignano/avd-swarm/$commit/spikes/s1a/agent_api"
-    Write-SpikeStep "Deploying infra/main.bicep (MCP server, agents Container App, logs, empty host pool) with agent code at $commit; this takes several minutes"
+    $scan = if ($PromptShields) { ", Prompt Shields in $PromptShieldsMode mode" } else { "" }
+    Write-SpikeStep "Deploying infra/main.bicep (MCP server, agents Container App, logs, empty host pool$scan) with agent code at $commit; this takes several minutes"
     $deployment = Invoke-SpikeAz -Step 'deploy' -Arguments @('deployment', 'group', 'create', '-g', $SpikeResourceGroup,
         '-n', "avdswarm-spike-$RunId", '-f', (Join-Path $PSScriptRoot '..' 'infra' 'main.bicep'),
         '-p', "location=$Location", "runId=$RunId", "mcpAppId=$($app.appId)", 'provider=anthropic', "blueprintAppId=$($blueprint.appId)",
-        "operatorObjectId=$($context.UserId)", "agentCodeUrl=$agentCodeUrl", "claudeAudienceAppId=$($claudeApp.appId)")
+        "operatorObjectId=$($context.UserId)", "agentCodeUrl=$agentCodeUrl", "claudeAudienceAppId=$($claudeApp.appId)",
+        "promptShields=$($PromptShields.IsPresent.ToString().ToLowerInvariant())", "promptShieldsMode=$PromptShieldsMode")
     $out = $deployment.properties.outputs
 
     Write-SpikeStep "Making the agents' managed identity the blueprint's credential (federated identity credential)"

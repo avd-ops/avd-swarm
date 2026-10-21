@@ -7,3 +7,5 @@
 04b07795-8ddb-461a-bbee-02f9e1bf7b46
 # 00000003-0000-0000-c000-000000000000  first-party app: Microsoft Graph
 00000003-0000-0000-c000-000000000000
+# a97b65f3-24c7-4388-baec-2e87135dc908  built-in role: Cognitive Services User
+a97b65f3-24c7-4388-baec-2e87135dc908
