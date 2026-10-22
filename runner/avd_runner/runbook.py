@@ -26,6 +26,10 @@ ID = re.compile(r"^[a-z][a-z0-9]*\.[a-z0-9][a-z0-9-]*$")
 NAME = re.compile(r"^[a-z][A-Za-z0-9_-]*$")
 MEASURE = re.compile(r"^(rows|(sum|max|min):[A-Za-z][A-Za-z0-9_]*)$")
 CRON_FIELD = re.compile(r"^[0-9*,/-]+$")
+# What a tool read's args may name: the agent API fills these from its deployment, never from a request.
+SCOPE_KEYS = ("subscription", "resourceGroup", "hostPoolId", "workspaceId")
+PLACEHOLDER = re.compile(r"^\$\{([A-Za-z]+)\}$")
+ARG_NAME = re.compile(r"^[a-z][a-z0-9-]*$")
 CITE = re.compile(r"^([\w.-]+/[\w.-]+@[0-9a-f]{40}:[\w./-]+(#[\w-]+)?|https://learn\.microsoft\.com/\S+)$")
 
 
@@ -126,8 +130,23 @@ def shape_errors(rb: Runbook) -> list[str]:
         if not isinstance(read, dict):
             errors.append(f"{where} must be a mapping")
             continue
-        if set(read) - {"id", "tool", "kql"}:
-            errors.append(f"{where} has unknown keys {sorted(set(read) - {'id', 'tool', 'kql'})}")
+        if set(read) - {"id", "tool", "kql", "args"}:
+            errors.append(f"{where} has unknown keys {sorted(set(read) - {'id', 'tool', 'kql', 'args'})}")
+        if "args" in read:
+            args = read["args"]
+            if "tool" not in read:
+                errors.append(f"{where}: args go with a tool read only (a KQL query takes none)")
+            elif not isinstance(args, dict) or not args:
+                errors.append(f"{where}.args must be a mapping of argument names to values")
+            else:
+                for name, value in args.items():
+                    if not isinstance(name, str) or not ARG_NAME.match(name):
+                        errors.append(f"{where}.args: {name!r} isn't an argument name (lowercase, hyphens)")
+                    elif not _text(value):
+                        errors.append(f"{where}.args.{name} must be text")
+                    elif "${" in value and (not PLACEHOLDER.match(value) or PLACEHOLDER.match(value).group(1) not in SCOPE_KEYS):
+                        errors.append(f"{where}.args.{name}: a placeholder is the whole value, one of "
+                                      + ", ".join("${" + k + "}" for k in SCOPE_KEYS))
         if ("tool" in read) == ("kql" in read):
             errors.append(f"{where} needs exactly one of tool or kql")
         elif not _text(read.get("tool", read.get("kql"))):
@@ -196,12 +215,29 @@ def measure(rows: list[dict], how: str) -> float:
     return max(values) if kind == "max" else min(values)
 
 
+def resolve_args(read: dict, scope: dict[str, str]) -> dict[str, str]:
+    """A tool read's args with each ${placeholder} filled from the deployment's scope. A missing value raises:
+    the read fails (could-not-run), it never runs unscoped."""
+    out = {}
+    for name, value in (read.get("args") or {}).items():
+        match = PLACEHOLDER.match(value)
+        if match:
+            filled = scope.get(match.group(1))
+            if not filled:
+                raise RunbookError(f"the deployment sets no {match.group(1)} for {read['id']}")
+            out[name] = filled
+        else:
+            out[name] = value
+    return out
+
+
 def evaluate(rb: Runbook, results: dict[str, list[dict] | None]) -> dict:
     """Checks every expected fact against the reads' results (None for a read that failed).
 
-    Outcome: `clear` when every fact holds, `finding` when one doesn't, `could-not-run` when a read
-    failed or a fact couldn't be measured (missing data never passes). `investigate` lists the facts
-    whose onFail asks the agent to look; only those reach a model."""
+    Outcome: `clear` when every fact holds, `finding` when one doesn't, `could-not-run` when a fact couldn't
+    be measured, its read included (missing data never passes). A failed read no fact depends on (one only
+    the agent uses when it investigates) is listed in failedReads but doesn't decide the outcome.
+    `investigate` lists the facts whose onFail asks the agent to look; only those reach a model."""
     facts, failed_reads = [], [r["id"] for r in rb.meta["reads"] if results.get(r["id"]) is None]
     for fact in rb.meta["expect"]:
         entry = {"fact": fact["fact"], "op": fact["op"], "expected": fact["value"]}
@@ -216,7 +252,7 @@ def evaluate(rb: Runbook, results: dict[str, list[dict] | None]) -> dict:
             except RunbookError as error:
                 entry.update(status="unknown", reason=str(error))
         facts.append(entry)
-    if failed_reads or any(f["status"] == "unknown" for f in facts):
+    if any(f["status"] == "unknown" for f in facts):
         outcome = "could-not-run"
     elif any(f["status"] == "fails" for f in facts):
         outcome = "finding"

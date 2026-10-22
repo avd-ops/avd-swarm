@@ -103,6 +103,15 @@ class Shape(unittest.TestCase):
                          ("onFail: report", "onFail: {a: b}")):
             self.assertTrue(shape_errors(rb(GOOD.replace(old, new))), new)
 
+    def test_tool_args_take_text_or_a_known_placeholder(self):
+        tool = "tool: virtualdesktop_hostpool_sessionhost_list"
+        self.assertEqual(shape_errors(rb(GOOD.replace(tool, tool + '\n    args: {hostpool-resource-id: "${hostPoolId}", top: "10"}'))), [])
+        for args, words in (('{x: "${tenant}"}', "placeholder"), ('{x: "a${hostPoolId}"}', "placeholder"),
+                            ("{X_Y: a}", "argument name"), ("{x: [a]}", "must be text"), ("[a]", "mapping")):
+            self.assertError(GOOD.replace(tool, tool + "\n    args: " + args), words)
+        self.assertError(GOOD.replace("kql: wvd-agent-health-latest-7d", 'kql: wvd-agent-health-latest-7d\n    args: {x: "a"}'),
+                         "tool read only")
+
     def test_nan_budget_and_values_refused(self):
         self.assertError(GOOD.replace("tokensUsd: 0.50", "tokensUsd: .nan"), "budget")
         self.assertError(GOOD.replace("value: 100", "value: .inf"), "value must be a number")

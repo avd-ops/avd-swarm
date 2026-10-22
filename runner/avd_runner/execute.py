@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "gate"))
 from avd_gate.evidence import UNATTENDED  # noqa: E402
 from avd_gateway.prices import SpendRefused  # noqa: E402
 
-from .runbook import Runbook, evaluate  # noqa: E402
+from .runbook import Runbook, evaluate, resolve_args  # noqa: E402
 
 # Who started a run: a schedule, a workflow dispatch or an alert (the alert job, WP6). None is an operator in
 # avd-buddy, so the gate refuses a plan whose only evidence is such a run (gate/avd_gate/evidence.py, V1-4).
@@ -30,14 +30,17 @@ STARTED_BY = UNATTENDED
 
 
 class Reads(Protocol):
-    def tool(self, name: str) -> list[dict]:
-        """Calls one allowlisted read tool; raises on any failure."""
+    scope: dict  # the deployment's values for ${placeholders} in a tool read's args (runbook.SCOPE_KEYS)
+
+    def tool(self, name: str, args: dict) -> list[dict]:
+        """Calls one allowlisted read tool with the runbook's resolved args; raises on any failure."""
 
     def kql(self, query_id: str) -> list[dict]:
         """Runs one KQL catalog query by ID; raises on any failure."""
 
 
-# investigate(runbook, evaluation, results, budget_usd) -> {"claims": [...], "unanswered": [...]}
+# investigate(runbook, evaluation, results, budget_usd) -> {"claims": [...], "unanswered": [...], "shield": ""}
+# (shield: '', 'flagged' or 'unscanned', the gateway shield's mark on the conversation)
 Investigate = Callable[[Runbook, dict, dict, float], dict]
 
 
@@ -55,7 +58,10 @@ def run_reads(rb: Runbook, reads: Reads) -> tuple[dict, list[ReadFailure]]:
     results, failures = {}, []
     for read in rb.meta["reads"]:
         try:
-            rows = reads.tool(read["tool"]) if "tool" in read else reads.kql(read["kql"])
+            if "tool" in read:
+                rows = reads.tool(read["tool"], resolve_args(read, getattr(reads, "scope", {}) or {}))
+            else:
+                rows = reads.kql(read["kql"])
             if not isinstance(rows, list):
                 raise TypeError("a read returns a list of rows")
             results[read["id"]] = rows
@@ -82,6 +88,8 @@ def run(rb: Runbook, reads: Reads, investigate: Investigate | None, started_by: 
                 answer = investigate(rb, evaluation, results, float(rb.meta["budget"]["tokensUsd"]))
                 investigation = {"status": "answered", "claims": answer.get("claims", []),
                                  "unanswered": answer.get("unanswered", [])}
+                if answer.get("shield"):  # flagged or unscanned: a plan citing this needs the observer (security-tooling.md)
+                    investigation["shield"] = answer["shield"]
             except Refused as refused:
                 investigation = {"status": "refused", "reason": str(refused)[:200]}
             except Exception as error:

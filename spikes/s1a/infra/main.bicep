@@ -166,6 +166,17 @@ resource hostPool 'Microsoft.DesktopVirtualization/hostPools@2024-04-03' = {
   }
 }
 
+// The host pool's logs go to the spike's workspace, so the runbook's KQL reads have tables to query. With no
+// session hosts nothing reports, and the workspace's daily cap bounds ingestion anyway.
+resource hostPoolLogs 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  name: 'to-spike-logs'
+  scope: hostPool
+  properties: {
+    workspaceId: logs.id
+    logs: [for category in ['Connection', 'Error', 'AgentHealthStatus']: { category: category, enabled: true }]
+  }
+}
+
 resource desktopGroup 'Microsoft.DesktopVirtualization/applicationGroups@2024-04-03' = {
   name: 'dag-avdswarm-spike'
   location: avdLocation
@@ -192,11 +203,11 @@ param blueprintAppId string = ''
 @description('anthropic only: object ID of the person running the spike; the only caller the agent service accepts.')
 param operatorObjectId string = ''
 
-@description('anthropic only: base URL of agent_api/ at the pushed commit (raw.githubusercontent.com); the container installs and runs it.')
-param agentCodeUrl string = ''
+@description('anthropic only: the repository (owner/name) the agents app runs from.')
+param repo string = 'avd-ops/avd-swarm'
 
-@description('anthropic only: base URL of the repo root at the same commit (raw.githubusercontent.com), for the gateway package and governance/model-prices.yml.')
-param repoCodeUrl string = ''
+@description('anthropic only: the pushed commit the agents app runs (its tarball: agent_api, the gateway, the runner, runbooks, the KQL catalog, model prices).')
+param repoCommit string = ''
 
 @description('anthropic only: the run\'s cap on Claude spend in USD, metered from each response before the next call (gateway/avd_gateway/meter.py).')
 param tokenSpendCapUsd string = '15'
@@ -248,10 +259,10 @@ resource agentsApp 'Microsoft.App/containerApps@2024-03-01' = if (provider == 'a
           name: 'agents'
           image: 'docker.io/library/python:3.13-slim'
           command: ['sh', '-c']
-          // No image build: install the pinned requirements, fetch main.py, the gateway package (meter and Prompt Shields scan) and the
-          // pinned model prices from the pushed commit, then run it.
+          // No image build: fetch the pushed commit's tarball (agent_api, the gateway's meter and Prompt Shields scan, the runner,
+          // the runbooks and KQL catalog the runbook endpoint loads, the pinned model prices), install the pinned requirements, run it.
           args: [
-            'pip install --no-cache-dir -q -r ${agentCodeUrl}/requirements.txt && python -c "import os, urllib.request as u; os.makedirs(\'/tmp/avd_gateway\', exist_ok=True); u.urlretrieve(\'${agentCodeUrl}/main.py\', \'/tmp/main.py\'); [u.urlretrieve(\'${repoCodeUrl}/gateway/avd_gateway/\' + f, \'/tmp/avd_gateway/\' + f) for f in (\'__init__.py\', \'prices.py\', \'meter.py\', \'shield.py\')]; u.urlretrieve(\'${repoCodeUrl}/governance/model-prices.yml\', \'/tmp/model-prices.yml\')" && exec python /tmp/main.py'
+            'python -c "import io, tarfile, urllib.request as u; tarfile.open(fileobj=io.BytesIO(u.urlopen(\'https://codeload.github.com/${repo}/tar.gz/${repoCommit}\').read())).extractall(\'/tmp/src\', filter=\'data\')" && cd /tmp/src/* && pip install --no-cache-dir -q -r spikes/s1a/agent_api/requirements.txt && MODEL_PRICES_FILE=governance/model-prices.yml PYTHONPATH=gateway:runner:spikes/s1a/agent_api exec python spikes/s1a/agent_api/main.py'
           ]
           resources: { cpu: json('0.5'), memory: '1Gi' }
           env: [
@@ -269,6 +280,15 @@ resource agentsApp 'Microsoft.App/containerApps@2024-03-01' = if (provider == 'a
             { name: 'TOKEN_SPEND_CAP_USD', value: tokenSpendCapUsd }
             { name: 'CONTENT_SAFETY_ENDPOINT', value: scanOn ? contentSafety!.properties.endpoint : '' }
             { name: 'PROMPT_SHIELDS_MODE', value: promptShieldsMode }
+            // The runbook endpoint: the deployment's scope for a tool read's ${placeholders}, the workspace its KQL reads,
+            // the agent identity it reads as (set after /setup) and the app callers it accepts (empty: the operator only).
+            { name: 'SCOPE_SUBSCRIPTION', value: subscription().subscriptionId }
+            { name: 'SCOPE_RESOURCEGROUP', value: resourceGroup().name }
+            { name: 'SCOPE_HOSTPOOLID', value: hostPool.id }
+            { name: 'SCOPE_WORKSPACEID', value: logs.id }
+            { name: 'LOG_WORKSPACE_ID', value: logs.properties.customerId }
+            { name: 'RUNBOOK_IDENTITY_APP_ID', value: '' }
+            { name: 'RUNBOOK_CALLERS', value: '' }
           ]
         }
       ]
@@ -315,4 +335,5 @@ output agentsAppName string = provider == 'anthropic' ? agentsApp!.name : ''
 output agentsIdentityPrincipalId string = provider == 'anthropic' ? agentsIdentity!.properties.principalId : ''
 output mcpUrl string = 'https://${mcpServer.properties.configuration.ingress.fqdn}'
 output mcpAppId string = mcpAppId
+output logWorkspaceId string = logs.id
 output promptShields string = scanOn ? promptShieldsMode : 'off'

@@ -89,6 +89,11 @@ def az_token(resource: str) -> str:
     return az("account", "get-access-token", "--resource", resource, "--query", "accessToken", "-o", "tsv").strip()
 
 
+def az_scope_token(scope: str) -> str:
+    """A token for one delegated scope (AGENT_API_SCOPE), as an operator's manual run asks for it."""
+    return az("account", "get-access-token", "--scope", scope, "--query", "accessToken", "-o", "tsv").strip()
+
+
 def post_runbook(url: str, resource: str, runbook: str, started_by: str, token=az_token) -> dict:
     token = token(resource)
     request = urllib.request.Request(f"{url.rstrip('/')}/runbook", method="POST",
@@ -168,7 +173,9 @@ def main(argv: list[str] | None = None) -> int:
             if not url or not resource:
                 raise RuntimeError("AGENT_API_URL and AGENT_API_RESOURCE must be set")
             print(f"Asking the agent API to run {args.id} (up to {TIMEOUT_SECONDS} seconds)", flush=True)
-            finding = checked_finding(post_runbook(url, resource, args.id, args.started_by), args.id)
+            scope = os.environ.get("AGENT_API_SCOPE", "")  # set for an operator's run: their token for that scope
+            token = (lambda _resource: az_scope_token(scope)) if scope else az_token
+            finding = checked_finding(post_runbook(url, resource, args.id, args.started_by, token=token), args.id)
         except Exception as error:
             finding = unreachable(args.id, args.started_by, error)
         Path(args.out).write_text(json.dumps(finding, indent=2), encoding="utf-8")

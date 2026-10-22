@@ -26,10 +26,13 @@ SECRET_HOST = "avdlz-sh-secret-0"
 
 
 class FakeReads:
-    def __init__(self, kql=None, tools=None, fail=()):
+    def __init__(self, kql=None, tools=None, fail=(), scope=None):
         self.kql_rows, self.tool_rows, self.fail = kql or {}, tools or {}, set(fail)
+        self.scope = {"hostPoolId": "/hp"} if scope is None else scope
+        self.args = {}
 
-    def tool(self, name):
+    def tool(self, name, args):
+        self.args[name] = args
         if name in self.fail:
             raise ConnectionError(f"{name} failed for {SECRET_HOST}")
         return self.tool_rows.get(name, [])
@@ -78,6 +81,32 @@ class Execute(unittest.TestCase):
         self.assertEqual(finding["outcome"], "could-not-run")
         self.assertEqual(finding["readErrors"], {"health": "TimeoutError"})
         self.assertNotIn(SECRET_HOST, json.dumps(finding))
+
+    def test_tool_args_come_from_the_deployment_scope(self):
+        reads = FakeReads(kql={"wvd-agent-health-latest-7d": [{"Problem": 0}]})
+        execute.run(HEALTH, reads, None, "schedule")
+        self.assertEqual(reads.args["virtualdesktop_hostpool_sessionhost_list"], {"hostpool-resource-id": "/hp"})
+
+    def test_a_missing_scope_value_fails_the_read_never_runs_it_unscoped(self):
+        reads = FakeReads(kql={"wvd-agent-health-latest-7d": [{"Problem": 0}]}, scope={})
+        finding = execute.run(HEALTH, reads, None, "schedule")
+        self.assertEqual(reads.args, {})
+        self.assertEqual(finding["readErrors"], {"hosts": "RunbookError"})
+        # hosts is for the agent only: no fact depends on it, so the outcome stands on the facts
+        self.assertEqual((finding["outcome"], finding["failedReads"]), ("clear", ["hosts"]))
+
+    def test_a_failed_read_a_fact_needs_is_could_not_run(self):
+        reads = FakeReads(fail=("wvd-agent-health-latest-7d",))
+        finding = execute.run(HEALTH, reads, None, "schedule")
+        self.assertEqual(finding["outcome"], "could-not-run")
+
+    def test_the_shields_mark_reaches_the_finding(self):
+        def investigate(rb, evaluation, results, budget):
+            return {"claims": [], "unanswered": [], "shield": "flagged"}
+        finding = execute.run(HEALTH, SICK, investigate, "schedule")
+        self.assertEqual(finding["investigation"]["shield"], "flagged")
+        finding = execute.run(HEALTH, SICK, lambda *a: {"claims": [], "unanswered": [], "shield": ""}, "schedule")
+        self.assertNotIn("shield", finding["investigation"])
 
     def test_findings_carry_provenance_and_no_rows(self):
         finding = execute.run(HEALTH, SICK, None, "schedule")

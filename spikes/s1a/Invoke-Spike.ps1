@@ -364,6 +364,40 @@ None of these IDs is a secret; they're saved in $Spike/anthropic.json, not in an
                 @('--model', $s.hostsDeployment, '--out', "$Spike/evals.jsonl", '--only', 'p01,p02'))
         }
 
+        # WP2 and WP6 evidence: one runbook through the agent API's /runbook endpoint, as the check runner calls it.
+        # With no session hosts, reportingHosts fails (a finding) and nothing reaches the model; the finding is the evidence.
+        # Its own setup, so a resumed run gets it too: the agent identity reads the workspace and the app knows it.
+        Invoke-Step 'runbook' {
+            $readers = (Invoke-NativeAz @('role', 'assignment', 'list', '--assignee', $s.agentIdentityId, '--role', 'Log Analytics Reader',
+                    '--scope', $s.logWorkspaceId, '--query', '[].id')) -join "`n" | ConvertFrom-Json
+            if (@($readers | Where-Object { $_ }).Count -eq 0) {
+                Write-Host 'Giving the agent identity Log Analytics Reader on the spike workspace (the runbook''s KQL reads).'
+                $null = Invoke-NativeAz @('role', 'assignment', 'create', '--assignee-object-id', $s.agentIdentityId,
+                    '--assignee-principal-type', 'ServicePrincipal', '--role', 'Log Analytics Reader', '--scope', $s.logWorkspaceId)
+            }
+            Write-Host 'Telling the agents app which identity reads for runbooks (a new revision; it reinstalls, a minute or two).'
+            $null = Invoke-NativeAz @('containerapp', 'update', '-g', $s.resourceGroup, '-n', $s.agentsAppName,
+                '--set-env-vars', "RUNBOOK_IDENTITY_APP_ID=$($s.agentIdentityAppId)")
+            for ($i = 0; $i -lt 60; $i++) {
+                try { if ((Invoke-RestMethod -Uri "$($s.agentsUrl)/healthz" -TimeoutSec 10).runbookReady) { break } }
+                catch { Write-Verbose "not up yet: $($_.Exception.Message)" }
+                Start-Sleep -Seconds 10
+            }
+            Write-Host 'Waiting a minute for the role assignment to reach Log Analytics...'
+            Start-Sleep -Seconds 60
+            $env:AGENT_API_URL = $s.agentsUrl
+            $env:AGENT_API_RESOURCE = "api://$($s.mcpAppId)"
+            $env:AGENT_API_SCOPE = "api://$($s.mcpAppId)/Mcp.Tools.ReadWrite"  # the operator's own token, as for /ask
+            $env:PYTHONPATH = Join-Path $Kit '../../runner'
+            $null = Invoke-Native 'Runbook: hosts.agent-unhealthy, started by manual' @('-m', 'avd_runner', 'run', '--id', 'hosts.agent-unhealthy',
+                '--started-by', 'manual', '--out', "$Spike/runbook-finding.json")
+            $finding = Get-Content "$Spike/runbook-finding.json" -Raw | ConvertFrom-Json
+            if ('agent-api' -in @($finding.failedReads)) {
+                throw "The agent API didn't answer the runbook ($($finding.readErrors.'agent-api')). Its logs: az containerapp logs show -g $($s.resourceGroup) -n $($s.agentsAppName) --tail 100"
+            }
+            Save-SpikeResult 'Runbook' "outcome $($finding.outcome), failed reads [$($finding.failedReads -join ', ')], read errors $($finding.readErrors | ConvertTo-Json -Compress), investigation $($finding.investigation.status)"
+        }
+
         # Q6: the ten questions with the Hosts agent on each model; one service, the model chosen per request.
         foreach ($hostsModel in @($s.compareDeployments)) {
             Invoke-Step "q6-$hostsModel" {

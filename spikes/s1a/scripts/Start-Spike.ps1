@@ -191,14 +191,12 @@ if ($Provider -eq 'Anthropic') {
 
     # The agent code comes from the pushed commit; the container installs and runs it.
     $commit = git -C $PSScriptRoot rev-parse HEAD
-    $repoCodeUrl = "https://raw.githubusercontent.com/avd-ops/avd-swarm/$commit"
-    $agentCodeUrl = "$repoCodeUrl/spikes/s1a/agent_api"
     $scan = if ($PromptShields) { ", Prompt Shields in $PromptShieldsMode mode" } else { "" }
     Write-SpikeStep "Deploying infra/main.bicep (MCP server, agents Container App, logs, empty host pool$scan) with agent code at $commit; this takes several minutes"
     $deployment = Invoke-SpikeAz -Step 'deploy' -Arguments @('deployment', 'group', 'create', '-g', $SpikeResourceGroup,
         '-n', "avdswarm-spike-$RunId", '-f', (Join-Path $PSScriptRoot '..' 'infra' 'main.bicep'),
         '-p', "location=$Location", "runId=$RunId", "mcpAppId=$($app.appId)", 'provider=anthropic', "blueprintAppId=$($blueprint.appId)",
-        "operatorObjectId=$($context.UserId)", "agentCodeUrl=$agentCodeUrl", "repoCodeUrl=$repoCodeUrl", "claudeAudienceAppId=$($claudeApp.appId)",
+        "operatorObjectId=$($context.UserId)", "repoCommit=$commit", "claudeAudienceAppId=$($claudeApp.appId)",
         "promptShields=$($PromptShields.IsPresent.ToString().ToLowerInvariant())", "promptShieldsMode=$PromptShieldsMode")
     $out = $deployment.properties.outputs
 
@@ -247,6 +245,7 @@ if ($Provider -eq 'Anthropic') {
         agentsUrl             = $agentsUrl
         agentsAppName         = $out.agentsAppName.value
         agentsIdentityPrincipalId = $out.agentsIdentityPrincipalId.value
+        logWorkspaceId        = $out.logWorkspaceId.value
         claudeAudienceAppId   = $claudeApp.appId
         tenantId              = $context.TenantId
         blueprintAppId        = $blueprint.appId

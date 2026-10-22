@@ -11,6 +11,7 @@ reads:
     kql: wvd-agent-health-latest-7d
   - id: hosts                       # for the agent when it investigates: the live status of every host
     tool: virtualdesktop_hostpool_sessionhost_list
+    args: {hostpool-resource-id: "${hostPoolId}"}   # draft name until the S1a run lists the tool's parameters
 expect:
   - fact: reportingHosts            # no report at all is a finding of its own, never clear
     from: health
