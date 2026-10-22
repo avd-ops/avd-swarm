@@ -2,6 +2,7 @@
 
 - **Status:** Proposed
 - **Part of:** [spec.md](spec.md) §7a (Cost agent, §4) and [governance.md](governance.md) (spend gate §2.1, stop-spend path §2.3, watchdog §2.4). The first piece is built: the public spend guard, [spend/spend_guard.py](../spend/README.md), which the S1a spike runs on.
+- **For coding agents:** the planned sandbox skill, [sandbox-skill.md](sandbox-skill.md).
 
 ## 1. Why
 
