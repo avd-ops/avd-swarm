@@ -23,6 +23,9 @@ reads:                             # each in the agent's allowlist (governance/a
     kql: wvd-agent-health-latest-7d # KQL only by catalog ID (catalog/kql/catalog.yml), never inline
   - id: hosts
     tool: virtualdesktop_hostpool_sessionhost_list
+    args: {hostpool-resource-id: "${hostPoolId}"}  # a tool read's arguments; a placeholder is filled by the agent API from
+                                   # its deployment (${subscription}, ${resourceGroup}, ${hostPoolId}, ${workspaceId}),
+                                   # never from a request or a model
 expect:                            # checked in code before a model sees anything
   - fact: unhealthyHosts
     from: health                   # a read's id
@@ -45,7 +48,7 @@ The body starts with a `# ` title and says what the runbook checks, what clear m
 
 - `clear`: every fact holds. No model is called.
 - `finding`: a fact fails. Facts with `onFail: investigate` go to the runbook's agent with the reads' results; the agent answers through the claim check (spec section 4a). `report` facts are recorded without a model.
-- `could-not-run`: a read failed or a fact couldn't be measured. Missing data never passes.
+- `could-not-run`: a fact couldn't be measured, or a read it depends on failed. Missing data never passes. A failed read no fact depends on (one only the agent uses) is listed in `failedReads` and doesn't change the outcome.
 
 Findings carry `threadStartedBy: schedule`, `manual` (a workflow dispatch) or `alert` (the alert job), and the gate refuses a plan whose only evidence is such a run, since none is an operator in avd-buddy (spec section 3a, red team V1-4; `gate/avd_gate/evidence.py`).
 
