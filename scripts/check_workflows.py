@@ -10,7 +10,7 @@ W2  A step that opens a pull request uses a GitHub App installation token from
 W3  No `pull_request_target` trigger.
 W4  No `${{ github.event.* }}` or `${{ github.head_ref }}` inside a `run:` script; pass event text through `env:`.
 W5  A workflow started by an untrusted event (issues, comments, reviews, discussions, workflow_run,
-    pull_request) asks for no `id-token: write` and reads no secret other than GITHUB_TOKEN.
+    repository_dispatch, pull_request) asks for no `id-token: write` and reads no secret other than GITHUB_TOKEN.
 
 Usage: check_workflows.py [--public | --private] [FILE ...]
 Without files it checks .github/workflows/*.yml and templates/workflows/*.yml (W1 doesn't apply to
@@ -29,7 +29,7 @@ import yaml
 
 UNTRUSTED_EVENTS = {
     "issues", "issue_comment", "pull_request", "pull_request_review", "pull_request_review_comment",
-    "discussion", "discussion_comment", "workflow_run",
+    "discussion", "discussion_comment", "workflow_run", "repository_dispatch",
 }
 EVENT_IN_RUN = re.compile(r"\$\{\{\s*github\.(event\.|head_ref)")
 DEFAULT_TOKEN = re.compile(r"secrets\.GITHUB_TOKEN|github\.token")

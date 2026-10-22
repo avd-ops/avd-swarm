@@ -18,13 +18,15 @@ from pathlib import Path
 from typing import Callable, Protocol
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "gateway"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "gate"))
+from avd_gate.evidence import UNATTENDED  # noqa: E402
 from avd_gateway.prices import SpendRefused  # noqa: E402
 
 from .runbook import Runbook, evaluate  # noqa: E402
 
-# Who started a run. Neither is an operator in avd-buddy, so the gate refuses a plan whose only evidence is
-# such a run (spec section 3a, V1-4). `alert` joins with WP6, together with the gate rule and its test.
-STARTED_BY = ("schedule", "manual")
+# Who started a run: a schedule, a workflow dispatch or an alert (the alert job, WP6). None is an operator in
+# avd-buddy, so the gate refuses a plan whose only evidence is such a run (gate/avd_gate/evidence.py, V1-4).
+STARTED_BY = UNATTENDED
 
 
 class Reads(Protocol):

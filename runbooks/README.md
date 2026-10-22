@@ -47,7 +47,7 @@ The body starts with a `# ` title and says what the runbook checks, what clear m
 - `finding`: a fact fails. Facts with `onFail: investigate` go to the runbook's agent with the reads' results; the agent answers through the claim check (spec section 4a). `report` facts are recorded without a model.
 - `could-not-run`: a read failed or a fact couldn't be measured. Missing data never passes.
 
-Findings carry `threadStartedBy: schedule` or `manual` (a workflow dispatch), and the gate refuses a plan whose only evidence is such a run, since neither is an operator in avd-buddy (spec section 3a, red team V1-4). `alert` joins with WP6, together with the gate rule and its test.
+Findings carry `threadStartedBy: schedule`, `manual` (a workflow dispatch) or `alert` (the alert job), and the gate refuses a plan whose only evidence is such a run, since none is an operator in avd-buddy (spec section 3a, red team V1-4; `gate/avd_gate/evidence.py`).
 
 ## The check runner
 
@@ -55,7 +55,7 @@ Findings carry `threadStartedBy: schedule` or `manual` (a workflow dispatch), an
 
 What it writes (`runner/avd_runner/report.py`): a GitHub issue only when the outcome changes (open when a runbook stops being clear, comment when it changes while open, close when clear again), and a job summary. Both carry the runbook ID, the outcome and fact values only, never a host, user or resource name (R17); the agent's claims stay in the plan store and avd-buddy. Counts per runbook and outcome are the proposed C8 `checks` block for the brain. `scripts/check_runbooks.py` fails when a runbook's schedule has no cron in the template, or a cron starts no runbook.
 
-A Container Apps Job for alert-triggered runs uses the same code (WP6). The first scheduled run in the sandbox needs a spend estimate and the owner's exact go.
+Alert-triggered runs use the same code from a Container Apps Job (`python -m avd_runner alert-job`, template in `templates/alert-path/`, WP6): an alert rule's action group calls a Consumption Logic App, which queues the alert ID only; the job reads the kill switch, reads the alert back from Azure Monitor and runs up to four read-only runbooks whose `trigger.alert` glob matches the rule's name, one message per execution. Each summary goes to the job's log and the agent API keeps the finding; the alert path opens no GitHub issue. Every hop is a managed identity; nothing in Azure holds a GitHub credential. The first scheduled run in the sandbox needs a spend estimate and the owner's exact go.
 
 ## Rules the checker enforces
 

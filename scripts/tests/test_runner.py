@@ -84,7 +84,7 @@ class Execute(unittest.TestCase):
         self.assertEqual(finding["threadStartedBy"], "schedule")
         self.assertEqual(finding["investigation"]["status"], "not-available")
         self.assertNotIn(SECRET_HOST, json.dumps(finding))
-        for started_by in ("buddy", "alert"):  # alert joins with WP6 and its gate rule
+        for started_by in ("buddy", "avd-buddy"):  # the runner never claims an operator started it
             with self.assertRaises(ValueError):
                 execute.run(HEALTH, SICK, None, started_by)
 

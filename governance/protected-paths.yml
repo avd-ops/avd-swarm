@@ -9,7 +9,7 @@ agents:
 protected:
   - governance/**
   - .github/**
-  - templates/workflows/**
+  - templates/**
   - .claude/**
   - CLAUDE.md
   - AGENTS.md
@@ -24,6 +24,7 @@ protected:
   - contracts/**
   - runner/**
   - adapters/**
+  - gate/**
 append_only:
   - evals/**
   - spikes/s1a/evals/**
