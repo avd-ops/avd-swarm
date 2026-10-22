@@ -13,6 +13,7 @@ protected:
   - .claude/**
   - CLAUDE.md
   - AGENTS.md
+  - GEMINI.md
   - CODEOWNERS
   - LICENSE
   - scripts/check-no-ids.sh
