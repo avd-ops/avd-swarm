@@ -358,7 +358,7 @@ What that means here:
 
 ### 6e. Scribe: drafting docs fixes from the brain's findings
 
-The second brain checks that code comments, READMEs, changelogs, docs and its generated wiki agree with the code and with its facts of record (contracts, sources, decisions, terms), and publishes what disagrees as contract **C13**, `avd-doc-findings/v1` ([avd-second-brain docs-spec](https://github.com/avd-ops/avd-second-brain/blob/main/docs/docs-spec.md), [decision 0004](decisions/0004-scribe-drafts-docs.md)). **Scribe** is the avd-swarm role that turns those findings into draft PRs. The brain decides what is wrong; Scribe only drafts; a person merges.
+The second brain checks that code comments, READMEs, changelogs and docs agree with the code and with its facts of record (contracts, sources, decisions, terms), and publishes what disagrees as contract **C13**, `avd-doc-findings/v1` ([avd-second-brain docs-spec](https://github.com/avd-ops/avd-second-brain/blob/main/docs/docs-spec.md), [decision 0004](decisions/0004-scribe-drafts-docs.md)). The brain's generated handbook (`wiki/`) is retired (its decision 0024, [PR #76](https://github.com/avd-ops/avd-second-brain/pull/76)); avd-ops holds each repo's page. **Scribe** is the avd-swarm role that turns those findings into draft PRs. The brain decides what is wrong; Scribe only drafts; a person merges.
 
 Scribe belongs to the Improve family (§6b), not the operating agents: it never talks to the operator, holds no Azure role, and runs on a schedule after the brain's nightly sweep, never on an incoming message.
 

@@ -15,3 +15,4 @@ The owner asked on 2026-10-18 for a repo or swarm function that builds a wiki an
 ## Consequences
 - One more draft-PR identity (a GitHub App scoped to the connected repos, no Azure role), added to identities.md when built.
 - A change to C13 or Scribe's limits is a pair of PRs here and in avd-second-brain.
+- Amended 2026-10-21 (avd-second-brain decision 0024, [PR #76](https://github.com/avd-ops/avd-second-brain/pull/76)): the brain's handbook (`wiki/`) is retired and avd-ops holds each repo's page. The check, the generator, C13 and Scribe's role are unchanged.
