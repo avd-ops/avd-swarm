@@ -1,11 +1,11 @@
 # Knowledge capture settings (avd-second-brain decision 0013, the 2ndbrain format), read by scripts/kb/capture_check.py.
-# avd-swarm has no knowledge base of its own: its lessons go to avd-second-brain's
+# avd-swarm has no knowledge base of its own: its lessons go to avd-ops/avd-second-brain's
 # docs/knowledge/. A PR passes kb-capture with a `KB: <link>` line to the avd-second-brain PR or
 # page that carries the lesson, or with the `no-kb` label and a `No KB entry: <reason>` line.
 # Installed from the 2ndbrain template (nickprignano/2ndbrain); AVD pilot through 2026-10-31, review 2026-11-01.
 
 capture_hook = "block"
-kb_repos = ["nickprignano/avd-second-brain"]
+kb_repos = ["avd-ops/avd-second-brain", "avd-ops/avd-second-brain"]
 
 # Auto-merge for low-risk PRs (avd-second-brain decision 0015). Off here: the kb-auto-merge workflow isn't
 # installed because the Guard forbids pull_request_target (check_workflows.py W3), and this repo

@@ -21,7 +21,7 @@ private repo of your own: avd-swarm doesn't need it to be anywhere in particular
 
 Azure has no hard stop on spend, so the caps are enforced before the run opens and the stop rule (due
 time) is checked on every resume. Token spend has its own cap, enforced before each call
-(spikes/s1a/agent_api/meter.py, docs/spend.md section 3.7), and the provider's workspace limit backs it up.
+(gateway/avd_gateway/meter.py, docs/spend.md section 3.7), and the provider's workspace limit backs it up.
 
 Only the standard library and the Azure CLI (az) are used, so it runs in Cloud Shell as is.
 """

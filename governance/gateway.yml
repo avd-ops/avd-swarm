@@ -1,0 +1,18 @@
+# Gateway caps and the kill switch flag (gateway/avd_gateway; spend.md section 3.7; governance section 2.3
+# layer 6). Protected path. These are conservative defaults for one operator; an adopter sets their own
+# in their private repo. The provider's workspace limit stays the outer wall (spend.md section 3.7 item 4).
+flag:
+  # The tag on the swarm's resource group that holds the switch position (governance section 2.3 layer 1).
+  tag: avd-swarm-switch
+  # Positions at which no model call is made. A flag that can't be read refuses too.
+  refuseModelCallsAt: [halt-agents, halt-all]
+caps:
+  # Every call reserves its worst case against all three before it runs.
+  perRunUsd: 1.00     # a run with no budget of its own (a runbook declares one)
+  dailyUsd: 5.00      # UTC day
+  monthlyUsd: 50.00   # UTC month
+callers:
+  # Each process that calls a model, by the app role its Entra identity holds. A caller not listed is refused.
+  # In build steps 1 to 3 the agent API is the only one (core-and-adapters.md section 3.4).
+  agent-api:
+    dailyUsd: 5.00

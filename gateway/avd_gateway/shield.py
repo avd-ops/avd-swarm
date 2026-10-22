@@ -1,4 +1,4 @@
-# avd-swarm S1a spike: Prompt Shields scan and decoy tripwire. Personal project, not for production, provided as is; not affiliated with the author's employer, Liquidware or Microsoft.
+# avd-swarm gateway: Prompt Shields scan and decoy tripwire (moved from the S1a spike). Personal project, not for production, provided as is; not affiliated with the author's employer, Liquidware or Microsoft.
 """Untrusted text is scanned in the model client, whichever provider the agents run on (red team R26,
 docs/security-tooling.md sections 3 and 4).
 

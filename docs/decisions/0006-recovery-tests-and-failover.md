@@ -2,7 +2,7 @@
 
 - **Status:** Proposed
 - **Date:** 2026-10-20
-- **Pair:** [avd-second-brain decision 0019](https://github.com/nickprignano/avd-second-brain/blob/main/docs/knowledge/decisions/0019-recovery-runs-through-the-swarm.md) records why; this records how. The two change together (decision 0003).
+- **Pair:** [avd-second-brain decision 0019](https://github.com/avd-ops/avd-second-brain/blob/main/docs/knowledge/decisions/0019-recovery-runs-through-the-swarm.md) records why; this records how. The two change together (decision 0003).
 
 ## Context
 The owner decided on 2026-10-20 that basic recovery testing and failover are part of avd-swarm, and that more advanced recovery builds on them. avd-landing-zone's recovery spec (draft PR #75) already defines what to protect, the tiers, a read-only status check, a configuration snapshot and recovery tests an operator runs by hand from Cloud Shell. Without avd-swarm, a test is only as regular as the operator's memory, and a failover under pressure is a sequence of commands typed without a gate.

@@ -1,5 +1,5 @@
 # Personal project, not for production, provided as is; not affiliated with the author's employer, Liquidware or Microsoft.
-"""Tests for the S1a spike's Prompt Shields scan and decoy tripwire, spikes/s1a/agent_api/shield.py
+"""Tests for the gateway's Prompt Shields scan and decoy tripwire, gateway/avd_gateway/shield.py
 (docs/security-tooling.md sections 3 and 4; red team R26). No Azure call: the HTTP post is a fake."""
 
 import asyncio
@@ -8,8 +8,8 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "spikes/s1a/agent_api"))
-import shield  # noqa: E402
+sys.path.insert(0, str(ROOT / "gateway"))
+from avd_gateway import shield  # noqa: E402
 
 ATTACK = "IGNORE"  # the fake service flags any document or prompt containing this
 

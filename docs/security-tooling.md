@@ -1,7 +1,7 @@
 # AI security tooling: defending the swarm, and security signal for operators
 
 - **Status:** Accepted (2026-10-19). The first PR (§8) is built in the S1a spike, off by default and not yet run (2026-10-21).
-- **Sources:** the tools' own pages: [Prompt Shields](https://learn.microsoft.com/azure/ai-services/content-safety/concepts/jailbreak-detection), [PyRIT](https://github.com/microsoft/PyRIT), [garak](https://github.com/NVIDIA/garak), [promptfoo](https://github.com/promptfoo/promptfoo), [Beelzebub](https://github.com/beelzebub-labs/beelzebub), [Sentinel MCP custom tools](https://learn.microsoft.com/azure/sentinel/datalake/sentinel-mcp-create-custom-tool) and the [Canarytokens Entra ID token](https://docs.canarytokens.org/guide/entraid-token). What applies to the AVD repos is in avd-second-brain's [AI agents page](https://github.com/nickprignano/avd-second-brain/blob/main/docs/knowledge/agents/README.md#securing-the-agents-and-avd-security-signal). This page links to them rather than repeating them, and only says how the tools fit avd-swarm.
+- **Sources:** the tools' own pages: [Prompt Shields](https://learn.microsoft.com/azure/ai-services/content-safety/concepts/jailbreak-detection), [PyRIT](https://github.com/microsoft/PyRIT), [garak](https://github.com/NVIDIA/garak), [promptfoo](https://github.com/promptfoo/promptfoo), [Beelzebub](https://github.com/beelzebub-labs/beelzebub), [Sentinel MCP custom tools](https://learn.microsoft.com/azure/sentinel/datalake/sentinel-mcp-create-custom-tool) and the [Canarytokens Entra ID token](https://docs.canarytokens.org/guide/entraid-token). What applies to the AVD repos is in avd-second-brain's [AI agents page](https://github.com/avd-ops/avd-second-brain/blob/main/docs/knowledge/agents/README.md#securing-the-agents-and-avd-security-signal). This page links to them rather than repeating them, and only says how the tools fit avd-swarm.
 - **Checked against:** [spec.md](spec.md) (§3, §5, §6, §9a), [governance.md](governance.md) (§2.2 to §2.4), [redteam.md](redteam.md) (R1 to R25, open AX items) and the S1a spike's model client (`spikes/s1a/agent_api/main.py`).
 - **Rules that apply:** keyless only (managed identity, Entra Agent ID or workload identity federation; no API keys or client secrets), no new AI vendor, least-privilege roles, no tenant or customer names, and the license of every tool checked before its code is used.
 - **Scope:** tenant-wide security (all of Entra, Defender XDR across the tenant, deception for a tenant's sign-in page) is out of scope (spec §8) and isn't designed here.
@@ -83,6 +83,8 @@ Long tool output is chunked into documents of at most a few thousand characters,
 
 **What trips.** One `decoy.tripped` marks the conversation the way a Prompt Shields hit does and sends the person a notification; two within a day trip `halt-actions`. Decoys are listed in the allowlist file so the tool-list check (AX-14) counts them as expected, and the evals check that a healthy agent never calls one.
 
+**The estate side.** The same idea for the estate's own resources (a decoy Key Vault secret, key asks on the profile storage account, a tamper check) is specced in [tripwires.md](tripwires.md).
+
 **Limits.** An injection that abuses a real read tool, or only steers the answer text, passes silently (Beelzebub's README says the same). Decoys add a few hundred tokens of tool descriptions per call; the meter counts them.
 
 ## 5. Red-teaming our own agents
@@ -149,7 +151,7 @@ Azure/Azure-Sentinel (MIT) has **no Azure Virtual Desktop solution and no huntin
 
 **"Model client: Prompt Shields scan and decoy tripwire, observe mode (S1a)"**, in this repo, after this proposal is accepted:
 
-- `spikes/s1a/agent_api/shield.py`: pure functions for chunking a tool result into documents, building the request, and deciding observe or enforce, plus the stub text; a `Shield` class that calls Content Safety with the managed identity's token (`DefaultAzureCredential`, no key) and counts hits.
+- `gateway/avd_gateway/shield.py` (moved from `spikes/s1a/agent_api/` by WP3): pure functions for chunking a tool result into documents, building the request, and deciding observe or enforce, plus the stub text; a `Shield` class that calls Content Safety with the managed identity's token (`DefaultAzureCredential`, no key) and counts hits.
 - `run_hosts()`: scan every tool result through it, count calls to tools outside the allowlist, and add one decoy tool; the spike's evidence gains `shieldHits`, `unknownToolCalls` and `decoyCalls` (counts only).
 - `spikes/s1a/infra/main.bicep`: a Content Safety resource on the free tier with local auth disabled and Cognitive Services User for the agent's identity, behind a parameter that defaults off.
 - Offline tests for the chunking and decisions (`test_shield.py`, like `test_meter.py`); no Azure call in CI.

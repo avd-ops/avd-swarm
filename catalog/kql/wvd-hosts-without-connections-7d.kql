@@ -1,0 +1,12 @@
+// Session hosts that reported in the last day (so they are running) but had no connection in seven days.
+// WVDConnections.SessionHostName is the FQDN, so both sides are compared on the lowercased name before the
+// first dot. Columns: learn.microsoft.com/azure/azure-monitor/reference/tables/wvdconnections
+let connected = WVDConnections
+    | where TimeGenerated > ago(7d)
+    | distinct Host = tostring(split(tolower(SessionHostName), ".")[0]);
+WVDAgentHealthStatus
+| where TimeGenerated > ago(1d)
+| summarize LastReport = max(TimeGenerated) by Host = tostring(split(tolower(SessionHostName), ".")[0])
+| join kind=leftanti connected on Host
+| project SessionHostName = Host, LastReport
+| order by SessionHostName asc
