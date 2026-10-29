@@ -3,6 +3,7 @@
 
 A standing problem makes one issue, not one a day: the runner opens an issue when a runbook stops being
 clear, comments when the outcome changes while it is open, and closes it when the runbook is clear again.
+An issue whose runbook was removed or renamed would never be run clear, so the runner closes it too.
 Job summaries and issues carry the runbook ID, the outcome and fact values only: never a host, user or
 resource name, even in the private repo (R17). The finding itself, with the agent's claims, goes to the
 plan store and avd-buddy behind the operator's sign-in.
@@ -10,6 +11,7 @@ plan store and avd-buddy behind the operator's sign-in.
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 
 OUTCOMES = ("clear", "finding", "could-not-run")
@@ -30,6 +32,20 @@ def issue_action(open_issue_outcome: str | None, outcome: str) -> str:
 
 def issue_title(runbook: str) -> str:
     return f"Runbook {runbook} is not clear"
+
+
+TITLE = re.compile(r"Runbook (\S+) is not clear")
+
+
+def orphan_issues(issues: list[dict], runbooks: set[str]) -> list[int]:
+    """Open runbook issues (number, title) whose runbook isn't in this repo any more. Only titles the runner
+    writes count: an issue a person opened under the label, with another title, is left alone."""
+    orphans = []
+    for issue in issues:
+        match = TITLE.fullmatch(str(issue.get("title", "")))
+        if match and match.group(1) not in runbooks:
+            orphans.append(int(issue["number"]))
+    return sorted(orphans)
 
 
 def summary(finding: dict) -> str:

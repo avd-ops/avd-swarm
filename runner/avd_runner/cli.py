@@ -15,6 +15,8 @@
   issue --finding FILE [--open-outcome O] --summary FILE
                                   prints the action (open, comment, close or none) and the outcome on one line,
                                   and writes the summary Markdown
+  orphans --issues FILE           the numbers of open runbook issues (gh issue list --json number,title) whose
+                                  runbook is no longer in this repo, one per line, so the workflow closes them
 
 The runner never calls a model and holds no model credential: the agent API runs the runbook and its
 gateway enforces the runbook's budget. It signs in with the read-only runner identity (docs/identities.md)
@@ -28,6 +30,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -47,6 +50,8 @@ UNREADABLE = 4
 UNKNOWN_RUNBOOK = 2
 TAG_DEFAULT = "avd-swarm-switch"
 TIMEOUT_SECONDS = 300
+RETRY_STATUSES = (502, 503)  # a proxy or a cold start; never 500 or 504, which may mean the runbook already ran
+RETRY_SECONDS = 10
 
 
 def select(root: Path, cron: str) -> list[str]:
@@ -94,11 +99,23 @@ def az_scope_token(scope: str) -> str:
     return az("account", "get-access-token", "--scope", scope, "--query", "accessToken", "-o", "tsv").strip()
 
 
-def post_runbook(url: str, resource: str, runbook: str, started_by: str, token=az_token) -> dict:
+def post_runbook(url: str, resource: str, runbook: str, started_by: str, token=az_token, sleep=time.sleep) -> dict:
+    """One retry after a 502 or 503, so a transient blip doesn't open an issue that the next run closes."""
     token = token(resource)
     request = urllib.request.Request(f"{url.rstrip('/')}/runbook", method="POST",
                                      data=json.dumps({"runbook": runbook, "startedBy": started_by}).encode(),
                                      headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"})
+    try:
+        return _post(request)
+    except urllib.error.HTTPError as error:
+        if error.code not in RETRY_STATUSES:
+            raise
+        print(f"Agent API answered {error.code}; retrying once in {RETRY_SECONDS} seconds", flush=True)
+    sleep(RETRY_SECONDS)
+    return _post(request)
+
+
+def _post(request: urllib.request.Request) -> dict:
     with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:
         return json.loads(response.read())
 
@@ -147,6 +164,8 @@ def main(argv: list[str] | None = None) -> int:
     i.add_argument("--finding", required=True)
     i.add_argument("--open-outcome", default=None)
     i.add_argument("--summary", required=True)
+    o = sub.add_parser("orphans")
+    o.add_argument("--issues", required=True)
     args = parser.parse_args(argv)
 
     if args.command == "select":
@@ -161,6 +180,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "alert-job":
         from .alert import main as alert_main
         return alert_main()
+    if args.command == "orphans":
+        issues = json.loads(Path(args.issues).read_text(encoding="utf-8"))
+        print("\n".join(str(n) for n in report.orphan_issues(issues, set(load_all(ROOT)))))
+        return 0
     if args.command in ("title", "run") and args.id not in load_all(ROOT):
         print(f"::error::{args.id!r} isn't a runbook in this repo", file=sys.stderr)
         return UNKNOWN_RUNBOOK
