@@ -119,3 +119,9 @@ jobs:
             esac
             { cat "$md"; echo; } >> "$GITHUB_STEP_SUMMARY"
           done
+          # A runbook that was removed or renamed is never run clear again: close its issue here.
+          gh issue list --label runbook --state open --limit 200 --json number,title > "$RUNNER_TEMP/open.json"
+          python3 -m avd_runner orphans --issues "$RUNNER_TEMP/open.json" | while read -r number; do
+            [ -n "$number" ] || continue
+            gh issue close "$number" --comment "This runbook isn't in the repo any more, so nothing will run it clear." > /dev/null
+          done
