@@ -3,9 +3,9 @@
   "sources": {
     "avd-assess": {
       "url": "https://github.com/avd-ops/avd-assess",
-      "commit": "34c50bb76e088136799eafcb09d631b3bf9354aa",
+      "commit": "0682312d60185074756537caab7fc2856f84923c",
       "files": {
-        "fact-register.json": "356a896f7e13b10a3674e8d8eda800bdfe147df473d69c3f306f874bbbcd5c96"
+        "fact-register.json": "1ac7d2d65bc791b3d97007bfad1f1acb35b30bf24bda5896219cfa1fde7525c1"
       }
     }
   }

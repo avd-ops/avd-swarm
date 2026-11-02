@@ -58,6 +58,38 @@ class Gate(unittest.TestCase):
         self.assertEqual(set(execute.STARTED_BY), set(evidence.UNATTENDED))
         self.assertNotIn(evidence.OPERATOR, execute.STARTED_BY)
 
+    def test_destructive_desktop_devops_actions_need_a_data_loss_guard(self):
+        for action in evidence.DESTRUCTIVE_ACTIONS:
+            out = evidence.data_loss_guard_refusals({"targetSurface": "win365", "desktopDevOpsAction": action})
+            self.assertTrue(any("needs a dataLossGuard block" in r for r in out), (action, out))
+            stale = evidence.data_loss_guard_refusals({
+                "targetSurface": "win365",
+                "desktopDevOpsAction": action,
+                "dataLossGuard": {"restorePointVerified": True, "restorePointAgeHours": 48},
+            })
+            self.assertTrue(any("requires restorePointVerified=True" in r for r in stale), (action, stale))
+            verified = evidence.data_loss_guard_refusals({
+                "targetSurface": "win365",
+                "desktopDevOpsAction": action,
+                "dataLossGuard": {"restorePointVerified": True, "restorePointAgeHours": 6},
+            })
+            self.assertEqual(verified, [])
+            discard = evidence.data_loss_guard_refusals({
+                "targetSurface": "avd",
+                "desktopDevOpsAction": action,
+                "dataLossGuard": {"discardLastCopyApproved": True},
+            })
+            self.assertEqual(discard, [])
+
+    def test_non_destructive_desktop_devops_actions_and_unknown_values(self):
+        for action in evidence.NON_DESTRUCTIVE_ACTIONS:
+            self.assertEqual(
+                evidence.data_loss_guard_refusals({"targetSurface": "intune", "desktopDevOpsAction": action}),
+                [],
+            )
+        bad = evidence.data_loss_guard_refusals({"targetSurface": "exchange", "desktopDevOpsAction": "wipe-all"})
+        self.assertEqual(len(bad), 2)
+
 
 class Message(unittest.TestCase):
     def test_takes_an_alert_id_plain_or_base64(self):

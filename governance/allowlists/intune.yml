@@ -1,0 +1,11 @@
+# The Intune agent's read allowlist (spec section 4; avd-second-brain decision 0027; avd-ops decision 0012).
+# Protected path: an agent-authored PR can't change it. Runbooks may read only what their agent's allowlist names.
+# Intune configuration and compliance changes are proposed only as policy-as-code PRs against avd-intune, never
+# as direct Graph mutations from chat.
+agent: intune
+status: draft
+tools:
+  - intune_assignment_filter_list
+  - intune_configuration_policy_list
+  - intune_compliance_policy_list
+kql: []
