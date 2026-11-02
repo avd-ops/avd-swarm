@@ -57,6 +57,7 @@ Write the policy in Rego or Cedar and evaluate it through Microsoft's Agent Gove
 | Switch position | Refuse everything the current position forbids (§2.3) |
 | Observer verdict | When the policy requires it, wait for the observer to allow the plan (§2.2) |
 | Recovery | Recovery actions write only into the subscriptions, regions and resource groups `governance/recovery-scope.yml` lists for the landing zone, into new names, with test users only, and every one but the configuration snapshot needs the observer's verdict ([recovery.md](recovery.md) §4, §6) |
+| Data-loss guard (`D1`) | Destructive Desktop DevOps actions (`reprovision`, `deprovision`, `replace-session-host`) are refused unless `dataLossGuard` carries `restorePointVerified: true` with `restorePointAgeHours <= 24` or `discardLastCopyApproved: true` (`gate/avd_gate/evidence.py`, avd-second-brain decisions 0016 and 0027; avd-ops decision 0012) |
 | Compliance | Refuse a plan whose action may lower a Defender for Cloud control on its targets unless the policy allows it, and every such plan while the score is below its floor (§2.5) |
 
 Answers aren't plans, so the gate doesn't see them. Their limits, how many specialists one question may fan out to and the claim check's settings ([spec](spec.md) §4a), will live in `governance/answers.yml`, protected like the policy: an agent can't widen its own fan-out or loosen the check that marks its claims.
