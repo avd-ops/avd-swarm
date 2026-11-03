@@ -8,6 +8,7 @@ avd-swarm is an open-source core ([decision 0009](../docs/decisions/0009-open-so
 | [logic-apps](logic-apps/README.md) | scheduler | the check runner, as a trigger source | about $37 a month (Automation) | designed |
 | [apim](apim/README.md) | gateway | the gateway package, in front of it | about $150 a month (Basic v2) | designed |
 | [foundry](foundry/README.md) | model-host | the agent API's model host | small standing cost plus tokens | designed |
+| [az-cli-mcp](az-cli-mcp/README.md) | investigator | interactive CLI investigation alongside `microsoft/mcp` | $0 idle (MIT binary; tokens when called) | designed |
 
 ## What every manifest declares
 
