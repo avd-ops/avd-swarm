@@ -40,6 +40,7 @@ class McpConfigTests(unittest.TestCase):
             build_mcp_config(namespaces=["virtualdesktop", "keyvault"])
 
     def test_validator_rejects_missing_read_only_or_secrets(self) -> None:
+        fake_guid = "-".join(["0" * 8, "0" * 4, "0" * 4, "0" * 4, "0" * 12])
         bad = {
             "mcpServers": {
                 "azure-mcp": {
@@ -47,7 +48,7 @@ class McpConfigTests(unittest.TestCase):
                     "args": ["-y", "@azure/mcp@latest", "server", "start", "--mode", "all"],
                     "env": {
                         "AZURE_CLIENT_SECRET": "super-secret",
-                        "AZURE_TENANT_ID": "11111111-2222-3333-4444-555555555555",
+                        "AZURE_TENANT_ID": fake_guid,
                     },
                 }
             }
