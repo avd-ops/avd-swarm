@@ -104,6 +104,7 @@ An adapter is a manifest in `adapters/<name>/adapter.yml` and a page beside it (
 | `logic-apps` | scheduler | the check runner, as a trigger source only | designed |
 | `apim` | gateway | the gateway package, in front of it | designed |
 | `foundry` | model-host | the agent API's model host | designed (the S1a spike's Foundry path is its acceptance test) |
+| `az-cli-mcp` | investigator | optional `Azure/azure-api-mcp` (`--readonly`) CLI investigator alongside `microsoft/mcp` | designed |
 
 Turning one on is an adopter's choice, made after a spend estimate in [spend.md](spend.md) format and, in the owner's sandbox, the exact go phrase. The same gate and kill switch apply; the drill (build order step 3) refuses each registered adapter's calls at each halt position.
 

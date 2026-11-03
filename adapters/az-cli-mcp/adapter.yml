@@ -1,0 +1,62 @@
+# Adapter contract for Microsoft's Azure CLI MCP Server (Azure/azure-api-mcp, MIT).
+# Checked by scripts/check_adapters.py. Off by default; deployed avd-swarm agents use
+# Microsoft's Azure MCP Server (microsoft/mcp) in --mode all --read-only --namespace virtualdesktop
+# so per-tool allowlists govern typed AVD schemas.
+
+name: az-cli-mcp
+kind: investigator
+status: designed
+addsTo: investigate
+replaces: []
+default: off
+
+meters:
+  - service: Azure CLI MCP Server (Azure/azure-api-mcp, MIT)
+    meter: Open-source Go binary; $0 software license and $0 ARM GET calls
+    standing: false
+    monthlyUsdIdle: 0
+    source: https://github.com/Azure/azure-api-mcp
+  - service: Azure Container Apps (Consumption plan, optional container deployment)
+    meter: Active vCPU-seconds and Active Memory GiB-seconds when minReplicas is 0 (180,000 vCPU-s and 360,000 GiB-s monthly free grant)
+    standing: false
+    monthlyUsdIdle: 0
+    source: https://azure.microsoft.com/pricing/details/container-apps/
+  - service: Anthropic Claude API (via avd_gateway.meter)
+    meter: Input and output tokens per ad-hoc CLI tool invocation, bounded by MeteredAnthropicClient per-call and per-run budgets
+    standing: false
+    monthlyUsdIdle: 0
+    source: https://www.anthropic.com/pricing
+
+identity:
+  runsAs: id-swarm-azclimcp-<env> (dedicated user-assigned managed identity, separate from core specialist identities, or signed-in operator Reader identity in Cloud Shell)
+  mustNotHold:
+    - Owner
+    - Contributor
+    - User Access Administrator
+    - Role Based Access Control Administrator
+    - Desktop Virtualization Contributor
+    - Desktop Virtualization Power On Off Contributor
+    - Desktop Virtualization Session Host Operator
+    - Desktop Virtualization User Session Operator
+    - Virtual Machine Contributor
+    - Monitoring Contributor
+  policyDeny: >-
+    Azure Policy deny on Microsoft.Authorization/roleAssignments/write where principalId is the
+    az-cli-mcp identity and roleDefinitionId is not Reader, Desktop Virtualization Reader,
+    Monitoring Reader or Log Analytics Reader; container startup args must include --readonly.
+  watchdog: Core scheduled check verifies id-swarm-azclimcp-<env> holds only Reader-tier roles and that any deployed container args include --readonly
+
+switch:
+  run: Allowed for read-only investigation when the adopter explicitly enables adapters/az-cli-mcp
+  halt-actions: Still allowed (read-only; writes is none)
+  halt-agents: Refused at the core dispatcher before any az-cli-mcp tool call is made
+  halt-all: Refused at the core dispatcher; Container App scaled to 0 replicas if deployed
+  residual: "$0/month when run locally in Cloud Shell or scaled to minReplicas: 0 on Container Apps Consumption"
+
+events:
+  - azclimcp.tool.called
+  - azclimcp.command.blocked
+
+writes: none
+
+exitTests: []
