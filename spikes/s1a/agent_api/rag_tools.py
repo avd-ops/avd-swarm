@@ -252,6 +252,7 @@ class RagRuntime:
     query_logs: Callable[[str], Awaitable[dict[str, Any]]] | None = None
     concierge_search: Callable[[str, int], Awaitable[dict[str, Any]]] | None = None
     concierge_facts: Callable[[list[str]], Awaitable[dict[str, Any]]] | None = None
+    shield: Any | None = None
     allowed_kql: list[str] = field(init=False)
     catalog_queries: dict[str, str] = field(init=False)
     register: dict[str, dict[str, Any]] = field(init=False)
@@ -265,6 +266,15 @@ class RagRuntime:
     def tools_for(self, allowed_tools: Iterable[str]) -> list[dict[str, Any]]:
         return tool_definitions(allowed_tools, self.allowed_kql, self.register)
 
+    async def _scan(self, text: str, tool_name: str) -> str:
+        if self.shield is None:
+            return text
+        return await self.shield.scan_result(text, self.agent, tool_name)
+
+    @staticmethod
+    def _was_withheld(raw_text: str, scanned_text: str) -> bool:
+        return scanned_text != raw_text
+
     async def call(self, name: str, args: Any) -> tuple[str, bool]:
         """Executes a local RAG tool call and returns (json_text, is_error)."""
         try:
@@ -274,31 +284,43 @@ class RagRuntime:
                     raise RagToolError("LOG_WORKSPACE_ID or RUNBOOK_IDENTITY_APP_ID is not configured for kql_catalog_run")
                 raw = await self.query_logs(kql)
                 rows = runbook_endpoint.rows_from_log_analytics(raw)
-                self.observed_refs.add(query_id)
-                return json.dumps({"queryId": query_id, "rowCount": len(rows), "rows": rows}), False
+                raw_text = json.dumps({"queryId": query_id, "rowCount": len(rows), "rows": rows})
+                scanned = await self._scan(raw_text, name)
+                if not self._was_withheld(raw_text, scanned) or query_id in scanned:
+                    self.observed_refs.add(query_id)
+                return scanned, False
 
             if name == "concierge_search":
                 question, top = validate_search_request(args)
                 if self.concierge_search is None:
                     raise RagToolError("Concierge search is not configured (set CONCIERGE_URL or CONCIERGE_BRAIN_ROOT)")
                 payload = await self.concierge_search(question, top)
+                raw_text = json.dumps(payload)
+                scanned = await self._scan(raw_text, name)
+                withheld = self._was_withheld(raw_text, scanned)
                 for hit in payload.get("hits") or []:
                     ref = hit.get("ref")
-                    if isinstance(ref, str) and ref:
+                    if isinstance(ref, str) and ref and (not withheld or ref in scanned):
                         self.observed_refs.add(ref)
-                    for inline in extract_citations(f"{hit.get('title', '')} {hit.get('snippet', '')}"):
+                    snippet_text = scanned if withheld else f"{hit.get('title', '')} {hit.get('snippet', '')}"
+                    for inline in extract_citations(snippet_text):
                         self.observed_refs.add(inline)
-                return json.dumps(payload), False
+                return scanned, False
 
             if name == "concierge_facts":
                 fact_ids = validate_facts_request(args, self.register)
                 if self.concierge_facts is None:
                     raise RagToolError("Concierge facts store is not configured (set CONCIERGE_URL or CONCIERGE_FACTS_SNAPSHOT)")
                 payload = await self.concierge_facts(fact_ids)
+                raw_text = json.dumps(payload)
+                scanned = await self._scan(raw_text, name)
+                withheld = self._was_withheld(raw_text, scanned)
                 for fid in (payload.get("facts") or {}):
-                    self.observed_refs.add(fid)
-                return json.dumps(payload), False
+                    if not withheld or fid in scanned:
+                        self.observed_refs.add(fid)
+                return scanned, False
 
             raise RagToolError(f"Unknown local RAG tool: {name}")
         except Exception as error:
             return json.dumps({"error": str(error), "tool": name}), True
+

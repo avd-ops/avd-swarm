@@ -59,6 +59,7 @@ from avd_gateway.shield import DECOY_ERROR, MODES as SHIELD_MODES, SCOPE as CONT
 from avd_runner.api import load_all
 from avd_runner.runbook import SCOPE_KEYS
 
+import rag_tools
 import runbook_endpoint
 
 log = logging.getLogger("avdswarm.spike.api")
@@ -99,6 +100,10 @@ RUNBOOK_MODEL = os.environ.get("RUNBOOK_MODEL", "claude-sonnet-5-5")
 RUNBOOK_MAX_TOKENS = 4000  # an investigation's worst case has to fit a runbook's budget
 LOG_WORKSPACE_ID = os.environ.get("LOG_WORKSPACE_ID", "")
 LOG_ANALYTICS = "https://api.loganalytics.io"
+CONCIERGE_URL = os.environ.get("CONCIERGE_URL", "").rstrip("/")
+CONCIERGE_BRAIN_ROOT = os.environ.get("CONCIERGE_BRAIN_ROOT", "")
+CONCIERGE_FACTS_STORE = os.environ.get("CONCIERGE_FACTS_STORE", "")
+CONCIERGE_FACTS_SNAPSHOT = os.environ.get("CONCIERGE_FACTS_SNAPSHOT", "")
 SCOPE = {k: os.environ.get(f"SCOPE_{k.upper()}", "") for k in SCOPE_KEYS}
 
 COORDINATOR_SYSTEM = (
@@ -339,7 +344,7 @@ async def concierge_facts_call(ids: list[str]) -> dict:
     from avd_concierge import Concierge
     svc = Concierge(
         repo_root=Path(CONCIERGE_BRAIN_ROOT),
-        facts_store=Path(CONCIERGE_FACTS_STORE) if CONCIERGE_FACTS_STORE else None,
+        facts_root=Path(CONCIERGE_FACTS_STORE) if CONCIERGE_FACTS_STORE else None,
     )
     snap = Path(CONCIERGE_FACTS_SNAPSHOT) if CONCIERGE_FACTS_SNAPSHOT else None
     return await asyncio.to_thread(svc.facts, ids, snapshot=snap)
@@ -355,6 +360,7 @@ async def run_hosts(question: str, model: str, identity_app_id: str, totals: dic
         query_logs=(lambda kql: query_workspace_as(identity_app_id, kql)) if LOG_WORKSPACE_ID else None,
         concierge_search=concierge_search_call if (CONCIERGE_URL or CONCIERGE_BRAIN_ROOT) else None,
         concierge_facts=concierge_facts_call if (CONCIERGE_URL or CONCIERGE_FACTS_SNAPSHOT or CONCIERGE_FACTS_STORE) else None,
+        shield=guard,
     )
     async with streamablehttp_client(MCP_URL, headers={"Authorization": f"Bearer {token}"}) as (read, write, _):
         async with ClientSession(read, write) as session:
@@ -393,7 +399,6 @@ async def run_hosts(question: str, model: str, identity_app_id: str, totals: dic
                         continue
                     if call.name in rag_tools.LOCAL_RAG_TOOLS:
                         content, is_error = await rag.call(call.name, call.input)
-                        content = await guard.scan_result(content, "hosts", call.name)
                         results.append({"type": "tool_result", "tool_use_id": call.id, "is_error": is_error,
                                         "content": content or "(no text)"})
                         continue
