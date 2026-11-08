@@ -18,7 +18,7 @@ On 2026-10-21 the owner judged Azure SRE Agent (about $292 a month until deleted
 
 ## Consequences
 
-- Good: an adopter runs everything from this repo and a free GitHub account for about ten dollars a month plus tokens; every dependency is readable and forkable.
+- Good: an adopter runs everything from this repo and a free GitHub account for cents a month idle plus tokens ([decision 0010](0010-avd-buddy-container-app-hosting.md) replaced Static Web Apps Standard's $9/month standing fee with a scale-to-zero Container App and built-in Entra auth); every dependency is readable and forkable.
 - Good: spec section 3a's red-teamed SRE Agent controls are kept as the adapter's design and cost nothing while off.
 - Bad: three capabilities (runbooks, the check runner, the gateway package) are ours to build and keep; the parity checklists and the brain's freshness workflow keep that honest.
 - It supersedes v1-review D10's default and D11's framing (avd-second-brain `docs/v1-review.md`) and turns spec section 3a into the `sre-agent` adapter page; spec sections 3b and 3c carry the adapter rule and the runbooks and check runner (WP0).
