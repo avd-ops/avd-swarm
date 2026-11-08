@@ -46,7 +46,7 @@ if ($PromptShields -and $Provider -notin @('Anthropic', 'AzureOpenAI')) {
 if ($Provider -eq 'AzureOpenAI') {
     if (-not $PSBoundParameters.ContainsKey('CoordinatorModel')) { $CoordinatorModel = 'gpt-4.1-nano' }
     if (-not $PSBoundParameters.ContainsKey('HostsModel')) { $HostsModel = 'gpt-4.1-nano' }
-    if (-not $PSBoundParameters.ContainsKey('CompareModels')) { $CompareModels = @('gpt-4.1-mini', 'gpt-4o-mini') }
+    if (-not $PSBoundParameters.ContainsKey('CompareModels')) { $CompareModels = @('gpt-4.1-mini') }
 }
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'Spike.psm1') -Force
@@ -214,8 +214,8 @@ if ($Provider -in @('Anthropic', 'AzureOpenAI')) {
         "scaleToZero=$($ScaleToZero.ToString().ToLowerInvariant())"
     )
     if ($BrainCommit) { $bicepParams += "brainCommit=$BrainCommit" }
-    $deployment = Invoke-SpikeAz -Step 'deploy' -Arguments (@('deployment', 'group', 'create', '-g', $SpikeResourceGroup,
-        '-n', "avdswarm-spike-$RunId", '-f', (Join-Path $PSScriptRoot '..' 'infra' 'main.bicep'), '-p') + $bicepParams)
+    $deployment = Invoke-SpikeDeployment -ResourceGroup $SpikeResourceGroup -Name "avdswarm-spike-$RunId" `
+        -TemplateFile (Join-Path $PSScriptRoot '..' 'infra' 'main.bicep') -Parameters $bicepParams
     $out = $deployment.properties.outputs
 
     $deployedModels = @(@($HostsModel) + $CompareModels + @($CoordinatorModel) | Select-Object -Unique)
@@ -269,15 +269,23 @@ if ($Provider -in @('Anthropic', 'AzureOpenAI')) {
     $agentsUrl = $out.agentsUrl.value
     Write-SpikeStep "Waiting for the agents app to install and start at $agentsUrl (up to 10 minutes)"
     $healthy = $false
+    $waitStarted = [datetime]::UtcNow
     for ($i = 0; $i -lt 60 -and -not $healthy; $i++) {
-        try { $healthy = (Invoke-RestMethod -Uri "$agentsUrl/healthz" -TimeoutSec 10).ok -eq $true } catch { Start-Sleep -Seconds 10 }
+        try { $healthy = (Invoke-RestMethod -Uri "$agentsUrl/healthz" -TimeoutSec 10).ok -eq $true }
+        catch {
+            if (($i + 1) % 2 -eq 0) {
+                $elapsed = ([datetime]::UtcNow - $waitStarted).ToString('mm\m\ ss\s')
+                Write-Host "  [$elapsed] Still waiting for agents app to finish pip install and answer /healthz..."
+            }
+            Start-Sleep -Seconds 10
+        }
     }
     if (-not $healthy) { throw "The agents app didn't answer $agentsUrl/healthz in 10 minutes. Its logs: az containerapp logs show -g $SpikeResourceGroup -n $($out.agentsAppName.value) --tail 100" }
 
     # The blueprint creates the agent identity itself (its own token, from the managed identity); a new FIC can take a minute to work.
     $identityName = "avdswarm-spike-hosts-$RunId"
     Write-SpikeStep "Asking the blueprint to create the agent identity $identityName"
-    $operatorToken = az account get-access-token --scope "api://$($app.appId)/Mcp.Tools.ReadWrite" --query accessToken -o tsv
+    $operatorToken = Get-SpikeOperatorToken -AppId $app.appId -TenantId $context.TenantId -SubscriptionId $context.SubscriptionId
     $identity = @((Invoke-SpikeAgentGraph -Step 'find-agent-identity' -Method GET -Path "/v1.0/servicePrincipals?`$filter=displayName eq '$identityName'").value)[0]
     for ($i = 0; $i -lt 6 -and -not $identity; $i++) {
         $response = Invoke-WebRequest -Uri "$agentsUrl/setup" -Method Post -SkipHttpErrorCheck -ContentType 'application/json' `
@@ -318,9 +326,9 @@ if ($Provider -in @('Anthropic', 'AzureOpenAI')) {
 
 # ---- Step 3: deploy ----
 Write-SpikeStep 'Deploying infra/main.bicep (Foundry, MCP server, logs, empty host pool); this takes several minutes'
-$deployment = Invoke-SpikeAz -Step 'deploy' -Arguments @('deployment', 'group', 'create', '-g', $SpikeResourceGroup,
-    '-n', "avdswarm-spike-$RunId", '-f', (Join-Path $PSScriptRoot '..' 'infra' 'main.bicep'),
-    '-p', "location=$Location", "runId=$RunId", "mcpAppId=$($app.appId)")
+$deployment = Invoke-SpikeDeployment -ResourceGroup $SpikeResourceGroup -Name "avdswarm-spike-$RunId" `
+    -TemplateFile (Join-Path $PSScriptRoot '..' 'infra' 'main.bicep') `
+    -Parameters @("location=$Location", "runId=$RunId", "mcpAppId=$($app.appId)")
 $out = $deployment.properties.outputs
 $foundryName = $out.foundryName.value
 $foundryId = "$rgId/providers/Microsoft.CognitiveServices/accounts/$foundryName"
