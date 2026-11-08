@@ -98,7 +98,9 @@ function Connect-SpikeAgentGraph {
     $missing = @($script:AgentGraphScopes | Where-Object { -not $context -or $_ -notin $context.Scopes })
     if ($missing) {
         Write-SpikeStep "Signing in to Microsoft Graph PowerShell for Entra Agent ID (scopes: $($script:AgentGraphScopes -join ', ')). Follow the device code prompt; as an admin, consent for the organization."
-        Connect-MgGraph -TenantId $TenantId -Scopes $script:AgentGraphScopes -UseDeviceCode -NoWelcome
+        # Connect-MgGraph writes the device-code prompt to the output stream; send it to Write-Host so | Select-Object -Last 1 in Invoke-Spike.ps1 does not hide it (lesson 0007).
+        Connect-MgGraph -TenantId $TenantId -Scopes $script:AgentGraphScopes -UseDeviceCode -NoWelcome |
+            ForEach-Object { Write-Host "  $_" -ForegroundColor Yellow }
     }
     $me = Invoke-MgGraphRequest -Method GET -Uri 'https://graph.microsoft.com/v1.0/me?$select=userPrincipalName' -OutputType PSObject
     $granted = (Get-MgContext).Scopes
