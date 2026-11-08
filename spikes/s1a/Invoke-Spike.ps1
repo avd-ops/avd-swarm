@@ -140,7 +140,8 @@ function Invoke-Teardown {
     $runId = if (Test-Path "$Spike/run-id") { Get-Content "$Spike/run-id" } else { $null }
     if (-not $runId) { Write-Host 'No spend run was opened, so nothing was deployed.'; return }
     $runProvider = if (Test-Path "$Spike/provider") { Get-Content "$Spike/provider" } else { $Provider }
-    & (Join-Path $Kit 'scripts/Remove-Spike.ps1') -RunId $runId -Provider $runProvider | Select-Object -Last 1 | Set-Content "$Spike/teardown-$runId.json"
+    $runLocation = if ($runProvider -in @('Anthropic', 'AzureOpenAI')) { 'northcentralus' } else { 'eastus2' }
+    & (Join-Path $Kit 'scripts/Remove-Spike.ps1') -RunId $runId -Provider $runProvider -Location $runLocation | Select-Object -Last 1 | Set-Content "$Spike/teardown-$runId.json"
     $removeExit = $LASTEXITCODE
     # Token spend billed outside Azure (the Anthropic fallback): what the agent service metered, from the eval records.
     $closeArgs = @($Guard, '--ledger', $LedgerPath, '--sandbox', $Sandbox, 'close', '--run-id', $runId, '--teardown', "$Spike/teardown-$runId.json")

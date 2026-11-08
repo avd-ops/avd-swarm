@@ -73,26 +73,30 @@ if ($Provider -in @('Anthropic', 'AzureOpenAI')) {
             if (Invoke-SpikeAz -Step 'check-claude-app' -AllowNotFound -Arguments @('ad', 'app', 'show', '--id', $claudeAppId)) { $leftovers.Add("Entra app $claudeAppId") }
         }
     }
-    Connect-SpikeAgentGraph -TenantId $context.TenantId
     $identityName = "avdswarm-spike-hosts-$RunId"
     $blueprintName = "avdswarm-spike-agents-$RunId"
-    foreach ($identity in @((Invoke-SpikeAgentGraph -Step 'find-agent-identity' -Method GET -Path "/v1.0/servicePrincipals?`$filter=displayName eq '$identityName'").value | Where-Object { $_ })) {
-        Write-SpikeStep "Deleting the agent identity $($identity.appId)"
-        if ($PSCmdlet.ShouldProcess($identity.id, 'delete agent identity')) {
-            $null = Invoke-SpikeAgentGraph -Step 'delete-agent-identity' -Method DELETE -Path "/beta/serviceprincipals/$($identity.id)" -AllowNotFound
+    $existingIdentities = @((Invoke-SpikeGraph -Step 'find-agent-identity-az' -Method get -Path "/servicePrincipals?`$filter=displayName eq '$identityName'").value | Where-Object { $_ })
+    $existingBlueprints = @((Invoke-SpikeGraph -Step 'find-blueprint-az' -Method get -Path "/applications?`$filter=displayName eq '$blueprintName'").value | Where-Object { $_ })
+    if ($existingIdentities.Count -gt 0 -or $existingBlueprints.Count -gt 0) {
+        Connect-SpikeAgentGraph -TenantId $context.TenantId
+        foreach ($identity in @((Invoke-SpikeAgentGraph -Step 'find-agent-identity' -Method GET -Path "/v1.0/servicePrincipals?`$filter=displayName eq '$identityName'").value | Where-Object { $_ })) {
+            Write-SpikeStep "Deleting the agent identity $($identity.appId)"
+            if ($PSCmdlet.ShouldProcess($identity.id, 'delete agent identity')) {
+                $null = Invoke-SpikeAgentGraph -Step 'delete-agent-identity' -Method DELETE -Path "/beta/serviceprincipals/$($identity.id)" -AllowNotFound
+            }
         }
-    }
-    foreach ($blueprint in @((Invoke-SpikeAgentGraph -Step 'find-blueprint' -Method GET -Path "/v1.0/applications?`$filter=displayName eq '$blueprintName'").value | Where-Object { $_ })) {
-        Write-SpikeStep "Deleting the agent identity blueprint $($blueprint.appId) (its principal goes with it)"
-        if ($PSCmdlet.ShouldProcess($blueprint.id, 'delete blueprint')) {
-            $null = Invoke-SpikeAgentGraph -Step 'delete-blueprint' -Method DELETE -Path "/v1.0/applications/$($blueprint.id)" -AllowNotFound
+        foreach ($blueprint in @((Invoke-SpikeAgentGraph -Step 'find-blueprint' -Method GET -Path "/v1.0/applications?`$filter=displayName eq '$blueprintName'").value | Where-Object { $_ })) {
+            Write-SpikeStep "Deleting the agent identity blueprint $($blueprint.appId) (its principal goes with it)"
+            if ($PSCmdlet.ShouldProcess($blueprint.id, 'delete blueprint')) {
+                $null = Invoke-SpikeAgentGraph -Step 'delete-blueprint' -Method DELETE -Path "/v1.0/applications/$($blueprint.id)" -AllowNotFound
+            }
         }
-    }
-    if (@((Invoke-SpikeAgentGraph -Step 'check-agent-identity' -Method GET -Path "/v1.0/servicePrincipals?`$filter=displayName eq '$identityName'").value | Where-Object { $_ }).Count) {
-        $leftovers.Add("agent identity $identityName")
-    }
-    if (@((Invoke-SpikeAgentGraph -Step 'check-blueprint' -Method GET -Path "/v1.0/applications?`$filter=displayName eq '$blueprintName'").value | Where-Object { $_ }).Count) {
-        $leftovers.Add("agent identity blueprint $blueprintName")
+        if (@((Invoke-SpikeAgentGraph -Step 'check-agent-identity' -Method GET -Path "/v1.0/servicePrincipals?`$filter=displayName eq '$identityName'").value | Where-Object { $_ }).Count) {
+            $leftovers.Add("agent identity $identityName")
+        }
+        if (@((Invoke-SpikeAgentGraph -Step 'check-blueprint' -Method GET -Path "/v1.0/applications?`$filter=displayName eq '$blueprintName'").value | Where-Object { $_ }).Count) {
+            $leftovers.Add("agent identity blueprint $blueprintName")
+        }
     }
 }
 
