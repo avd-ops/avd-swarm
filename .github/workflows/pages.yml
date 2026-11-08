@@ -1,0 +1,56 @@
+name: pages
+
+# Publishes buddy/app/ (the avd-buddy public demo simulation, docs/buddy-app.md) to GitHub Pages.
+# Static files and client-side fixtures only; nothing here touches Azure.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'buddy/**'
+      - 'assets/buddy/**'
+      - 'scripts/build_buddy_icons.py'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Generate avd-buddy icons and stage static site for GitHub Pages subpath
+        run: |
+          python3 scripts/build_buddy_icons.py
+          rm -rf _site
+          cp -R buddy/app _site
+          python3 -c '
+          import json, pathlib
+          p = pathlib.Path("_site/manifest.webmanifest")
+          m = json.loads(p.read_text(encoding="utf-8"))
+          m["id"] = "./"
+          m["start_url"] = "./"
+          m["scope"] = "./"
+          p.write_text(json.dumps(m, indent=2) + "\n", encoding="utf-8")
+          '
+      - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
