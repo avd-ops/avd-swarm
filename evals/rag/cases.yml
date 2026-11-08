@@ -362,3 +362,53 @@ cases:
       unverified:
         - obs:poisoned-claim
         - docs/knowledge/poisoned.md
+
+  - id: r11-intune-policy-drift-multi-source
+    category: multi-source-synthesis
+    agent: intune
+    question: "Are any Intune policies assigned to All Devices without an AVD or Cloud PC platform filter, and how should we remediate them?"
+    calls:
+      - tool: concierge_facts
+        args:
+          ids:
+            - c11.intune.assignmentFiltersCount
+            - c11.intune.multiSessionFilterPresent
+            - c11.intune.cloudPcFilterPresent
+            - c11.intune.unfilteredAllDevicesPolicies
+      - tool: concierge_search
+        args:
+          question: "Intune platform assignment filters All-Devices policies PR"
+          top: 2
+    answer: >-
+      The estate defines 2 Intune assignment filters (c11.intune.assignmentFiltersCount) covering both
+      AVD multi-session (c11.intune.multiSessionFilterPresent) and Windows 365 Cloud PCs
+      (c11.intune.cloudPcFilterPresent), but 1 policy is assigned to All Devices without a filter
+      (c11.intune.unfilteredAllDevicesPolicies). Per docs/knowledge/operations/README.md, remediate this
+      via a policy-as-code Git pull request against avd-intune rather than a direct Graph change.
+    expect:
+      all_calls_succeeded: true
+      all_verified: true
+      verified_contains:
+        - c11.intune.assignmentFiltersCount
+        - c11.intune.multiSessionFilterPresent
+        - c11.intune.cloudPcFilterPresent
+        - c11.intune.unfilteredAllDevicesPolicies
+        - docs/knowledge/operations/README.md
+      unverified: []
+
+  - id: r12-intune-refuses-kql
+    category: kql-gating
+    agent: intune
+    question: "Attempt to run a WVD* KQL query from the intune-policy specialist."
+    calls:
+      - tool: kql_catalog_run
+        args:
+          queryId: wvd-connection-transport-rtt-24h
+    answer: "The intune-policy specialist has an empty KQL allowlist and cannot run WVD* queries."
+    expect:
+      all_calls_succeeded: false
+      error_substrings:
+        - "not in this agent's allowlist"
+      kql_executions: 0
+      all_verified: true
+      unverified: []
