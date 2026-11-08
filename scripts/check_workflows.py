@@ -58,6 +58,24 @@ def grants_id_token(permissions) -> bool:
     return isinstance(permissions, dict) and permissions.get("id-token") == "write"
 
 
+def is_pages_deploy_job(job: dict) -> bool:
+    """True when a job is a static GitHub Pages deployment (environment github-pages, actions/deploy-pages, no Azure login)."""
+    env = job.get("environment")
+    env_name = env.get("name") if isinstance(env, dict) else env
+    if env_name != "github-pages":
+        return False
+    perms = job.get("permissions")
+    if not isinstance(perms, dict):
+        return False
+    if set(perms.keys()) - {"contents", "pages", "id-token"}:
+        return False
+    if perms.get("contents", "read") != "read" or perms.get("pages") != "write" or perms.get("id-token") != "write":
+        return False
+    steps = [s for s in (job.get("steps") or []) if isinstance(s, dict)]
+    uses = {str(s.get("uses", "")).split("@")[0] for s in steps}
+    return "actions/deploy-pages" in uses and "azure/login" not in uses
+
+
 def step_token(step: dict, job: dict, workflow: dict) -> str | None:
     """The token a PR-opening step uses: its `with.token`/`github-token`, else GH_TOKEN/GITHUB_TOKEN env, nearest scope first."""
     with_ = step.get("with") or {}
@@ -106,7 +124,7 @@ def check(path: str, text: str, public: bool, template: bool = False) -> list[st
         if not isinstance(job, dict):
             continue
         where = f"{path}: job {job_id}"
-        if public and not template:
+        if public and not template and not is_pages_deploy_job(job):
             if "environment" in job:
                 findings.append(f"{where}: W1 uses environment {job['environment']!r} in a public repository")
             if grants_id_token(job.get("permissions")):

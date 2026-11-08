@@ -872,7 +872,8 @@
     }
 
     const params = new URLSearchParams(window.location.search);
-    if (params.get("sim") === "1" || params.get("demo") === "1") {
+    const host = (window.location.hostname || "").toLowerCase();
+    if (params.get("sim") === "1" || params.get("demo") === "1" || host.endsWith(".github.io")) {
       enableSimMode();
       return;
     }

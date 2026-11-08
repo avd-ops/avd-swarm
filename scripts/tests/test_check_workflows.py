@@ -127,6 +127,35 @@ class WorkflowRules(unittest.TestCase):
     def test_w1_does_not_apply_to_templates(self):
         self.assertEqual(check(APPROVE, public=True, template=True), [])
 
+    def test_w1_allows_static_github_pages_deploy_job_only(self):
+        pages_wf = """
+        on:
+          push:
+            branches: [main]
+        permissions:
+          contents: read
+        jobs:
+          deploy:
+            runs-on: ubuntu-latest
+            permissions:
+              contents: read
+              pages: write
+              id-token: write
+            environment:
+              name: github-pages
+              url: ${{ steps.deployment.outputs.page_url }}
+            steps:
+              - uses: actions/checkout@v4
+              - id: deployment
+                uses: actions/deploy-pages@v4
+        """
+        self.assertEqual(check(pages_wf, public=True), [])
+        # Adding azure/login or an untrusted trigger must still fail.
+        with_azure = pages_wf + "      - uses: azure/login@v2\n"
+        self.assertTrue(any("W1" in f for f in check(with_azure, public=True)))
+        untrusted = pages_wf.replace("push:\n            branches: [main]", "pull_request:")
+        self.assertTrue(any("W5" in f for f in check(untrusted, public=True)))
+
     def test_w3_pull_request_target_fails(self):
         text = "on: pull_request_target\njobs: {j: {runs-on: ubuntu-latest, steps: [{run: echo}]}}\n"
         self.assertTrue(any("W3" in f for f in check(text, public=False)))
