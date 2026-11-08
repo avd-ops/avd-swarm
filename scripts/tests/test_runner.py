@@ -218,6 +218,45 @@ class Cli(unittest.TestCase):
             self.assertEqual(json.loads(request.data), {"runbook": "hosts.agent-unhealthy", "startedBy": "schedule"})
 
 
+    def test_one_retry_after_a_502_or_503_only(self):
+        def http(code):
+            return urllib.error.HTTPError("https://api/runbook", code, "x", {}, None)
+        ok = mock.MagicMock()
+        ok.__enter__.return_value.read.return_value = b'{"outcome": "clear"}'
+        for code in (502, 503):
+            with mock.patch.object(cli, "az", return_value="t"), \
+                 mock.patch("urllib.request.urlopen", side_effect=[http(code), ok]) as urlopen:
+                sleep = mock.Mock()
+                self.assertEqual(cli.post_runbook("https://api", "api://x", "hosts.agent-unhealthy", "schedule", sleep=sleep),
+                                 {"outcome": "clear"})
+                self.assertEqual(urlopen.call_count, 2)
+                sleep.assert_called_once_with(cli.RETRY_SECONDS)
+        for code in (500, 504, 403):  # may have run already, or won't get better: no second call
+            with mock.patch.object(cli, "az", return_value="t"), \
+                 mock.patch("urllib.request.urlopen", side_effect=[http(code), ok]) as urlopen:
+                with self.assertRaises(urllib.error.HTTPError):
+                    cli.post_runbook("https://api", "api://x", "hosts.agent-unhealthy", "schedule", sleep=mock.Mock())
+                self.assertEqual(urlopen.call_count, 1)
+        with mock.patch.object(cli, "az", return_value="t"), \
+             mock.patch("urllib.request.urlopen", side_effect=[http(503), http(503)]) as urlopen:
+            with self.assertRaises(urllib.error.HTTPError):
+                cli.post_runbook("https://api", "api://x", "hosts.agent-unhealthy", "schedule", sleep=mock.Mock())
+            self.assertEqual(urlopen.call_count, 2)
+
+    def test_orphaned_runbook_issues_are_listed_for_closing(self):
+        issues = [{"number": 1, "title": report.issue_title("hosts.agent-unhealthy")},
+                  {"number": 2, "title": report.issue_title("hosts.removed-runbook")},
+                  {"number": 3, "title": "Runbook notes from a person"},
+                  {"number": 4, "title": report.issue_title("hosts.renamed") + " (edited)"}]
+        self.assertEqual(report.orphan_issues(issues, set(RUNBOOKS)), [2])
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        (tmp / "open.json").write_text(json.dumps(issues))
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as out:
+            self.assertEqual(cli.main(["orphans", "--issues", str(tmp / "open.json")]), 0)
+        self.assertEqual(out.getvalue().split(), ["2"])
+
+
 class Template(unittest.TestCase):
     def test_template_crons_match_runbooks(self):
         self.assertEqual(check_runbooks.template_crons(ROOT), {"0 6 * * 1-5", "15 6 * * 1-5", "0 7 * * 1"})
