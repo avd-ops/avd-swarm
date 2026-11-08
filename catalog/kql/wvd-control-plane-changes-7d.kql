@@ -1,0 +1,17 @@
+// Host pool, application group, workspace, and scaling plan write operations, registration token reads, and role assignments
+// in the last 7 days, counted by operation name and activity status; no caller UPNs or IP addresses leave the workspace.
+// Columns: learn.microsoft.com/azure/azure-monitor/reference/tables/azureactivity
+AzureActivity
+| where TimeGenerated > ago(7d)
+| where CategoryValue == "Administrative"
+| extend Op = toupper(OperationNameValue),
+         Scope = tolower(tostring(column_ifexists("_ResourceId", "")))
+| where Op startswith "MICROSOFT.DESKTOPVIRTUALIZATION/"
+     or (Op startswith "MICROSOFT.AUTHORIZATION/ROLEASSIGNMENTS/" and Scope has "/providers/microsoft.desktopvirtualization/")
+| where Op !endswith "/READ" or Op has "RETRIEVEREGISTRATIONTOKEN" or Op has "LISTREGISTRATIONTOKENS"
+| summarize Events = count(),
+            DistinctResources = dcount(Scope),
+            FirstSeen = min(TimeGenerated),
+            LastSeen = max(TimeGenerated)
+    by OperationNameValue, ActivityStatusValue
+| order by Events desc, LastSeen desc

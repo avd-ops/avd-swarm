@@ -1,0 +1,20 @@
+// Azure Files SMB and REST operations on profile shares in the last 24 hours classified by caller network class and authentication type,
+// summarized by account, authentication type, caller network class, and status; no raw IP addresses or user names leave the workspace.
+// Columns: learn.microsoft.com/azure/azure-monitor/reference/tables/storagefilelogs
+StorageFileLogs
+| where TimeGenerated > ago(24h)
+| extend RawIp = tostring(split(tostring(column_ifexists("CallerIpAddress", "")), ":")[0]),
+         AuthType = tostring(column_ifexists("AuthenticationType", "")),
+         Account = tostring(column_ifexists("AccountName", "")),
+         Status = tostring(column_ifexists("StatusText", ""))
+| extend CallerNetworkClass = case(
+             isempty(RawIp), "Unknown",
+             RawIp startswith "10." or RawIp startswith "172." or RawIp startswith "192.168.", "PrivateVNet",
+             "NonPrivateOrExternal"
+         )
+| where CallerNetworkClass != "PrivateVNet" or AuthType has "AccountKey" or AuthType has "SAS" or Status !in ("Success", "SMBOpSuccess")
+| summarize Operations = count(),
+            FirstSeen = min(TimeGenerated),
+            LastSeen = max(TimeGenerated)
+    by Account, AuthType, CallerNetworkClass, OperationName, Status
+| order by Operations desc

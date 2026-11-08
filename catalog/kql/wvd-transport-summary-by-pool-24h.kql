@@ -1,0 +1,20 @@
+// RDP transport breakdown (Shortpath, TURN, WebSocket/TCP) by host pool resource ID in the last 24 hours;
+// no user names or IP addresses leave the workspace.
+// Columns: learn.microsoft.com/azure/azure-monitor/reference/tables/wvdconnections
+WVDConnections
+| where TimeGenerated > ago(24h) and State == "Connected"
+| extend TransportType = tostring(column_ifexists("TransportType", "")),
+         UdpUse = tostring(column_ifexists("UdpUse", "")),
+         HostPool = tostring(split(tolower(_ResourceId), "/hostpools/")[1])
+| extend PoolName = iff(isnotempty(HostPool), tostring(split(HostPool, "/")[0]), "unknown"),
+         EffectiveTransport = case(
+             TransportType has "Shortpath" or UdpUse !in ("0", "False", "false", "None", ""), "Shortpath",
+             TransportType has "TURN", "TURN",
+             TransportType has "Websocket" or TransportType has "WebSocket", "WebSocket",
+             isnotempty(TransportType), TransportType,
+             "TCPOrRelay"
+         )
+| summarize Connections = dcount(CorrelationId),
+            SessionHosts = dcount(SessionHostName)
+    by PoolName, EffectiveTransport
+| order by PoolName asc, Connections desc

@@ -24,3 +24,32 @@ queries:
     file: wvd-logon-checkpoints-p95-24h.kql
     tables: [WVDCheckpoints]
     returns: sample count and p50/p95 elapsed milliseconds from connection start per checkpoint name and session host over 24 hours, no user names
+  - id: wvd-signins-without-ca-24h
+    file: wvd-signins-without-ca-24h.kql
+    tables: [SigninLogs]
+    returns: AVD sign-in counts where Conditional Access was not applied or legacy client auth was used over 24 hours, no user names or IP addresses
+  - id: wvd-connection-ip-mismatch-24h
+    file: wvd-connection-ip-mismatch-24h.kql
+    tables: [WVDConnections, SigninLogs]
+    returns: connection counts per session host where the client IP did not match an AVD sign-in IP for the same user over 24 hours, no user names or IP addresses
+  - id: wvd-transport-summary-by-pool-24h
+    file: wvd-transport-summary-by-pool-24h.kql
+    tables: [WVDConnections]
+    returns: connection and session host counts per host pool and effective RDP transport (Shortpath, TURN, WebSocket, TCPOrRelay) over 24 hours, no user names or IP addresses
+  - id: wvd-unrecognized-session-hosts-7d
+    file: wvd-unrecognized-session-hosts-7d.kql
+    tables: [WVDAgentHealthStatus, WVDConnections]
+    returns: session host names seen in agent health or connections over 7 days that fall outside the landing zone naming pattern or lack health reports
+  - id: wvd-control-plane-changes-7d
+    file: wvd-control-plane-changes-7d.kql
+    tables: [AzureActivity]
+    returns: event counts per AVD control-plane write, registration token retrieval, or role assignment operation over 7 days, no caller UPNs or IP addresses
+  - id: wvd-direct-rdp-exposure-24h
+    file: wvd-direct-rdp-exposure-24h.kql
+    tables: [AzureActivity, SecurityEvent]
+    returns: NSG rule write counts and remote-interactive logon (EventID 4624 type 10) counts by source network class over 24 hours, no user names or raw IP addresses
+  - id: wvd-fslogix-external-access-24h
+    file: wvd-fslogix-external-access-24h.kql
+    tables: [StorageFileLogs]
+    returns: Azure Files operation counts by account, authentication type, and caller network class for non-private or key/SAS/failed access over 24 hours, no raw IP addresses
+

@@ -1,0 +1,21 @@
+// AVD connections in the last 24 hours where the client IP address did not appear in a successful AVD sign-in for the same user,
+// summarized as connection counts per session host; no user names or IP addresses leave the workspace.
+// Columns: learn.microsoft.com/azure/azure-monitor/reference/tables/wvdconnections and signinlogs
+let signinPairs = SigninLogs
+    | where TimeGenerated > ago(25h) and tostring(column_ifexists("ResultType", "0")) == "0"
+    | where AppDisplayName has_any ("Azure Virtual Desktop", "Windows Virtual Desktop", "Windows Cloud Login", "Azure Remote Desktop")
+    | extend UserKey = tolower(tostring(column_ifexists("UserPrincipalName", ""))),
+             ClientIp = tostring(column_ifexists("IPAddress", ""))
+    | where isnotempty(UserKey) and isnotempty(ClientIp)
+    | distinct UserKey, ClientIp;
+WVDConnections
+| where TimeGenerated > ago(24h) and State == "Connected"
+| extend UserKey = tolower(tostring(column_ifexists("UserName", ""))),
+         ClientIp = tostring(column_ifexists("ClientSideIPAddress", ""))
+| where isnotempty(UserKey) and isnotempty(ClientIp)
+| join kind=leftanti signinPairs on UserKey, ClientIp
+| summarize UnmatchedConnections = dcount(CorrelationId),
+            FirstSeen = min(TimeGenerated),
+            LastSeen = max(TimeGenerated)
+    by SessionHostName
+| order by UnmatchedConnections desc, SessionHostName asc
