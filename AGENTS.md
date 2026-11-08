@@ -86,3 +86,6 @@ Read [CLAUDE.md](CLAUDE.md) and [docs/spec.md](docs/spec.md) first. In addition:
   This repo doesn't install `kb-auto-merge`: the Guard's workflow rules forbid
   `pull_request_target` (W3), and with no knowledge base here nothing would qualify. Every PR
   waits for the owner; the settings in `.claude/kb-capture.toml` stay `"off"`.
+- When work needs a sandbox run, follow the [sandbox skill](.claude/skills/sandbox/SKILL.md)
+  ([docs/sandbox-skill.md](docs/sandbox-skill.md)).
+
