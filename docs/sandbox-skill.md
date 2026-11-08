@@ -1,6 +1,6 @@
 # Sandbox skill: how an agent works with your sandbox
 
-- **Status:** Proposed, plan only. Nothing here is built.
+- **Status:** Built (step P1: [`.claude/skills/sandbox/SKILL.md`](../.claude/skills/sandbox/SKILL.md)).
 - **Asked for by:** the owner, 2026-10-22: a skill for how we work with the sandbox, in avd-swarm, starting with the batch runner.
 - **Part of:** [spend.md](spend.md) (estimate, run, teardown evidence) and spec §7a. It writes down, for a coding agent, the rules avd-swarm's spend block will later enforce in code.
 
