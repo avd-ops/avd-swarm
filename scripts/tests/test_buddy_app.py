@@ -1,0 +1,326 @@
+#!/usr/bin/env python3
+# Personal project, not for production, provided as is; not affiliated with the author's employer, Liquidware or Microsoft.
+"""Tests for avd-buddy installable web app and Container App server (docs/buddy-app.md section 12, decision 0010)."""
+
+from __future__ import annotations
+
+import base64
+import gzip
+import json
+import re
+import shutil
+import struct
+import sys
+import tempfile
+import threading
+import unittest
+import urllib.error
+import urllib.request
+from http.server import ThreadingHTTPServer
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent.parent
+for folder in (ROOT / "scripts", ROOT / "buddy"):
+    if str(folder) not in sys.path:
+        sys.path.insert(0, str(folder))
+
+import build_buddy_icons  # noqa: E402
+import server as buddy_server  # noqa: E402
+
+
+def _read_png_ihdr(path: Path) -> tuple[int, int, str]:
+    data = path.read_bytes()
+    if data[:8] != b"\x89PNG\r\n\x1a\n" or data[12:16] != b"IHDR":
+        raise ValueError(f"Not a valid PNG: {path}")
+    width, height, _bit_depth, color_type = struct.unpack(">IIBB", data[16:26])
+    mode = "RGBA" if color_type == 6 else ("RGB" if color_type == 2 else str(color_type))
+    return width, height, mode
+
+
+class ManifestAndIconsTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.icons_dir = build_buddy_icons.build_icons(ROOT)
+
+    def test_manifest_fields_and_token_hex_match(self) -> None:
+        manifest_path = ROOT / "buddy/app/manifest.webmanifest"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        self.assertEqual(manifest["name"], "avd-buddy")
+        self.assertEqual(manifest["short_name"], "buddy")
+        self.assertEqual(manifest["display"], "standalone")
+        self.assertEqual(manifest["start_url"], "/")
+        self.assertEqual(manifest["scope"], "/")
+        self.assertEqual(manifest["id"], "/")
+
+        # Verify background_color and theme_color match --brand-ink in avd-ops.css, and light meta matches --bg.
+        css_text = (ROOT / "buddy/app/assets/avd-ops.css").read_text(encoding="utf-8")
+        brand_ink_match = re.search(r"--brand-ink:\s*(#[0-9a-fA-F]{6})", css_text)
+        bg_light_match = re.search(r":root\s*\{[^}]*--bg:\s*(#[0-9a-fA-F]{6})", css_text)
+        self.assertIsNotNone(brand_ink_match)
+        self.assertIsNotNone(bg_light_match)
+        brand_ink = brand_ink_match.group(1).lower()
+        bg_light = bg_light_match.group(1).lower()
+
+        self.assertEqual(manifest["background_color"].lower(), brand_ink)
+        self.assertEqual(manifest["theme_color"].lower(), brand_ink)
+
+        html_text = (ROOT / "buddy/app/index.html").read_text(encoding="utf-8")
+        self.assertIn(f'media="(prefers-color-scheme: light)" content="{bg_light}"', html_text)
+        self.assertIn(f'media="(prefers-color-scheme: dark)" content="{brand_ink}"', html_text)
+        self.assertIn("viewport-fit=cover", html_text)
+        self.assertIn("interactive-widget=resizes-content", html_text)
+
+    def test_generated_icons_exist_at_every_size_and_mode(self) -> None:
+        expected_pngs = {
+            "icon-192.png": (192, 192, "RGBA"),
+            "icon-512.png": (512, 512, "RGBA"),
+            "icon-maskable-512.png": (512, 512, "RGB"),
+            "icon-monochrome-512.png": (512, 512, "RGBA"),
+            "apple-touch-icon.png": (180, 180, "RGB"),
+            "favicon-32.png": (32, 32, "RGBA"),
+        }
+        for name, (w, h, mode) in expected_pngs.items():
+            path = self.icons_dir / name
+            self.assertTrue(path.is_file(), f"Missing generated icon {name}")
+            self.assertEqual(_read_png_ihdr(path), (w, h, mode))
+
+        for svg_name in ("favicon.svg", "avatar.svg"):
+            svg_path = self.icons_dir / svg_name
+            self.assertTrue(svg_path.is_file(), f"Missing generated SVG {svg_name}")
+            self.assertIn("<svg", svg_path.read_text(encoding="utf-8"))
+
+    def test_mascot_fails_when_review_md_is_missing_and_placeholder_succeeds(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_root = Path(tmp)
+            (tmp_root / "buddy/app").mkdir(parents=True)
+            (tmp_root / "assets/buddy").mkdir(parents=True)
+            shutil.copy(ROOT / "assets/buddy/avd-buddy-icon.svg", tmp_root / "assets/buddy/avd-buddy-icon.svg")
+            (tmp_root / "buddy/app/brand.json").write_text('{"icon_source": "mascot"}\n', encoding="utf-8")
+
+            # Missing assets/buddy/REVIEW.md must fail build_icons (docs/buddy-app.md section 6.2)
+            with self.assertRaises(RuntimeError):
+                build_buddy_icons.build_icons(tmp_root)
+
+            # Switching to placeholder works without REVIEW.md (section 6.1)
+            (tmp_root / "buddy/app/brand.json").write_text('{"icon_source": "placeholder"}\n', encoding="utf-8")
+            out = build_buddy_icons.build_icons(tmp_root)
+            self.assertTrue((out / "icon-512.png").is_file())
+
+
+class StaticShellAndBudgetTests(unittest.TestCase):
+    def test_service_worker_rules(self) -> None:
+        sw_text = (ROOT / "buddy/app/sw.js").read_text(encoding="utf-8")
+        self.assertIn('pathname.startsWith("/api/")', sw_text)
+        self.assertIn('pathname.startsWith("/.auth/")', sw_text)
+        self.assertIn("caches.delete", sw_text)
+        self.assertIn("SKIP_WAITING", sw_text)
+
+    def test_no_inline_styles_or_scripts_and_colors_only_through_tokens(self) -> None:
+        html_text = (ROOT / "buddy/app/index.html").read_text(encoding="utf-8")
+        self.assertIsNone(re.search(r"\bstyle\s*=", html_text))
+        # Every <script> tag must use src=... with empty body
+        for match in re.finditer(r"<script\b([^>]*)>(.*?)</script>", html_text, re.DOTALL):
+            attrs, body = match.group(1), match.group(2).strip()
+            self.assertIn("src=", attrs)
+            self.assertEqual(body, "")
+
+        # app.css must use design system tokens only (no raw hex values)
+        css_text = (ROOT / "buddy/app/app.css").read_text(encoding="utf-8")
+        # Strip comments before scanning for #hex
+        css_no_comments = re.sub(r"/\*.*?\*/", "", css_text, flags=re.DOTALL)
+        self.assertIsNone(re.search(r"#[0-9a-fA-F]{3,8}\b", css_no_comments))
+
+    def test_no_guids_or_tokens_and_shell_js_within_60kb_compressed_budget(self) -> None:
+        guid_re = re.compile(r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b")
+        jwt_re = re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b")
+
+        total_gz = 0
+        for rel in ("index.html", "app.css", "app.js", "fixtures.js", "sw.js", "manifest.webmanifest"):
+            path = ROOT / "buddy/app" / rel
+            text = path.read_text(encoding="utf-8")
+            self.assertIsNone(guid_re.search(text), f"GUID found in {rel}")
+            self.assertIsNone(jwt_re.search(text), f"JWT found in {rel}")
+            if rel.endswith(".js"):
+                total_gz += len(gzip.compress(text.encode("utf-8")))
+
+        # Performance budget (docs/buddy-app.md section 9): shell JS compressed <= 60 KB
+        self.assertLessEqual(total_gz, 60 * 1024)
+
+    def test_front_end_only_no_in_app_approve_button_or_endpoint(self) -> None:
+        for rel in ("buddy/app/index.html", "buddy/app/app.js", "buddy/server.py"):
+            text = (ROOT / rel).read_text(encoding="utf-8")
+            self.assertNotIn("/api/approve", text)
+            self.assertNotIn("/api/plans/approve", text)
+        app_js = (ROOT / "buddy/app/app.js").read_text(encoding="utf-8")
+        self.assertIn("Review and approve in GitHub", app_js)
+        self.assertIn('target = "_blank"', app_js)
+        self.assertIn('rel = "noopener noreferrer"', app_js)
+
+
+class ServerAndIntegrationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        build_buddy_icons.build_icons(ROOT)
+        self.state = buddy_server.BuddyState(require_easy_auth=False, sim_mode=True)
+        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), buddy_server.make_handler(self.state))
+        self.port = self.httpd.server_address[1]
+        self.base_url = f"http://127.0.0.1:{self.port}"
+        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+        self.thread.start()
+
+    def tearDown(self) -> None:
+        self.httpd.shutdown()
+        self.httpd.server_close()
+
+    def _request(
+        self,
+        path: str,
+        *,
+        method: str = "GET",
+        body: dict | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> tuple[int, dict[str, str], bytes]:
+        req_headers = dict(headers or {})
+        data = None
+        if body is not None:
+            data = json.dumps(body).encode("utf-8")
+            req_headers["Content-Type"] = "application/json"
+        req = urllib.request.Request(self.base_url + path, data=data, headers=req_headers, method=method)
+        # Bypass any environment HTTP proxy for localhost server tests
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        try:
+            with opener.open(req, timeout=5) as resp:
+                return resp.status, {k.lower(): v for k, v in resp.headers.items()}, resp.read()
+        except urllib.error.HTTPError as err:
+            return err.code, {k.lower(): v for k, v in err.headers.items()}, err.read()
+
+    def test_csp_and_security_headers_present_on_every_route(self) -> None:
+        for route in ("/", "/app.js", "/manifest.webmanifest", "/api/status", "/api/history"):
+            status, headers, _ = self._request(route)
+            self.assertEqual(status, 200, f"Unexpected status {status} on {route}")
+            self.assertEqual(headers.get("content-security-policy"), buddy_server.CSP_HEADER)
+            self.assertEqual(headers.get("referrer-policy"), "no-referrer")
+            self.assertEqual(headers.get("permissions-policy"), "camera=(), microphone=(), geolocation=()")
+
+    def test_light_mode_allows_clean_aside_and_humor_off_hides_it(self) -> None:
+        status, _, raw = self._request(
+            "/api/turns",
+            method="POST",
+            body={"question": "Which hosts were idle all weekend?", "humor": "light"},
+        )
+        self.assertEqual(status, 200)
+        payload = json.loads(raw.decode("utf-8"))
+        turn = payload["turn"]
+        self.assertEqual(turn["mode"], "light")
+        self.assertIsNotNone(turn["aside"])
+
+        # Polling /api/turns/{id} returns the completed turn
+        poll_status, _, poll_raw = self._request(f"/api/turns/{ payload['turnId'] }?after=0")
+        self.assertEqual(poll_status, 200)
+        poll_data = json.loads(poll_raw.decode("utf-8"))
+        self.assertTrue(poll_data["done"])
+        self.assertEqual(poll_data["turn"]["id"], payload["turnId"])
+
+        # With humor: off, aside is stripped
+        self.state.replies_since_aside = 99
+        status2, _, raw2 = self._request(
+            "/api/turns",
+            method="POST",
+            body={"question": "Which hosts were idle all weekend?", "humor": "off"},
+        )
+        self.assertEqual(status2, 200)
+        turn2 = json.loads(raw2.decode("utf-8"))["turn"]
+        self.assertIsNone(turn2["aside"])
+
+    def test_hard_steady_plan_turn_renders_plan_and_strips_aside(self) -> None:
+        self.state.replies_since_aside = 99
+        status, _, raw = self._request(
+            "/api/turns",
+            method="POST",
+            body={"question": "Drain host 3 and restart its agent", "humor": "light"},
+        )
+        self.assertEqual(status, 200)
+        turn = json.loads(raw.decode("utf-8"))["turn"]
+        self.assertEqual(turn["mode"], "hard-steady")
+        # Section 12.7: hard-steady never shows an aside even when the fixture has one
+        self.assertIsNone(turn["aside"])
+        plan = turn["plan"]
+        self.assertIsNotNone(plan)
+        self.assertEqual(plan["planId"], "plan-20261108-01")
+        self.assertEqual(len(plan["planHash"][:12]), 12)
+        self.assertTrue(plan["approveUrl"].startswith("https://github.com/"))
+
+    def test_kill_switch_trip_requires_confirmation_and_never_resets(self) -> None:
+        # Attempting to reset to 'run' fails (no reset in avd-buddy)
+        status, _, _ = self._request(
+            "/api/switch/trip",
+            method="POST",
+            body={"position": "run", "confirm": "run"},
+        )
+        self.assertEqual(status, 400)
+
+        # Mismatched confirmation fails
+        status, _, _ = self._request(
+            "/api/switch/trip",
+            method="POST",
+            body={"position": "halt-agents", "confirm": "wrong"},
+        )
+        self.assertEqual(status, 400)
+
+        # Matching confirmation trips to halt-agents
+        status, _, raw = self._request(
+            "/api/switch/trip",
+            method="POST",
+            body={"position": "halt-agents", "confirm": "halt-agents"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(raw.decode("utf-8"))["switchPosition"], "halt-agents")
+
+        # While at halt-agents, new turns are refused (409)
+        status, _, _ = self._request(
+            "/api/turns",
+            method="POST",
+            body={"question": "Which hosts were idle?", "humor": "light"},
+        )
+        self.assertEqual(status, 409)
+
+        # Tripping to halt-all makes /api/status return 503
+        status, _, _ = self._request(
+            "/api/switch/trip",
+            method="POST",
+            body={"position": "halt-all", "confirm": "halt-all"},
+        )
+        self.assertEqual(status, 200)
+        status, _, _ = self._request("/api/status")
+        self.assertEqual(status, 503)
+
+    def test_easy_auth_principal_enforcement(self) -> None:
+        self.state.require_easy_auth = True
+        status, _, _ = self._request("/api/status")
+        self.assertEqual(status, 401)
+
+        principal_payload = {
+            "auth_typ": "aad",
+            "claims": [
+                {"typ": "preferred_username", "val": "alice@contoso.com"},
+                {"typ": "oid", "val": "operator-claim-1"},
+            ],
+        }
+        encoded = base64.b64encode(json.dumps(principal_payload).encode("utf-8")).decode("ascii")
+        status, _, raw = self._request("/api/status", headers={"X-MS-CLIENT-PRINCIPAL": encoded})
+        self.assertEqual(status, 200)
+        data = json.loads(raw.decode("utf-8"))
+        self.assertEqual(data["operator"], "alice@contoso.com")
+
+
+class ContainerAppBicepTests(unittest.TestCase):
+    def test_bicep_template_enforces_decision_0010(self) -> None:
+        bicep_text = (ROOT / "templates/buddy/main.bicep").read_text(encoding="utf-8")
+        self.assertIn("minReplicas: 0", bicep_text)
+        self.assertIn("Microsoft.App/containerApps/authConfigs@2024-03-01", bicep_text)
+        self.assertIn("override-use-mi-fic-assertion-clientid", bicep_text)
+        self.assertIn("RedirectToLoginPage", bicep_text)
+        self.assertIn("tokenStore: {\n        enabled: false\n      }", bicep_text)
+
+
+if __name__ == "__main__":
+    unittest.main()

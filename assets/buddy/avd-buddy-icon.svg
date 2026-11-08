@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="avd-buddy">
+  <!-- avd-buddy icon: vector redraw of assets/buddy/avd-buddy-icon-source.jpg (character and shield only, no outer tile or frame).
+       Colors from avd-ops tokens: --brand (#1ca998), --brand-ink (#0d1015), white (#ffffff) for eye sclera and screen. -->
+  <!-- Shield on the right: desktop monitor with cloud and >< remote session chevron -->
+  <g id="shield">
+    <path d="M276 204H402V326L339 374L276 326Z" fill="#1ca998" stroke="#0d1015" stroke-width="14" stroke-linejoin="round"/>
+    <rect x="292" y="222" width="90" height="74" rx="6" fill="#ffffff" stroke="#0d1015" stroke-width="12"/>
+    <path d="M316 278L310 272V264L317 258H325L329 249L337 243H347L352 237H364L371 243L375 251H382L386 258V266L382 278Z" fill="#0d1015"/>
+    <path d="M331 296H347V310H362V318H316V310H331Z" fill="#0d1015"/>
+    <path d="M320 332L332 342L320 352M358 332L346 342L358 352" fill="none" stroke="#0d1015" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <!-- Paperclip character on the left -->
+  <g id="mascot">
+    <!-- Left arm on hip -->
+    <path d="M192 246L156 280C148 288 148 300 156 308L178 330C182 334 176 342 168 342" fill="none" stroke="#0d1015" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M192 246L156 280C148 288 148 300 156 308L178 330C182 334 176 342 168 342" fill="none" stroke="#1ca998" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Paperclip body loops -->
+    <path d="M200 156C200 112 292 112 292 156V318C292 356 226 356 226 318V248" fill="none" stroke="#0d1015" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M198 222V346C198 416 302 416 302 346V254" fill="none" stroke="#0d1015" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M200 156C200 112 292 112 292 156V318C292 356 226 356 226 318V248" fill="none" stroke="#1ca998" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M198 222V346C198 416 302 416 302 346V254" fill="none" stroke="#1ca998" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Eyebrows -->
+    <path d="M170 150C186 136 210 134 226 142" fill="none" stroke="#0d1015" stroke-width="26" stroke-linecap="round"/>
+    <path d="M170 150C186 136 210 134 226 142" fill="none" stroke="#1ca998" stroke-width="12" stroke-linecap="round"/>
+    <path d="M266 148C284 142 306 148 320 162" fill="none" stroke="#0d1015" stroke-width="26" stroke-linecap="round"/>
+    <path d="M266 148C284 142 306 148 320 162" fill="none" stroke="#1ca998" stroke-width="12" stroke-linecap="round"/>
+    <!-- Eyes -->
+    <circle cx="202" cy="194" r="34" fill="#ffffff" stroke="#0d1015" stroke-width="12"/>
+    <circle cx="204" cy="196" r="15" fill="#0d1015"/>
+    <circle cx="198" cy="190" r="5" fill="#ffffff"/>
+    <circle cx="282" cy="198" r="34" fill="#ffffff" stroke="#0d1015" stroke-width="12"/>
+    <circle cx="280" cy="200" r="15" fill="#0d1015"/>
+    <circle cx="274" cy="194" r="5" fill="#ffffff"/>
+  </g>
+</svg>

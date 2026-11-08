@@ -1,0 +1,339 @@
+<!doctype html>
+<!-- avd-buddy installable web app (docs/buddy-app.md).
+     Personal project, not for production, provided as is; not affiliated with the author's employer, Liquidware or Microsoft. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f4f6f9">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0d1015">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="buddy">
+  <meta name="description" content="avd-buddy: installable chat front end for avd-swarm. Personal research project, not for production.">
+  <title>avd-buddy</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="assets/avd-ops.css">
+  <link rel="stylesheet" href="assets/avd-ops-shell.css">
+  <link rel="stylesheet" href="app.css">
+  <script src="assets/theme.js"></script>
+</head>
+<body class="buddy-body">
+  <a class="skip" href="#main-content">Skip to conversation</a>
+
+  <!-- Top bar: three items on a phone (avatar + avd-buddy -> Settings, switch pill -> Status, menu button -> History/Settings/Sign out) -->
+  <header class="buddy-top" role="banner">
+    <button type="button" id="brand-settings-btn" class="buddy-brand-btn" aria-label="avd-buddy, open settings">
+      <img src="icons/avatar.svg" alt="" class="buddy-avatar" width="32" height="32">
+      <span class="buddy-title">avd-buddy</span>
+    </button>
+
+    <button type="button" id="switch-pill" class="switch-pill pos-run" aria-label="Kill switch position: run. Open status">
+      <span class="switch-dot" aria-hidden="true"></span>
+      <span class="switch-label">Switch: <strong id="switch-pill-text">run</strong></span>
+    </button>
+
+    <div class="buddy-menu-wrap">
+      <button type="button" id="menu-btn" class="buddy-icon-btn" aria-expanded="false" aria-controls="top-menu" aria-label="Open menu">
+        Menu
+      </button>
+      <nav id="top-menu" class="buddy-dropdown" aria-label="App menu" hidden>
+        <button type="button" data-nav="chat" class="menu-item">Conversation</button>
+        <button type="button" data-nav="history" class="menu-item">History</button>
+        <button type="button" data-nav="status" class="menu-item">Status &amp; switch</button>
+        <button type="button" data-nav="settings" class="menu-item">Settings</button>
+        <button type="button" id="menu-signout-btn" class="menu-item menu-danger">Sign out</button>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Persistent banner when kill switch leaves 'run' (docs/buddy-app.md section 3) -->
+  <div id="switch-banner" class="switch-banner" role="status" aria-live="polite" hidden>
+    <span id="switch-banner-text"></span>
+    <button type="button" id="switch-banner-status-btn" class="banner-link">Status &amp; Cloud Shell blocks</button>
+  </div>
+
+  <!-- Service worker update banner: never reloads mid-conversation without operator action (section 5) -->
+  <div id="sw-update-banner" class="update-banner" role="status" aria-live="polite" hidden>
+    <span>Update ready, reload when you finish this turn.</span>
+    <button type="button" id="sw-reload-btn" class="banner-link">Update ready, reload</button>
+  </div>
+
+  <!-- Offline notice bar (section 2 rule 6, section 3) -->
+  <div id="offline-banner" class="offline-banner" role="alert" hidden>
+    <strong>You're offline. Nothing was sent.</strong> The conversation below is read-only until your connection returns.
+  </div>
+
+  <!-- Simulation / Demo controls bar: shown only in public demo / fixture mode (?sim=1 or static host without /api) -->
+  <section id="sim-bar" class="sim-bar" aria-label="Public demo simulation controls" hidden>
+    <div class="sim-bar-row">
+      <span class="sim-badge">Public Demo Sim</span>
+      <span class="sim-hint">Try scenarios &amp; switch states (offline fixtures, zero Azure spend):</span>
+      <div class="sim-actions" role="group" aria-label="Demo scenario presets">
+        <button type="button" class="sim-chip" data-preset="idle-hosts">Idle hosts (light + aside)</button>
+        <button type="button" class="sim-chip" data-preset="drain-host">Plan card (hard-steady)</button>
+        <button type="button" class="sim-chip" data-preset="deploy-failed">Failed deploy (soft-steady)</button>
+        <button type="button" class="sim-chip" data-preset="security-finding">Defender alert (hard-steady)</button>
+      </div>
+      <div class="sim-actions" role="group" aria-label="Demo switch and network states">
+        <button type="button" class="sim-chip" data-sim-switch="run">Switch: run</button>
+        <button type="button" class="sim-chip" data-sim-switch="halt-actions">halt-actions</button>
+        <button type="button" class="sim-chip" data-sim-switch="halt-agents">halt-agents</button>
+        <button type="button" class="sim-chip" data-sim-switch="halt-all">halt-all</button>
+        <button type="button" class="sim-chip" id="sim-offline-toggle" aria-pressed="false">Simulate offline</button>
+      </div>
+    </div>
+  </section>
+
+  <div class="buddy-workspace">
+    <!-- History drawer / side panel (stays open at >= 768px on iPad, drawer on phones; section 3 & section 5) -->
+    <aside id="history-panel" class="history-panel" aria-label="Conversation history">
+      <div class="history-head">
+        <h2 class="history-heading">History</h2>
+        <button type="button" id="new-chat-btn" class="buddy-small-btn">New chat</button>
+        <button type="button" id="close-history-btn" class="buddy-small-btn history-close-mobile" aria-label="Close history">Close</button>
+      </div>
+      <p class="history-note">Fetched from the server; nothing from the estate is stored on this device.</p>
+      <ul id="history-list" class="history-list"></ul>
+    </aside>
+
+    <main id="main-content" class="buddy-main">
+      <!-- Polite live region announcing completed answers once finished (section 9) -->
+      <div id="live-announcer" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+      <!-- SCREEN 1: Chat (home) -->
+      <section id="screen-chat" class="buddy-screen" aria-label="Conversation">
+        <div id="chat-scroll" class="chat-scroll">
+          <!-- Research-only notice at the top of an empty conversation (section 3) -->
+          <div id="empty-state" class="empty-state">
+            <div class="warn" role="note">
+              <strong>Personal research project — not for production.</strong>
+              Provided as is, without warranty; not affiliated with the author's employer, Liquidware or Microsoft.
+              avd-buddy reads and proposes plans only; every change is approved in GitHub on the exact plan ID and hash.
+            </div>
+
+            <div class="welcome-card card">
+              <div class="welcome-head">
+                <img src="icons/avatar.svg" alt="" class="welcome-avatar" width="48" height="48">
+                <div>
+                  <h1 class="welcome-title">Ask about your AVD, Windows 365 or Intune estate</h1>
+                  <p class="welcome-sub">Answer first, plain words for the why, and a link to verify it yourself.</p>
+                </div>
+              </div>
+              <p class="eyebrow">Suggested questions</p>
+              <div id="starter-prompts" class="follow-ups">
+                <button type="button" class="follow-up-btn" data-prompt="Which hosts were idle all weekend?">Which hosts were idle all weekend?</button>
+                <button type="button" class="follow-up-btn" data-prompt="Drain host 3 and restart its agent">Drain host 3 and restart its agent</button>
+                <button type="button" class="follow-up-btn" data-prompt="The deploy failed and I don't know why">The deploy failed and I don't know why</button>
+                <button type="button" class="follow-up-btn" data-prompt="Why is max sessions set to 8?">Why is max sessions set to 8?</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Conversation turn stream -->
+          <div id="messages-list" class="messages-list" role="log" aria-live="off"></div>
+
+          <!-- Install hint: shown ONLY after the first finished answer, never before, dismissed with one tap (section 3 & section 5) -->
+          <section id="install-hint" class="install-hint card" aria-label="Install avd-buddy" hidden>
+            <div class="install-hint-head">
+              <strong>Add avd-buddy to your home screen</strong>
+              <button type="button" id="dismiss-install-btn" class="buddy-small-btn" aria-label="Dismiss install hint">Dismiss</button>
+            </div>
+            <p id="install-hint-body" class="install-hint-body">
+              Install avd-buddy as a full-screen app. Only the app shell is cached; conversations stay on the server. On a shared device, sign out when finished.
+            </p>
+            <div class="install-hint-actions">
+              <button type="button" id="install-pwa-btn" class="cta" hidden>Install app</button>
+            </div>
+          </section>
+
+          <!-- Halted agents inline notice inside chat when switch == halt-agents -->
+          <section id="halt-agents-card" class="card halt-card" aria-label="Agents halted" hidden>
+            <h2>Agents are halted (<code>halt-agents</code>)</h2>
+            <p>The chat composer is disabled while the kill switch is at <code>halt-agents</code>. Nothing is calling a model or MCP tool.</p>
+            <p class="eyebrow">Inspect or reset in Azure Cloud Shell (person only)</p>
+            <pre id="halt-agents-cloudshell"><code id="halt-agents-code"></code></pre>
+          </section>
+        </div>
+
+        <!-- Pinned bottom composer (hidden at halt-agents and halt-all) -->
+        <form id="composer-form" class="composer-bar" aria-label="Ask avd-buddy">
+          <label for="composer-input" class="sr-only">Your question for avd-buddy</label>
+          <textarea
+            id="composer-input"
+            class="composer-input"
+            rows="1"
+            placeholder="Ask a question about hosts, sessions, cost or deployments..."
+            required
+          ></textarea>
+          <button type="submit" id="composer-send" class="composer-send">Send</button>
+        </form>
+      </section>
+
+      <!-- SCREEN 2: Status (from the switch pill; section 3) -->
+      <section id="screen-status" class="buddy-screen pad-screen" aria-label="Kill switch and status" hidden>
+        <div class="screen-header">
+          <h1>Status &amp; kill switch</h1>
+          <button type="button" data-nav="chat" class="buddy-small-btn">Back to chat</button>
+        </div>
+
+        <div class="card status-card">
+          <p class="eyebrow">Kill switch position</p>
+          <div class="status-position-row">
+            <span id="status-switch-badge" class="switch-pill pos-run">
+              <span class="switch-dot" aria-hidden="true"></span>
+              <strong id="status-switch-name">run</strong>
+            </span>
+          </div>
+          <p id="status-switch-meaning" class="status-meaning"></p>
+        </div>
+
+        <div class="card status-card">
+          <p class="eyebrow">Today's metered token spend</p>
+          <p id="status-spend-line" class="status-spend-figure">$1.42 of $15.00 daily cap</p>
+          <div class="spend-meter" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="9" aria-label="Token spend against daily cap">
+            <div id="status-spend-fill" class="spend-meter-fill"></div>
+          </div>
+        </div>
+
+        <div class="card status-card">
+          <p class="eyebrow">Waiting on the operator</p>
+          <ul id="status-waiting-list" class="waiting-list"></ul>
+        </div>
+
+        <div class="card status-card">
+          <p class="eyebrow">Trip the kill switch (governance section 2.3)</p>
+          <p>You can trip the kill switch from avd-buddy to stop actions or agents immediately. Resetting is never offered in the app; resetting requires a person running the Cloud Shell block below.</p>
+          <div class="trip-controls">
+            <button type="button" id="open-trip-confirm-btn" class="trip-trigger-btn">Trip kill switch...</button>
+          </div>
+          <div id="trip-confirm-box" class="trip-confirm-box" hidden>
+            <label for="trip-target-select" class="trip-label">Select target halt position:</label>
+            <select id="trip-target-select" class="trip-select">
+              <option value="halt-actions">halt-actions (stop approvals and writes; keep read-only chat)</option>
+              <option value="halt-agents">halt-agents (stop agents and MCP calls; disable composer)</option>
+              <option value="halt-all">halt-all (stop avd-buddy API and tool layer containers)</option>
+            </select>
+            <label for="trip-confirm-input" class="trip-label">Type the position name (<code id="trip-expected-code">halt-actions</code>) to confirm:</label>
+            <input type="text" id="trip-confirm-input" class="trip-input" autocomplete="off" placeholder="halt-actions">
+            <div class="trip-btn-row">
+              <button type="button" id="confirm-trip-btn" class="trip-confirm-btn">Confirm trip</button>
+              <button type="button" id="cancel-trip-btn" class="buddy-small-btn">Cancel</button>
+            </div>
+            <p id="trip-feedback" class="trip-feedback" role="status"></p>
+          </div>
+
+          <p class="eyebrow">Reset block (Azure Cloud Shell only, never in-app)</p>
+          <pre><code id="status-reset-code"></code></pre>
+        </div>
+      </section>
+
+      <!-- SCREEN 3: Settings (section 3, section 8) -->
+      <section id="screen-settings" class="buddy-screen pad-screen" aria-label="Settings" hidden>
+        <div class="screen-header">
+          <h1>Settings</h1>
+          <button type="button" data-nav="chat" class="buddy-small-btn">Back to chat</button>
+        </div>
+
+        <!-- Research-only notice required in Settings (section 3) -->
+        <div class="warn" role="note">
+          <strong>Personal research project — not for production.</strong>
+          Provided as is, without warranty; not affiliated with the author's employer, Liquidware or Microsoft.
+        </div>
+
+        <div class="card settings-card">
+          <div class="setting-row">
+            <div>
+              <label for="setting-humor" class="setting-title">Humor &amp; asides</label>
+              <p class="setting-desc"><code>humor: off</code> hides every aside for good; teaching and calm stay (docs/buddy-voice.md section 1).</p>
+            </div>
+            <select id="setting-humor" class="setting-select">
+              <option value="light">Light (default)</option>
+              <option value="off">Off (no asides)</option>
+            </select>
+          </div>
+
+          <div class="setting-row">
+            <div>
+              <label for="setting-depth" class="setting-title">Answer depth</label>
+              <p class="setting-desc">Default to the short version with an offer, or include the longer walkthrough right away.</p>
+            </div>
+            <select id="setting-depth" class="setting-select">
+              <option value="short">Short (default)</option>
+              <option value="longer">Longer walkthrough</option>
+            </select>
+          </div>
+
+          <div class="setting-row">
+            <div>
+              <label for="setting-theme" class="setting-title">Theme</label>
+              <p class="setting-desc">Follows your device by default, or forces light or dark.</p>
+            </div>
+            <select id="setting-theme" class="setting-select">
+              <option value="system">System default</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </div>
+
+          <div class="setting-row">
+            <div>
+              <span class="setting-title">Push notifications</span>
+              <p class="setting-desc">Off by default (Phase C). Carries only the fixed text "avd-buddy needs you" and never estate data.</p>
+            </div>
+            <span class="setting-badge">Off by default</span>
+          </div>
+
+          <div class="setting-row">
+            <div>
+              <span class="setting-title">Session &amp; device privacy</span>
+              <p class="setting-desc">Settings live in <code>localStorage</code>; no token, conversation, plan or estate name is kept on the device.</p>
+            </div>
+            <button type="button" id="settings-signout-btn" class="trip-trigger-btn">Sign out</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- SCREEN 4: Halted / Unreachable (halt-all or network down; section 3) -->
+      <section id="screen-halted" class="buddy-screen pad-screen" aria-label="Service unreachable or halted" hidden>
+        <div class="card halt-card">
+          <h1>avd-buddy can't reach its service.</h1>
+          <p>The API may be stopped by the kill switch (<code>halt-all</code>) or unreachable over your current connection. Nothing was sent.</p>
+          <p class="eyebrow">Check or reset in Azure Cloud Shell (person only)</p>
+          <pre><code id="halted-screen-code"></code></pre>
+          <div class="halt-actions-row">
+            <button type="button" id="retry-service-btn" class="cta">Retry connection</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- SCREEN 5: Sign-in screen (section 3, section 4) -->
+      <section id="screen-signin" class="buddy-screen pad-screen" aria-label="Sign in" hidden>
+        <!-- Research-only notice required on sign-in screen (section 3) -->
+        <div class="warn" role="note">
+          <strong>Personal research project — not for production.</strong>
+          Provided as is, without warranty; not affiliated with the author's employer, Liquidware or Microsoft.
+        </div>
+
+        <div class="card signin-card">
+          <img src="icons/avatar.svg" alt="" class="welcome-avatar" width="56" height="56">
+          <h1>Sign in to avd-buddy</h1>
+          <p id="signin-Prompt-text">Sign in with Entra ID through Container Apps authentication. Your browser receives an HTTP-only session cookie and never holds a token in storage.</p>
+          <p id="signin-draft-note" class="setting-desc" hidden></p>
+          <div class="signin-actions">
+            <a id="entra-signin-link" href="/.auth/login/aad" class="cta">Sign in with Entra ID</a>
+            <button type="button" id="enter-sim-btn" class="cta ghost">Open public demo simulation</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="fixtures.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
