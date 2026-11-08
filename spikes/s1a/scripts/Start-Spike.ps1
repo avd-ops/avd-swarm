@@ -208,7 +208,7 @@ if ($Provider -in @('Anthropic', 'AzureOpenAI')) {
     $bicepParams = @(
         "location=$Location", "runId=$RunId", "mcpAppId=$($app.appId)", "provider=$bicepProvider",
         "blueprintAppId=$($blueprint.appId)", "operatorObjectId=$($context.UserId)",
-        "swarmCommit=$commit", "claudeAudienceAppId=$claudeAppId",
+        "repoCommit=$commit", "claudeAudienceAppId=$claudeAppId",
         "promptShields=$($PromptShields.IsPresent.ToString().ToLowerInvariant())",
         "promptShieldsMode=$PromptShieldsMode",
         "scaleToZero=$($ScaleToZero.ToString().ToLowerInvariant())"
