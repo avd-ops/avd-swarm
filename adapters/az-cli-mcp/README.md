@@ -13,7 +13,7 @@
 | Dimension | Core: Azure MCP Server (`microsoft/mcp`) | Adapter: Azure CLI MCP Server (`Azure/azure-api-mcp`) |
 |---|---|---|
 | **Maintainer & license** | Microsoft (`microsoft/mcp`), MIT | Microsoft (`Azure/azure-api-mcp`), MIT |
-| **Tool surface** | Typed, per-operation tools (`virtualdesktop_hostpool_list`, `virtualdesktop_sessionhost_list`, `virtualdesktop_usersession_list`) in `--mode all --read-only --namespace virtualdesktop` | Single free-form `az` CLI wrapper tool protected by `--readonly` prefix/verb matching |
+| **Tool surface** | Typed, per-operation tools (`virtualdesktop_hostpool_list`, `virtualdesktop_hostpool_host_list`, `virtualdesktop_hostpool_host_user-list`) in `--mode all --read-only --namespace virtualdesktop` | Single free-form `az` CLI wrapper tool protected by `--readonly` prefix/verb matching |
 | **Allowlist enforcement** | Deterministic per-tool allowlist (`HOSTS_ALLOWED_TOOLS`) enforced in code before sending tools to Claude | Cannot restrict to `az desktopvirtualization` by tool name alone because one tool accepts arbitrary `az` subcommands |
 | **Prompt caching** | Fixed tool catalog cached across turns (`cache_control: {"type": "ephemeral"}`) | Free-form CLI help and larger multi-service command outputs increase token consumption |
 | **Best fit** | Deployed `avd-swarm` agents (`hosts`, `cost`, `intune`) and scheduled/alert runbooks | Interactive operator troubleshooting in Cloud Shell or an IDE across adjacent resources (NICs, route tables, DNS zones) not yet exposed as typed `microsoft/mcp` tools |

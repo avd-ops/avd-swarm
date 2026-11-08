@@ -6,7 +6,7 @@ status: draft
 tools:
   - cost_month_to_date_by_resource
   - cost_forecast_month
-  - virtualdesktop_hostpool_sessionhost_list
+  - virtualdesktop_hostpool_host_list
   - win365_license_utilization
   - kql_catalog_run
 kql:

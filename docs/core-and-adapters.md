@@ -68,7 +68,7 @@ trigger:
   runMode: read-only                # the only value in v1; "propose" allowed from step 3
 agent: hosts
 reads:                              # each must be in the agent's allowlist; the runner refuses otherwise
-  - tool: virtualdesktop_sessionhost_list
+  - tool: virtualdesktop_hostpool_host_list
   - kql: catalog/wvd-agent-health-last-24h   # from the KQL catalog, by ID, never inline
 expect:                             # facts the runner checks in code before the model sees anything
   - fact: sessionHosts.unhealthy == 0
