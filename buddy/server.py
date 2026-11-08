@@ -49,7 +49,7 @@ CSP_HEADER = (
     "form-action 'self'"
 )
 REFERRER_POLICY = "no-referrer"
-PERMISSIONS_POLICY = "camera=(), microphone=(), geolocation=()"
+PERMISSIONS_POLICY = "camera=(), microphone=(self), geolocation=()"
 
 VALID_HALT_POSITIONS = ("halt-actions", "halt-agents", "halt-all")
 SWITCH_MEANINGS = {

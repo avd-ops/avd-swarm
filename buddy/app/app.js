@@ -20,6 +20,7 @@
   const DEFAULT_SETTINGS = {
     humor: "light",
     depth: "short",
+    voice: "off",
     theme: "system",
     installDismissed: false
   };
@@ -41,7 +42,10 @@
     repliesSinceAside: 99,
     deferredInstallPrompt: null,
     waitingServiceWorker: null,
-    draftInMemory: ""
+    draftInMemory: "",
+    listening: false,
+    recognition: null,
+    speakingTurnId: null
   };
 
   function loadSettings() {
@@ -54,6 +58,7 @@
       return {
         humor: parsed.humor === "off" ? "off" : "light",
         depth: parsed.depth === "longer" ? "longer" : "short",
+        voice: ["off", "on", "auto"].includes(parsed.voice) ? parsed.voice : "off",
         theme: ["system", "light", "dark"].includes(parsed.theme) ? parsed.theme : "system",
         installDismissed: Boolean(parsed.installDismissed)
       };
@@ -101,6 +106,205 @@
   function isAppleMobile() {
     const ua = (navigator.userAgent || "").toLowerCase();
     return /iphone|ipad|ipod/.test(ua);
+  }
+
+  function getSpeechRecognitionCtor() {
+    if (typeof window === "undefined") {
+      return null;
+    }
+    return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+  }
+
+  function hasSpeechSynthesis() {
+    return (
+      typeof window !== "undefined" &&
+      "speechSynthesis" in window &&
+      typeof window.SpeechSynthesisUtterance === "function"
+    );
+  }
+
+  function syncSpeakButtons() {
+    document.querySelectorAll(".msg-speak-btn").forEach((btn) => {
+      const tid = btn.getAttribute("data-turn-id") || "";
+      const active = Boolean(state.speakingTurnId && state.speakingTurnId === tid);
+      btn.setAttribute("aria-pressed", active ? "true" : "false");
+      btn.setAttribute("aria-label", active ? "Stop reading answer" : "Read answer aloud");
+      btn.textContent = active ? "Stop" : "Speak";
+    });
+  }
+
+  function stopSpeaking() {
+    if (typeof window !== "undefined" && "speechSynthesis" in window && window.speechSynthesis) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch (_err) {
+        // Ignore browser synthesis errors
+      }
+    }
+    state.speakingTurnId = null;
+    syncSpeakButtons();
+  }
+
+  function buildSpokenText(turn, resolvedMode) {
+    const cleanAnswer = String(turn.answer || "").replace(/`/g, "");
+    if (canShowAside(turn, resolvedMode)) {
+      return cleanAnswer + " Aside: " + turn.aside.trim();
+    }
+    return cleanAnswer;
+  }
+
+  function speakTurn(turn, resolvedMode) {
+    if (!turn || state.settings.voice === "off") {
+      return;
+    }
+    if (state.status.switchPosition === "halt-agents" || state.status.switchPosition === "halt-all") {
+      stopSpeaking();
+      return;
+    }
+    const turnId = String(turn.id || "");
+    if (state.speakingTurnId && state.speakingTurnId === turnId) {
+      stopSpeaking();
+      return;
+    }
+    stopSpeaking();
+    const text = buildSpokenText(turn, resolvedMode).trim();
+    if (!text) {
+      return;
+    }
+    state.speakingTurnId = turnId;
+    syncSpeakButtons();
+    if (!hasSpeechSynthesis()) {
+      announcePolite("Voice read-aloud is not supported in this browser.");
+      state.speakingTurnId = null;
+      syncSpeakButtons();
+      return;
+    }
+    try {
+      const utterance = new window.SpeechSynthesisUtterance(text);
+      utterance.lang = document.documentElement.lang || "en-US";
+      utterance.onend = () => {
+        if (state.speakingTurnId === turnId) {
+          state.speakingTurnId = null;
+          syncSpeakButtons();
+        }
+      };
+      utterance.onerror = () => {
+        if (state.speakingTurnId === turnId) {
+          state.speakingTurnId = null;
+          syncSpeakButtons();
+        }
+      };
+      window.speechSynthesis.speak(utterance);
+    } catch (_err) {
+      state.speakingTurnId = null;
+      syncSpeakButtons();
+    }
+  }
+
+  function stopListening() {
+    if (state.recognition) {
+      try {
+        state.recognition.stop();
+      } catch (_err) {
+        // Ignore
+      }
+      state.recognition = null;
+    }
+    state.listening = false;
+    updateVoiceUI();
+  }
+
+  function toggleListening() {
+    if (state.listening) {
+      stopListening();
+      return;
+    }
+    if (
+      state.settings.voice === "off" ||
+      isOffline() ||
+      state.status.switchPosition === "halt-agents" ||
+      state.status.switchPosition === "halt-all"
+    ) {
+      return;
+    }
+    const RecognitionCtor = getSpeechRecognitionCtor();
+    if (!RecognitionCtor) {
+      announcePolite("Speech recognition is not supported in this browser.");
+      updateVoiceUI();
+      return;
+    }
+    stopSpeaking();
+    try {
+      const recognition = new RecognitionCtor();
+      recognition.lang = document.documentElement.lang || "en-US";
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+      recognition.continuous = false;
+      recognition.onresult = (event) => {
+        const results = event && event.results;
+        if (!results || !results[0] || !results[0][0]) {
+          return;
+        }
+        const transcript = String(results[0][0].transcript || "").trim();
+        if (!transcript) {
+          return;
+        }
+        const inputEl = document.getElementById("composer-input");
+        if (inputEl && !inputEl.disabled) {
+          const existing = inputEl.value.trim();
+          inputEl.value = existing ? existing + " " + transcript : transcript;
+          state.draftInMemory = inputEl.value;
+          inputEl.focus();
+          announcePolite("Dictated into composer: " + transcript);
+        }
+      };
+      recognition.onend = () => {
+        state.listening = false;
+        state.recognition = null;
+        updateVoiceUI();
+      };
+      recognition.onerror = () => {
+        state.listening = false;
+        state.recognition = null;
+        updateVoiceUI();
+      };
+      state.recognition = recognition;
+      state.listening = true;
+      updateVoiceUI();
+      recognition.start();
+    } catch (_err) {
+      state.listening = false;
+      state.recognition = null;
+      updateVoiceUI();
+    }
+  }
+
+  function updateVoiceUI() {
+    const micBtn = document.getElementById("composer-mic");
+    if (!micBtn) {
+      return;
+    }
+    const voiceEnabled = state.settings.voice !== "off";
+    micBtn.hidden = !voiceEnabled;
+    if (!voiceEnabled) {
+      micBtn.setAttribute("aria-pressed", "false");
+      micBtn.textContent = "Mic";
+      return;
+    }
+    const halted =
+      state.status.switchPosition === "halt-agents" || state.status.switchPosition === "halt-all";
+    const supported = Boolean(getSpeechRecognitionCtor());
+    micBtn.disabled = isOffline() || halted || !supported;
+    micBtn.setAttribute("aria-pressed", state.listening ? "true" : "false");
+    micBtn.setAttribute(
+      "aria-label",
+      !supported
+        ? "Microphone dictation unavailable in this browser"
+        : state.listening
+          ? "Stop microphone dictation"
+          : "Dictate question with microphone"
+    );
+    micBtn.textContent = state.listening ? "Stop mic" : "Mic";
   }
 
   function resolveTurnMode(turn) {
@@ -314,6 +518,23 @@
 
     metaRow.appendChild(sender);
     metaRow.appendChild(modeBadge);
+
+    if (!turn.thinking && state.settings.voice !== "off") {
+      const speakBtn = document.createElement("button");
+      speakBtn.type = "button";
+      speakBtn.className = "msg-speak-btn";
+      const turnId = String(turn.id || "");
+      const isSpeaking = Boolean(state.speakingTurnId && state.speakingTurnId === turnId);
+      speakBtn.setAttribute("data-turn-id", turnId);
+      speakBtn.setAttribute("aria-pressed", isSpeaking ? "true" : "false");
+      speakBtn.setAttribute("aria-label", isSpeaking ? "Stop reading answer" : "Read answer aloud");
+      speakBtn.textContent = isSpeaking ? "Stop" : "Speak";
+      speakBtn.addEventListener("click", () => {
+        speakTurn(turn, resolvedMode);
+      });
+      metaRow.appendChild(speakBtn);
+    }
+
     body.appendChild(metaRow);
 
     const answerP = document.createElement("p");
@@ -507,6 +728,11 @@
     if (haltAgentsCard) {
       haltAgentsCard.hidden = pos !== "halt-agents";
     }
+    if (pos === "halt-agents" || pos === "halt-all") {
+      stopListening();
+      stopSpeaking();
+    }
+    updateVoiceUI();
 
     const spent = Number(state.status.tokenSpendUsd || 0);
     const cap = Number(state.status.tokenCapUsd || 15);
@@ -643,6 +869,10 @@
     if (simToggle) {
       simToggle.setAttribute("aria-pressed", offline ? "true" : "false");
     }
+    if (offline) {
+      stopListening();
+    }
+    updateVoiceUI();
   }
 
   function announcePolite(message) {
@@ -665,6 +895,9 @@
     if (!trimmed) {
       return;
     }
+
+    stopListening();
+    stopSpeaking();
 
     const inputEl = document.getElementById("composer-input");
     if (inputEl) {
@@ -691,6 +924,9 @@
       state.draftInMemory = "";
       renderMessages();
       announcePolite("avd-buddy answered: " + matched.answer);
+      if (state.settings.voice === "auto") {
+        speakTurn(matched, resolveTurnMode(matched));
+      }
       return;
     }
 
@@ -738,6 +974,9 @@
       state.draftInMemory = "";
       renderMessages();
       announcePolite("avd-buddy answered: " + (turnResult.answer || ""));
+      if (state.settings.voice === "auto") {
+        speakTurn(turnResult, resolveTurnMode(turnResult));
+      }
     } catch (_err) {
       state.turns.pop();
       renderMessages();
@@ -813,6 +1052,8 @@
   }
 
   async function signOut() {
+    stopListening();
+    stopSpeaking();
     state.turns = [];
     state.history = [];
     state.draftInMemory = "";
@@ -860,6 +1101,7 @@
 
     const humorSelect = document.getElementById("setting-humor");
     const depthSelect = document.getElementById("setting-depth");
+    const voiceSelect = document.getElementById("setting-voice");
     const themeSelect = document.getElementById("setting-theme");
     if (humorSelect) {
       humorSelect.value = state.settings.humor;
@@ -867,9 +1109,13 @@
     if (depthSelect) {
       depthSelect.value = state.settings.depth;
     }
+    if (voiceSelect) {
+      voiceSelect.value = state.settings.voice;
+    }
     if (themeSelect) {
       themeSelect.value = state.settings.theme;
     }
+    updateVoiceUI();
 
     const params = new URLSearchParams(window.location.search);
     const host = (window.location.hostname || "").toLowerCase();
@@ -1013,6 +1259,8 @@
     const newChatBtn = document.getElementById("new-chat-btn");
     if (newChatBtn) {
       newChatBtn.addEventListener("click", () => {
+        stopListening();
+        stopSpeaking();
         state.turns = [];
         renderMessages();
         showScreen("chat");
@@ -1027,6 +1275,7 @@
 
     const composerForm = document.getElementById("composer-form");
     const composerInput = document.getElementById("composer-input");
+    const composerMic = document.getElementById("composer-mic");
     if (composerForm && composerInput) {
       composerForm.addEventListener("submit", (ev) => {
         ev.preventDefault();
@@ -1038,6 +1287,11 @@
           ev.preventDefault();
           submitQuestion(composerInput.value);
         }
+      });
+    }
+    if (composerMic) {
+      composerMic.addEventListener("click", () => {
+        toggleListening();
       });
     }
 
@@ -1118,6 +1372,20 @@
         saveSettings();
       });
     }
+    const voiceSelect = document.getElementById("setting-voice");
+    if (voiceSelect) {
+      voiceSelect.addEventListener("change", () => {
+        const val = voiceSelect.value;
+        state.settings.voice = ["off", "on", "auto"].includes(val) ? val : "off";
+        if (state.settings.voice === "off") {
+          stopListening();
+          stopSpeaking();
+        }
+        saveSettings();
+        updateVoiceUI();
+        renderMessages();
+      });
+    }
     const themeSelect = document.getElementById("setting-theme");
     if (themeSelect) {
       themeSelect.addEventListener("change", () => {
@@ -1171,10 +1439,14 @@
           if (state.status.switchPosition === "halt-all") {
             setSimSwitchPosition("run");
           }
-          state.turns.push(Object.assign({}, fixtures.PRESET_TURNS[key]));
+          const presetTurn = Object.assign({}, fixtures.PRESET_TURNS[key]);
+          state.turns.push(presetTurn);
           state.finishedAnswers += 1;
           renderMessages();
           showScreen("chat");
+          if (state.settings.voice === "auto") {
+            speakTurn(presetTurn, resolveTurnMode(presetTurn));
+          }
         }
       });
     });

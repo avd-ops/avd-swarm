@@ -170,6 +170,14 @@
             placeholder="Ask a question about hosts, sessions, cost or deployments..."
             required
           ></textarea>
+          <button
+            type="button"
+            id="composer-mic"
+            class="composer-mic"
+            aria-pressed="false"
+            aria-label="Dictate question with microphone"
+            hidden
+          >Mic</button>
           <button type="submit" id="composer-send" class="composer-send">Send</button>
         </form>
       </section>
@@ -265,6 +273,18 @@
             <select id="setting-depth" class="setting-select">
               <option value="short">Short (default)</option>
               <option value="longer">Longer walkthrough</option>
+            </select>
+          </div>
+
+          <div class="setting-row">
+            <div>
+              <label for="setting-voice" class="setting-title">Voice chat (push-to-talk &amp; read aloud)</label>
+              <p class="setting-desc"><code>voice: off</code> by default. Uses the browser's built-in <code>SpeechRecognition</code> and <code>speechSynthesis</code> with zero Azure spend; dictated text fills the composer for review before sending.</p>
+            </div>
+            <select id="setting-voice" class="setting-select">
+              <option value="off">Off (default)</option>
+              <option value="on">On (push-to-talk &amp; Speak button)</option>
+              <option value="auto">Auto-read replies (push-to-talk &amp; read aloud)</option>
             </select>
           </div>
 

@@ -184,6 +184,16 @@ class StaticShellAndBudgetTests(unittest.TestCase):
         self.assertIn('target = "_blank"', app_js)
         self.assertIn('rel = "noopener noreferrer"', app_js)
 
+    def test_optional_voice_chat_controls_and_default_off(self) -> None:
+        html_text = (ROOT / "buddy/app/index.html").read_text(encoding="utf-8")
+        app_js = (ROOT / "buddy/app/app.js").read_text(encoding="utf-8")
+        self.assertIn('id="setting-voice"', html_text)
+        self.assertIn('id="composer-mic"', html_text)
+        self.assertIn('voice: "off"', app_js)
+        self.assertIn("SpeechRecognition", app_js)
+        self.assertIn("speechSynthesis", app_js)
+        self.assertIn("msg-speak-btn", app_js)
+
 
 class ServerAndIntegrationTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -227,7 +237,7 @@ class ServerAndIntegrationTests(unittest.TestCase):
             self.assertEqual(status, 200, f"Unexpected status {status} on {route}")
             self.assertEqual(headers.get("content-security-policy"), buddy_server.CSP_HEADER)
             self.assertEqual(headers.get("referrer-policy"), "no-referrer")
-            self.assertEqual(headers.get("permissions-policy"), "camera=(), microphone=(), geolocation=()")
+            self.assertEqual(headers.get("permissions-policy"), "camera=(), microphone=(self), geolocation=()")
 
     def test_light_mode_allows_clean_aside_and_humor_off_hides_it(self) -> None:
         status, _, raw = self._request(
