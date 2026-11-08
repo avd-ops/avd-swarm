@@ -1,0 +1,23 @@
+// NSG rule changes in AzureActivity and remote-interactive logons (EventID 4624 LogonType 10) in SecurityEvent over the last 24 hours,
+// summarized as counts by host or resource; no user names or IP addresses leave the workspace.
+// Columns: learn.microsoft.com/azure/azure-monitor/reference/tables/azureactivity and securityevent
+let nsgChanges = AzureActivity
+    | where TimeGenerated > ago(24h) and CategoryValue == "Administrative"
+    | where toupper(OperationNameValue) startswith "MICROSOFT.NETWORK/NETWORKSECURITYGROUPS/SECURITYRULES/WRITE"
+         or toupper(OperationNameValue) startswith "MICROSOFT.NETWORK/NETWORKSECURITYGROUPS/WRITE"
+    | summarize Events = count(), LastSeen = max(TimeGenerated)
+        by Signal = "NSGRuleWrite", Target = tostring(split(tolower(tostring(column_ifexists("_ResourceId", ""))), "/networksecuritygroups/")[1]), Detail = ActivityStatusValue;
+let rdpLogons = SecurityEvent
+    | where TimeGenerated > ago(24h) and EventID == 4624 and LogonType == 10
+    | extend Host = tostring(split(tolower(Computer), ".")[0]),
+             Ip = tostring(column_ifexists("IpAddress", ""))
+    | extend SourceClass = case(
+                 Ip in ("127.0.0.1", "::1", "-", ""), "LoopbackOrLocal",
+                 Ip startswith "10." or Ip startswith "172." or Ip startswith "192.168.", "PrivateVNet",
+                 "ExternalOrPublic"
+             )
+    | summarize Events = count(), LastSeen = max(TimeGenerated)
+        by Signal = "Event4624LogonType10", Target = Host, Detail = SourceClass;
+union isfuzzy=true nsgChanges, rdpLogons
+| where isnotempty(Target)
+| order by Signal asc, Events desc

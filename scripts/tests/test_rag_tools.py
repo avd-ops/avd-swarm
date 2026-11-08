@@ -161,6 +161,36 @@ class RagToolsTests(unittest.TestCase):
             ["c11.storage.profileContainers", "wvd-logon-checkpoints-p95-24h"],
         )
 
+    def test_security_hunts_kql_catalog_entries_and_privacy_invariants(self):
+        catalog = rag_tools.runbook_endpoint.catalog_queries(ROOT)
+        expected_hunts = {
+            "wvd-signins-without-ca-24h",
+            "wvd-connection-ip-mismatch-24h",
+            "wvd-transport-summary-by-pool-24h",
+            "wvd-unrecognized-session-hosts-7d",
+            "wvd-control-plane-changes-7d",
+            "wvd-direct-rdp-exposure-24h",
+            "wvd-fslogix-external-access-24h",
+        }
+        self.assertTrue(expected_hunts.issubset(set(catalog.keys())))
+        for qid in expected_hunts:
+            kql = catalog[qid]
+            self.assertTrue(kql.strip(), qid)
+            self.assertTrue("summarize" in kql or "project" in kql, qid)
+        rt, executed = self.make_runtime()
+        for qid in (
+            "wvd-transport-summary-by-pool-24h",
+            "wvd-unrecognized-session-hosts-7d",
+            "wvd-control-plane-changes-7d",
+            "wvd-direct-rdp-exposure-24h",
+            "wvd-fslogix-external-access-24h",
+        ):
+            text, is_error = run_now(rt.call("kql_catalog_run", {"queryId": qid}))
+            self.assertFalse(is_error, qid)
+            self.assertEqual(json.loads(text)["queryId"], qid)
+        self.assertEqual(len(executed), 5)
+
 
 if __name__ == "__main__":
     unittest.main()
+

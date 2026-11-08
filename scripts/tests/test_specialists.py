@@ -73,7 +73,7 @@ class SpecialistAllowlistTests(unittest.TestCase):
         self.assertIn("kql_catalog_run", hosts["tools"])
         self.assertIn("concierge_search", hosts["tools"])
         self.assertIn("concierge_facts", hosts["tools"])
-        self.assertEqual(len(hosts["kql"]), 5)
+        self.assertEqual(len(hosts["kql"]), 10)
 
         self.assertEqual(
             cost["tools"],

@@ -1,0 +1,20 @@
+// Session hosts seen in WVDAgentHealthStatus or WVDConnections over the last 7 days whose short host name does not match
+// the landing zone's naming pattern (vm-<prefix>-<index>) or that appeared in connections without reporting agent health.
+// Columns: learn.microsoft.com/azure/azure-monitor/reference/tables/wvdagenthealthstatus and wvdconnections
+let healthHosts = WVDAgentHealthStatus
+    | where TimeGenerated > ago(7d)
+    | summarize HealthReports = count(), LastHealthReport = max(TimeGenerated)
+        by Host = tostring(split(tolower(SessionHostName), ".")[0]);
+let connHosts = WVDConnections
+    | where TimeGenerated > ago(7d)
+    | summarize Connections = dcount(CorrelationId), LastConnection = max(TimeGenerated)
+        by Host = tostring(split(tolower(SessionHostName), ".")[0]);
+healthHosts
+| join kind=fullouter connHosts on Host
+| extend SessionHostName = coalesce(Host, Host1),
+         HealthReports = coalesce(HealthReports, 0),
+         Connections = coalesce(Connections, 0)
+| extend NamingMatch = SessionHostName matches regex @"^vm-[a-z0-9-]+-\d+$"
+| where not(NamingMatch) or HealthReports == 0
+| project SessionHostName, NamingMatch, HealthReports, Connections, LastHealthReport, LastConnection
+| order by NamingMatch asc, Connections desc, SessionHostName asc
