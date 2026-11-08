@@ -11,8 +11,8 @@ param(
     [Parameter(Mandatory)][string] $RunId,
     [string] $Location = 'eastus2',
     [string] $McpAppId,
-    # Anthropic: also delete the fallback's agent identity and blueprint (found by name, through Graph PowerShell).
-    [ValidateSet('Foundry', 'Anthropic')][string] $Provider = 'Foundry'
+    # Anthropic / AzureOpenAI: also delete the agent identity and blueprint (found by name, through Graph PowerShell).
+    [ValidateSet('Foundry', 'Anthropic', 'AzureOpenAI')][string] $Provider = 'Foundry'
 )
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'Spike.psm1') -Force
@@ -62,14 +62,16 @@ else {
     Write-Host "No MCP server app is registered for run $RunId."
 }
 
-if ($Provider -eq 'Anthropic') {
-    $claudeAppId = @((Invoke-SpikeGraph -Step 'find-claude-app' -Method get -Path "/applications?`$filter=uniqueName eq 'avdswarm-spike-claude-$RunId'").value | Where-Object { $_ })[0].appId
-    if ($claudeAppId) {
-        Write-SpikeStep "Deleting the Claude API audience app $claudeAppId"
-        if ($PSCmdlet.ShouldProcess($claudeAppId, 'delete Entra app')) {
-            $null = Invoke-SpikeAz -Step 'delete-claude-app' -AllowNotFound -Arguments @('ad', 'app', 'delete', '--id', $claudeAppId)
+if ($Provider -in @('Anthropic', 'AzureOpenAI')) {
+    if ($Provider -eq 'Anthropic') {
+        $claudeAppId = @((Invoke-SpikeGraph -Step 'find-claude-app' -Method get -Path "/applications?`$filter=uniqueName eq 'avdswarm-spike-claude-$RunId'").value | Where-Object { $_ })[0].appId
+        if ($claudeAppId) {
+            Write-SpikeStep "Deleting the Claude API audience app $claudeAppId"
+            if ($PSCmdlet.ShouldProcess($claudeAppId, 'delete Entra app')) {
+                $null = Invoke-SpikeAz -Step 'delete-claude-app' -AllowNotFound -Arguments @('ad', 'app', 'delete', '--id', $claudeAppId)
+            }
+            if (Invoke-SpikeAz -Step 'check-claude-app' -AllowNotFound -Arguments @('ad', 'app', 'show', '--id', $claudeAppId)) { $leftovers.Add("Entra app $claudeAppId") }
         }
-        if (Invoke-SpikeAz -Step 'check-claude-app' -AllowNotFound -Arguments @('ad', 'app', 'show', '--id', $claudeAppId)) { $leftovers.Add("Entra app $claudeAppId") }
     }
     Connect-SpikeAgentGraph -TenantId $context.TenantId
     $identityName = "avdswarm-spike-hosts-$RunId"

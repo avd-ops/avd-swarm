@@ -20,5 +20,13 @@ providers:
         cacheRead: 0.01
         cacheWrite: 0.125
         longContext: {threshold: 100000, input: 0.50, output: 2.50, cacheRead: 0.05, cacheWrite: 0.625}
-  # foundry and azure-openai have no rows yet: they serve the model-host adapter (adapters/foundry),
-  # which is off by default. Add rows from the retail prices API when an adopter estimates it.
+  # foundry has no rows yet: it serves the Claude-in-Foundry model-host adapter (adapters/foundry),
+  # which is off by default. azure-openai holds Global Standard list prices from the Azure retail
+  # prices API for keyless Entra-authenticated GPT-4.1-nano, GPT-4.1-mini, and GPT-4o-mini runs.
+  azure-openai:
+    source: https://prices.azure.com/api/retail/prices
+    read: 2026-11-08
+    models:
+      gpt-4.1-nano: {input: 0.10, output: 0.40, cacheRead: 0.025, cacheWrite: 0.10}
+      gpt-4.1-mini: {input: 0.40, output: 1.60, cacheRead: 0.10, cacheWrite: 0.40}
+      gpt-4o-mini:  {input: 0.15, output: 0.60, cacheRead: 0.075, cacheWrite: 0.15}

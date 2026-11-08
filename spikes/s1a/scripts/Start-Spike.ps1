@@ -30,16 +30,23 @@ param(
     [string] $Industry = 'technology',
     # Thousands of tokens per minute per deployment. 1 is too small: one agent call with tool results exceeds it.
     [ValidateRange(1, 1000)][int] $Capacity = 50,
+    # AzureOpenAI: keyless Azure AI Foundry OpenAI models (gpt-4.1-nano -> gpt-4.1-mini -> gpt-4o-mini) from the Container App.
     # Anthropic: the fallback without Foundry (Anthropic's API from a Container App, Entra Agent ID through Graph).
-    # No API key: the agents app calls Claude with Anthropic workload identity federation (its managed identity).
-    [ValidateSet('Foundry', 'Anthropic')][string] $Provider = 'Foundry',
-    # Anthropic only: scan the question and every tool result with Prompt Shields (gateway/avd_gateway/shield.py, red team R26),
+    [ValidateSet('Foundry', 'Anthropic', 'AzureOpenAI')][string] $Provider = 'Foundry',
+    # Anthropic / AzureOpenAI: scan the question and every tool result with Prompt Shields (gateway/avd_gateway/shield.py, red team R26),
     # on a free-tier Content Safety resource with local auth disabled. Observe mode counts hits and changes nothing.
     [switch] $PromptShields,
-    [ValidateSet('observe', 'enforce')][string] $PromptShieldsMode = 'observe'
+    [ValidateSet('observe', 'enforce')][string] $PromptShieldsMode = 'observe',
+    [bool] $ScaleToZero = $true,
+    [string] $BrainCommit = ''
 )
-if ($PromptShields -and $Provider -ne 'Anthropic') {
-    throw '-PromptShields applies to -Provider Anthropic only: Foundry runs its own guardrails. Nothing was deployed.'
+if ($PromptShields -and $Provider -notin @('Anthropic', 'AzureOpenAI')) {
+    throw '-PromptShields applies to -Provider Anthropic or AzureOpenAI only: Foundry runs its own guardrails. Nothing was deployed.'
+}
+if ($Provider -eq 'AzureOpenAI') {
+    if (-not $PSBoundParameters.ContainsKey('CoordinatorModel')) { $CoordinatorModel = 'gpt-4.1-nano' }
+    if (-not $PSBoundParameters.ContainsKey('HostsModel')) { $HostsModel = 'gpt-4.1-nano' }
+    if (-not $PSBoundParameters.ContainsKey('CompareModels')) { $CompareModels = @('gpt-4.1-mini', 'gpt-4o-mini') }
 }
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'Spike.psm1') -Force
@@ -133,27 +140,31 @@ if (-not $appSp -and $PSCmdlet.ShouldProcess($app.appId, 'create service princip
 }
 Write-Host "MCP app $($app.appId), service principal $($appSp.id)"
 
-# ---- Fallback: Anthropic's API, and Entra Agent ID without Foundry ----
-if ($Provider -eq 'Anthropic') {
-    # The audience Entra issues Claude API tokens for (Anthropic workload identity federation, no API key).
-    # v2.0 tokens, identifier URI api://<appId>, and a service principal so the audience resolves in the tenant.
-    $claudeUniqueName = "avdswarm-spike-claude-$RunId"
-    Write-SpikeStep "Registering the Claude API audience app $claudeUniqueName (workload identity federation)"
-    $claudeApp = @((Invoke-SpikeGraph -Step 'find-claude-app' -Method get -Path "/applications?`$filter=uniqueName eq '$claudeUniqueName'").value | Where-Object { $_ })[0]
-    if (-not $claudeApp -and $PSCmdlet.ShouldProcess($claudeUniqueName, 'create Entra app')) {
-        $claudeApp = Invoke-SpikeGraph -Step 'create-claude-app' -Method post -Path '/applications' -Body @{
-            uniqueName = $claudeUniqueName; displayName = "avdswarm spike Claude API audience ($RunId)"; signInAudience = 'AzureADMyOrg'
-            api = @{ requestedAccessTokenVersion = 2 }
+# ---- Container App agent API path: AzureOpenAI (Tier 1/2 keyless) or Anthropic (Tier 3 fallback) ----
+if ($Provider -in @('Anthropic', 'AzureOpenAI')) {
+    $claudeAppId = ''
+    if ($Provider -eq 'Anthropic') {
+        # The audience Entra issues Claude API tokens for (Anthropic workload identity federation, no API key).
+        # v2.0 tokens, identifier URI api://<appId>, and a service principal so the audience resolves in the tenant.
+        $claudeUniqueName = "avdswarm-spike-claude-$RunId"
+        Write-SpikeStep "Registering the Claude API audience app $claudeUniqueName (workload identity federation)"
+        $claudeApp = @((Invoke-SpikeGraph -Step 'find-claude-app' -Method get -Path "/applications?`$filter=uniqueName eq '$claudeUniqueName'").value | Where-Object { $_ })[0]
+        if (-not $claudeApp -and $PSCmdlet.ShouldProcess($claudeUniqueName, 'create Entra app')) {
+            $claudeApp = Invoke-SpikeGraph -Step 'create-claude-app' -Method post -Path '/applications' -Body @{
+                uniqueName = $claudeUniqueName; displayName = "avdswarm spike Claude API audience ($RunId)"; signInAudience = 'AzureADMyOrg'
+                api = @{ requestedAccessTokenVersion = 2 }
+            }
         }
+        if ($PSCmdlet.ShouldProcess($claudeUniqueName, 'set identifier URI')) {
+            $null = Invoke-SpikeGraph -Step 'update-claude-app' -Method patch -Path "/applications/$($claudeApp.id)" -Body @{ identifierUris = @("api://$($claudeApp.appId)") }
+        }
+        $claudeSp = @((Invoke-SpikeGraph -Step 'find-claude-sp' -Method get -Path "/servicePrincipals?`$filter=appId eq '$($claudeApp.appId)'").value | Where-Object { $_ })[0]
+        if (-not $claudeSp -and $PSCmdlet.ShouldProcess($claudeApp.appId, 'create service principal')) {
+            $null = Invoke-SpikeGraph -Step 'create-claude-sp' -Method post -Path '/servicePrincipals' -Body @{ appId = $claudeApp.appId }
+        }
+        $claudeAppId = $claudeApp.appId
+        Write-Host "Claude API audience app $claudeAppId"
     }
-    if ($PSCmdlet.ShouldProcess($claudeUniqueName, 'set identifier URI')) {
-        $null = Invoke-SpikeGraph -Step 'update-claude-app' -Method patch -Path "/applications/$($claudeApp.id)" -Body @{ identifierUris = @("api://$($claudeApp.appId)") }
-    }
-    $claudeSp = @((Invoke-SpikeGraph -Step 'find-claude-sp' -Method get -Path "/servicePrincipals?`$filter=appId eq '$($claudeApp.appId)'").value | Where-Object { $_ })[0]
-    if (-not $claudeSp -and $PSCmdlet.ShouldProcess($claudeApp.appId, 'create service principal')) {
-        $null = Invoke-SpikeGraph -Step 'create-claude-sp' -Method post -Path '/servicePrincipals' -Body @{ appId = $claudeApp.appId }
-    }
-    Write-Host "Claude API audience app $($claudeApp.appId)"
 
     Connect-SpikeAgentGraph -TenantId $context.TenantId
 
@@ -191,14 +202,60 @@ if ($Provider -eq 'Anthropic') {
 
     # The agent code comes from the pushed commit; the container installs and runs it.
     $commit = git -C $PSScriptRoot rev-parse HEAD
+    $bicepProvider = if ($Provider -eq 'AzureOpenAI') { 'azure-openai' } else { 'anthropic' }
     $scan = if ($PromptShields) { ", Prompt Shields in $PromptShieldsMode mode" } else { "" }
-    Write-SpikeStep "Deploying infra/main.bicep (MCP server, agents Container App, logs, empty host pool$scan) with agent code at $commit; this takes several minutes"
-    $deployment = Invoke-SpikeAz -Step 'deploy' -Arguments @('deployment', 'group', 'create', '-g', $SpikeResourceGroup,
-        '-n', "avdswarm-spike-$RunId", '-f', (Join-Path $PSScriptRoot '..' 'infra' 'main.bicep'),
-        '-p', "location=$Location", "runId=$RunId", "mcpAppId=$($app.appId)", 'provider=anthropic', "blueprintAppId=$($blueprint.appId)",
-        "operatorObjectId=$($context.UserId)", "repoCommit=$commit", "claudeAudienceAppId=$($claudeApp.appId)",
-        "promptShields=$($PromptShields.IsPresent.ToString().ToLowerInvariant())", "promptShieldsMode=$PromptShieldsMode")
+    Write-SpikeStep "Deploying infra/main.bicep ($bicepProvider, MCP server, agents Container App, logs, empty host pool$scan) with agent code at $commit; this takes several minutes"
+    $bicepParams = @(
+        "location=$Location", "runId=$RunId", "mcpAppId=$($app.appId)", "provider=$bicepProvider",
+        "blueprintAppId=$($blueprint.appId)", "operatorObjectId=$($context.UserId)",
+        "swarmCommit=$commit", "claudeAudienceAppId=$claudeAppId",
+        "promptShields=$($PromptShields.IsPresent.ToString().ToLowerInvariant())",
+        "promptShieldsMode=$PromptShieldsMode",
+        "scaleToZero=$($ScaleToZero.ToString().ToLowerInvariant())"
+    )
+    if ($BrainCommit) { $bicepParams += "brainCommit=$BrainCommit" }
+    $deployment = Invoke-SpikeAz -Step 'deploy' -Arguments (@('deployment', 'group', 'create', '-g', $SpikeResourceGroup,
+        '-n', "avdswarm-spike-$RunId", '-f', (Join-Path $PSScriptRoot '..' 'infra' 'main.bicep'), '-p') + $bicepParams)
     $out = $deployment.properties.outputs
+
+    $deployedModels = @(@($HostsModel) + $CompareModels + @($CoordinatorModel) | Select-Object -Unique)
+    if ($Provider -eq 'AzureOpenAI') {
+        $foundryName = $out.foundryName.value
+        Write-SpikeStep "Listing the OpenAI models the Foundry resource $foundryName offers"
+        $models = @(Invoke-SpikeAz -Step 'list-models' -Arguments @('cognitiveservices', 'account', 'list-models', '-g', $SpikeResourceGroup, '-n', $foundryName))
+        $okModels = [System.Collections.Generic.List[string]]::new()
+        foreach ($want in $deployedModels) {
+            $candidates = @($models | Where-Object { $_.name -eq $want } | Sort-Object { $_.version } -Descending)
+            if ($candidates.Count -eq 0) {
+                Write-Warning "Model $want is not offered in $Location; skipping it in the fallback ladder."
+                continue
+            }
+            $m = $candidates[0]
+            $skuNames = @($m.skus | ForEach-Object name)
+            $sku = if ('GlobalStandard' -in $skuNames) { 'GlobalStandard' } elseif ('Standard' -in $skuNames) { 'Standard' } else { $skuNames[0] }
+            if (-not $sku) { $sku = 'GlobalStandard' }
+            Write-SpikeStep "Deploying $($m.name) $($m.version) ($($m.format)), $sku"
+            try {
+                $null = Invoke-SpikeAz -Step "deploy-$($m.name)" -Arguments @(
+                    'cognitiveservices', 'account', 'deployment', 'create',
+                    '-g', $SpikeResourceGroup, '-n', $foundryName,
+                    '--deployment-name', $m.name, '--model-name', $m.name,
+                    '--model-version', $m.version, '--model-format', $m.format,
+                    '--sku-capacity', [string]$Capacity, '--sku-name', $sku
+                )
+                $okModels.Add($m.name)
+            }
+            catch {
+                Write-Warning "Deployment of $($m.name) failed ($($_.Exception.Message)); continuing with remaining fallback ladder models."
+            }
+        }
+        if ($okModels.Count -eq 0) {
+            throw "None of the Azure OpenAI fallback ladder models ($($deployedModels -join ', ')) could be deployed in $Location."
+        }
+        $deployedModels = @($okModels)
+        if ($CoordinatorModel -notin $deployedModels) { $CoordinatorModel = $deployedModels[0] }
+        if ($HostsModel -notin $deployedModels) { $HostsModel = $deployedModels[0] }
+    }
 
     Write-SpikeStep "Making the agents' managed identity the blueprint's credential (federated identity credential)"
     $fics = @((Invoke-SpikeAgentGraph -Step 'list-fic' -Method GET -Path "/v1.0/applications/$($blueprint.id)/federatedIdentityCredentials").value)
@@ -234,26 +291,27 @@ if ($Provider -eq 'Anthropic') {
     if ($identity.blueprintTokenClaims) { Write-Host "Blueprint token claims: $($identity.blueprintTokenClaims | ConvertTo-Json -Compress)" }
 
     [pscustomobject]@{
-        step                  = 'start-spike'
-        provider              = 'anthropic'
-        runId                 = $RunId
-        resourceGroup         = $SpikeResourceGroup
-        mcpUrl                = $out.mcpUrl.value
-        mcpAppId              = $out.mcpAppId.value
-        mcpAppSpId            = $appSp.id
-        mcpAppRoleId          = $appRoleId
-        agentsUrl             = $agentsUrl
-        agentsAppName         = $out.agentsAppName.value
+        step                      = 'start-spike'
+        provider                  = $bicepProvider
+        runId                     = $RunId
+        resourceGroup             = $SpikeResourceGroup
+        foundryName               = $out.foundryName.value
+        mcpUrl                    = $out.mcpUrl.value
+        mcpAppId                  = $out.mcpAppId.value
+        mcpAppSpId                = $appSp.id
+        mcpAppRoleId              = $appRoleId
+        agentsUrl                 = $agentsUrl
+        agentsAppName             = $out.agentsAppName.value
         agentsIdentityPrincipalId = $out.agentsIdentityPrincipalId.value
-        logWorkspaceId        = $out.logWorkspaceId.value
-        claudeAudienceAppId   = $claudeApp.appId
-        tenantId              = $context.TenantId
-        blueprintAppId        = $blueprint.appId
-        agentIdentityId       = $identity.id
-        agentIdentityAppId    = $identity.appId
-        coordinatorDeployment = $CoordinatorModel
-        hostsDeployment       = $HostsModel
-        compareDeployments    = @(@($HostsModel) + $CompareModels + @($CoordinatorModel) | Select-Object -Unique)
+        logWorkspaceId            = $out.logWorkspaceId.value
+        claudeAudienceAppId       = $claudeAppId
+        tenantId                  = $context.TenantId
+        blueprintAppId            = $blueprint.appId
+        agentIdentityId           = $identity.id
+        agentIdentityAppId        = $identity.appId
+        coordinatorDeployment     = $CoordinatorModel
+        hostsDeployment           = $HostsModel
+        compareDeployments        = $deployedModels
     } | ConvertTo-Json -Compress
     return
 }

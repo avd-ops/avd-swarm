@@ -50,6 +50,7 @@ class GovernanceFiles(unittest.TestCase):
 
     def test_the_default_provider_has_a_price_for_every_model(self):
         self.assertEqual(providers.missing_prices(providers.PROVIDERS["anthropic"], BOOK), [])
+        self.assertEqual(providers.missing_prices(providers.PROVIDERS["azure-openai"], BOOK), [])
 
     def test_prices_must_be_usd_per_million(self):
         with self.assertRaises(ValueError):

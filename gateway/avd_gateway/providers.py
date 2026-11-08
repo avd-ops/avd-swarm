@@ -23,12 +23,12 @@ class Provider:
 
 
 CLAUDE = ("claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5")
+AZURE_OPENAI = ("gpt-4.1-nano", "gpt-4.1-mini", "gpt-4o-mini")
 
 PROVIDERS = {
     "anthropic": Provider("anthropic", "anthropic-workload-identity-federation", CLAUDE, None),
     "foundry": Provider("foundry", "entra-managed-identity", CLAUDE, "foundry"),
-    # No models yet: listed so the interface is fixed before anything uses it.
-    "azure-openai": Provider("azure-openai", "entra-managed-identity", (), "foundry"),
+    "azure-openai": Provider("azure-openai", "entra-managed-identity", AZURE_OPENAI, "foundry"),
 }
 
 
