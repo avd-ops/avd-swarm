@@ -85,7 +85,7 @@ class Execute(unittest.TestCase):
     def test_tool_args_come_from_the_deployment_scope(self):
         reads = FakeReads(kql={"wvd-agent-health-latest-7d": [{"Problem": 0}]})
         execute.run(HEALTH, reads, None, "schedule")
-        self.assertEqual(reads.args["virtualdesktop_hostpool_sessionhost_list"], {"hostpool-resource-id": "/hp"})
+        self.assertEqual(reads.args["virtualdesktop_hostpool_host_list"], {"hostpool-resource-id": "/hp"})
 
     def test_a_missing_scope_value_fails_the_read_never_runs_it_unscoped(self):
         reads = FakeReads(kql={"wvd-agent-health-latest-7d": [{"Problem": 0}]}, scope={})

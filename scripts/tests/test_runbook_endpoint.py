@@ -20,7 +20,7 @@ OPERATOR = "operator-oid"
 RUNNER = "runner-oid"
 ALERT_JOB = "alert-job-oid"
 CALLERS = rbe.parse_callers(f"{RUNNER}=schedule|manual,{ALERT_JOB}=alert")
-TOOL = "virtualdesktop_hostpool_sessionhost_list"
+TOOL = "virtualdesktop_hostpool_host_list"
 HOST_POOL = "/subscriptions/x/resourceGroups/rg/providers/Microsoft.DesktopVirtualization/hostPools/hp"
 OPERATOR_CLAIMS = {"oid": OPERATOR, "scp": "Mcp.Tools.ReadWrite"}
 

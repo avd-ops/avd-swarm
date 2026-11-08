@@ -26,7 +26,7 @@ reads:
   - id: health
     kql: wvd-agent-health-latest-7d
   - id: hosts
-    tool: virtualdesktop_hostpool_sessionhost_list
+    tool: virtualdesktop_hostpool_host_list
 expect:
   - fact: unhealthyHosts
     from: health
@@ -99,12 +99,12 @@ class Shape(unittest.TestCase):
 
     def test_wrong_types_are_findings_not_crashes(self):
         for old, new in (("from: health", "from: [health]"), ("op: eq", "op: [eq]"), ("agent: hosts", "agent: [hosts]"),
-                         ("tool: virtualdesktop_hostpool_sessionhost_list", "tool: [x]"), ("runMode: read-only", "runMode: [x]"),
+                         ("tool: virtualdesktop_hostpool_host_list", "tool: [x]"), ("runMode: read-only", "runMode: [x]"),
                          ("onFail: report", "onFail: {a: b}")):
             self.assertTrue(shape_errors(rb(GOOD.replace(old, new))), new)
 
     def test_tool_args_take_text_or_a_known_placeholder(self):
-        tool = "tool: virtualdesktop_hostpool_sessionhost_list"
+        tool = "tool: virtualdesktop_hostpool_host_list"
         self.assertEqual(shape_errors(rb(GOOD.replace(tool, tool + '\n    args: {hostpool-resource-id: "${hostPoolId}", top: "10"}'))), [])
         for args, words in (('{x: "${tenant}"}', "placeholder"), ('{x: "a${hostPoolId}"}', "placeholder"),
                             ("{X_Y: a}", "argument name"), ("{x: [a]}", "must be text"), ("[a]", "mapping")):
@@ -169,7 +169,7 @@ class Repo(unittest.TestCase):
 
     def test_a_tool_outside_the_allowlist_fails(self):
         errors = self.with_copy(lambda r: self.write(r, "runbooks/hosts/sample.md", GOOD.replace(
-            "virtualdesktop_hostpool_sessionhost_list", "virtualdesktop_hostpool_sessionhost_delete")))
+            "virtualdesktop_hostpool_host_list", "virtualdesktop_hostpool_sessionhost_delete")))
         self.assertTrue(any("isn't in the hosts allowlist" in e for e in errors), errors)
 
     def test_kql_must_be_in_the_catalog(self):
@@ -180,7 +180,7 @@ class Repo(unittest.TestCase):
     def test_kql_must_be_allowed_for_the_agent(self):
         def edit(r):
             self.write(r, "runbooks/cost/sample.md", GOOD.replace("hosts.sample", "cost.sample")
-                       .replace("agent: hosts", "agent: cost").replace("virtualdesktop_hostpool_sessionhost_list", "cost_forecast_month"))
+                       .replace("agent: hosts", "agent: cost").replace("virtualdesktop_hostpool_host_list", "cost_forecast_month"))
         errors = self.with_copy(edit)
         self.assertTrue(any("KQL wvd-agent-health-latest-7d isn't in the cost allowlist" in e for e in errors), errors)
 

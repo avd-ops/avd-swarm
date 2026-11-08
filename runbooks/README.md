@@ -22,7 +22,7 @@ reads:                             # each in the agent's allowlist (governance/a
   - id: health
     kql: wvd-agent-health-latest-7d # KQL only by catalog ID (catalog/kql/catalog.yml), never inline
   - id: hosts
-    tool: virtualdesktop_hostpool_sessionhost_list
+    tool: virtualdesktop_hostpool_host_list
     args: {hostpool-resource-id: "${hostPoolId}"}  # a tool read's arguments; a placeholder is filled by the agent API from
                                    # its deployment (${subscription}, ${resourceGroup}, ${hostPoolId}, ${workspaceId}),
                                    # never from a request or a model
