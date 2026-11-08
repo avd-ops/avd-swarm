@@ -10,7 +10,7 @@ Part of [avd-ops](https://avd-ops.dev/), the open toolkit for Azure Virtual Desk
 > - It is provided **"as is", without warranty of any kind**, under the [MIT License](LICENSE). You use it at your own risk. You are responsible for what it changes, for any Azure or model charges, and for reviewing the code before you run it.
 > - **Contributions and forks are welcome and encouraged.** See [Contributing](#contributing).
 
-An agent-based Desktop DevOps platform for managing Azure Virtual Desktop (`avd`), Windows 365 (`win365`) and Microsoft Intune (`intune`) without the portals, starting with the [AVD landing zone](https://github.com/avd-ops/avd-landing-zone) and [avd-intune](https://github.com/avd-ops/avd-intune). Its chat front end, **[avd-buddy](docs/buddy-app.md)** ([public demo](https://avd-ops.github.io/avd-swarm/)), works as an installable web app from any browser, Android, iPhone and iPad included. A coordinator agent hands questions to specialist agents (readiness, deploy, hosts, intune, images, users, cost). They read freely and change nothing without a person approving the exact plan (or merging a policy-as-code pull request for Intune). It connects to the [second brain](https://github.com/avd-ops/avd-second-brain) where they overlap.
+An agent-based Desktop DevOps platform for managing Azure Virtual Desktop (`avd`), Windows 365 (`win365`) and Microsoft Intune (`intune`) without the portals, starting with the [AVD landing zone](https://github.com/avd-ops/avd-landing-zone) and [avd-intune](https://github.com/avd-ops/avd-intune). Its chat front end, **[avd-buddy](docs/buddy-app.md)** ([public demo](https://buddy.avd-ops.dev/)), works as an installable web app from any browser, Android, iPhone and iPad included. A coordinator agent hands questions to specialist agents (readiness, deploy, hosts, intune, images, users, cost). They read freely and change nothing without a person approving the exact plan (or merging a policy-as-code pull request for Intune). It connects to the [second brain](https://github.com/avd-ops/avd-second-brain) where they overlap.
 
 It covers AVD, Windows 365 Cloud PCs, endpoint management in Intune, and the users, groups and licenses they need. Unrelated tenant-wide administration (Exchange, Teams, SharePoint) is out of scope here.
 
@@ -19,7 +19,7 @@ It covers AVD, Windows 365 Cloud PCs, endpoint management in Intune, and the use
 The write path never runs in this public repo: adopters run it from a private repo synced from a release tag ([spec §5b](docs/spec.md#5b-where-the-write-path-runs-the-project-and-its-adopters)).
 
 - Spec: [docs/spec.md](docs/spec.md)
-- avd-buddy app & public demo: [docs/buddy-app.md](docs/buddy-app.md) ([live simulation](https://avd-ops.github.io/avd-swarm/))
+- avd-buddy app & public demo: [docs/buddy-app.md](docs/buddy-app.md) ([buddy.avd-ops.dev](https://buddy.avd-ops.dev/))
 - Open-source core and optional adapters (accepted 2026-10-21): [docs/core-and-adapters.md](docs/core-and-adapters.md)
 - Decisions: [docs/decisions](docs/decisions)
 - Recovery tests and failover: [docs/recovery.md](docs/recovery.md)

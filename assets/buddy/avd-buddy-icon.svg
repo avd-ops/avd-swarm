@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="avd-buddy">
   <!-- avd-buddy icon: vector redraw of assets/buddy/avd-buddy-icon-source.jpg (character and shield only, no outer tile or frame).
-       Colors from avd-ops tokens: --brand (#1ca998), --brand-ink (#0d1015), white (#ffffff) for eye sclera and screen. -->
+       Colors from avd-ops tokens: brand (#1ca998), brand-ink (#0d1015), white (#ffffff) for eye sclera and screen. -->
   <!-- Shield on the right: desktop monitor with cloud and >< remote session chevron -->
   <g id="shield">
     <path d="M276 204H402V326L339 374L276 326Z" fill="#1ca998" stroke="#0d1015" stroke-width="14" stroke-linejoin="round"/>

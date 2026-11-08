@@ -1,7 +1,8 @@
 name: pages
 
-# Publishes buddy/app/ (the avd-buddy public demo simulation, docs/buddy-app.md) to GitHub Pages.
-# Static files and client-side fixtures only; nothing here touches Azure.
+# Publishes buddy/app/ (the avd-buddy public demo simulation, docs/buddy-app.md) to GitHub Pages at buddy.avd-ops.dev.
+# The custom domain buddy.avd-ops.dev is set in Settings > Pages (an Actions deployment needs no CNAME file);
+# GitHub then redirects avd-ops.github.io/avd-swarm/... there. Static files and client-side fixtures only; nothing here touches Azure.
 on:
   push:
     branches:
