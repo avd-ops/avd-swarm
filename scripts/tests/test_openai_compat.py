@@ -154,6 +154,18 @@ class OpenAICompatTests(unittest.TestCase):
         # 4,000 * $0.10/1M + 1,000 * $0.025/1M + 200 * $0.40/1M = $0.0004 + $0.000025 + $0.00008 = $0.000505
         self.assertAlmostEqual(cost, 0.000505, places=7)
 
+    def test_start_spike_bicep_parameters_match_main_bicep(self) -> None:
+        import re
+
+        bicep_text = (ROOT / "spikes/s1a/infra/main.bicep").read_text(encoding="utf-8")
+        declared_params = set(re.findall(r"^\s*param\s+([A-Za-z0-9_]+)\s+", bicep_text, flags=re.MULTILINE))
+        start_spike_text = (ROOT / "spikes/s1a/scripts/Start-Spike.ps1").read_text(encoding="utf-8")
+        passed_params = set(re.findall(r'"([A-Za-z0-9_]+)=\$', start_spike_text))
+        self.assertTrue(passed_params)
+        unknown = passed_params - declared_params
+        self.assertEqual(unknown, set(), f"Start-Spike.ps1 passes unrecognized Bicep parameters: {sorted(unknown)}")
+
 
 if __name__ == "__main__":
     unittest.main()
+
