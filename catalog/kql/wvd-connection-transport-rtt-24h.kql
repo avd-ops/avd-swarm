@@ -2,7 +2,7 @@
 // Columns: learn.microsoft.com/azure/azure-monitor/reference/tables/wvdconnections and wvdconnectionnetworkdata
 let connections = WVDConnections
     | where TimeGenerated > ago(24h) and State == "Connected"
-    | project CorrelationId, SessionHostName, TransportType, UdpUse = tostring(UdpUse);
+    | project CorrelationId, SessionHostName, TransportType = tostring(column_ifexists("TransportType", "")), UdpUse = tostring(column_ifexists("UdpUse", ""));
 let net = WVDConnectionNetworkData
     | where TimeGenerated > ago(24h)
     | summarize RttP50Ms = percentile(EstRoundTripTimeInMs, 50),

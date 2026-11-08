@@ -101,6 +101,7 @@ class RagToolsTests(unittest.TestCase):
         self.assertEqual(payload["rows"][0]["RttP95Ms"], 42.0)
         self.assertEqual(len(executed), 1)
         self.assertIn("WVDConnectionNetworkData", executed[0])
+        self.assertIn('column_ifexists("UdpUse", "")', executed[0])
         self.assertIn("wvd-connection-transport-rtt-24h", rt.observed_refs)
 
         for bad in (
