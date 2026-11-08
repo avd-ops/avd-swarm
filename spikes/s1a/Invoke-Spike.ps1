@@ -48,13 +48,18 @@ param(
     # Leave the resources up when a step fails, to look at them. Run -TeardownOnly after.
     [switch] $KeepOnFailure,
     [switch] $TeardownOnly,
-    # Foundry: Claude in Foundry with hosted agents. Anthropic: the fallback (see the third example).
-    [ValidateSet('Foundry', 'Anthropic')][string] $Provider = 'Foundry',
-    # Anthropic only: scan the question and tool results with Prompt Shields on a free-tier resource (red team R26).
+    # Foundry: Claude in Foundry with hosted agents. AzureOpenAI: keyless OpenAI ladder in Foundry + Container App. Anthropic: Claude API fallback.
+    [ValidateSet('Foundry', 'Anthropic', 'AzureOpenAI')][string] $Provider = 'Foundry',
+    # Anthropic / AzureOpenAI: scan the question and tool results with Prompt Shields on a free-tier resource (red team R26).
     [switch] $PromptShields,
-    [ValidateSet('observe', 'enforce')][string] $PromptShieldsMode = 'observe'
+    [ValidateSet('observe', 'enforce')][string] $PromptShieldsMode = 'observe',
+    [string] $BrainCommit = '',
+    [bool] $ScaleToZero = $true,
+    # Unattended mode for avd-sandbox batch runner (Invoke-AvdSandboxBatch.ps1): skips interactive Read-Host prompts when -MonthlyCap is given.
+    [switch] $Unattended
 )
 $ErrorActionPreference = 'Stop'
+if ($Unattended) { $NoPause = $true }
 
 $Repo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)          # ~/avd-swarm
 $Guard = Join-Path $Repo 'spend/spend_guard.py'
@@ -214,10 +219,13 @@ try {
     $progress = Get-SpikeProgress
     if ($progress.done.Count -eq 0) {
         if (-not $MonthlyCap) {
+            if ($Unattended) { throw '-Unattended requires -MonthlyCap to be passed explicitly.' }
             $MonthlyCap = [double](Read-Host "Your monthly cap for this subscription (what you're willing to spend on it this month, billing currency)")
         }
-        $answer = Read-Host "Run the S1a spike in this subscription (sandbox '$Sandbox', run cap $RunCap, monthly cap $MonthlyCap)? [y/N]"
-        if ($answer -notmatch '^(y|yes)$') { Write-Host 'Stopped; nothing was done.'; return }
+        if (-not $Unattended) {
+            $answer = Read-Host "Run the S1a spike in this subscription (sandbox '$Sandbox', run cap $RunCap, monthly cap $MonthlyCap)? [y/N]"
+            if ($answer -notmatch '^(y|yes)$') { Write-Host 'Stopped; nothing was done.'; return }
+        }
     }
     else {
         Write-Host "Resuming; done so far: $($progress.done -join ', ')"
@@ -232,14 +240,16 @@ try {
 
     # ---------- Price it and open the spend run ----------
     Invoke-Step 'price-and-open-run' {
-        $estimateArgs = if ($Provider -eq 'Anthropic') { @{ Provider = 'Anthropic'; Region = 'northcentralus'; PromptShields = $PromptShields } } else { @{} }
+        $estimateArgs = if ($Provider -in @('Anthropic', 'AzureOpenAI')) { @{ Provider = $Provider; Region = 'northcentralus'; PromptShields = $PromptShields } } else { @{} }
         $estimate = & (Join-Path $Kit 'scripts/Get-SpikeEstimate.ps1') @estimateArgs | Select-Object -Last 1 | ConvertFrom-Json
         Write-Host "`nAzure lines: $($estimate.manualAmount) ($($estimate.unpricedLines) unpriced)`n$($estimate.manualNote)"
         if ($estimate.unpricedLines -gt 0 -and -not $AllowUnpriced) {
             throw "$($estimate.unpricedLines) line(s) unpriced (warnings above). Nothing is deployed. Rerun with -AllowUnpriced to open the run anyway."
         }
-        $answer = Read-Host "Open the spend run with these Azure lines plus the token estimate, run cap ${RunCap}? [y/N]"
-        if ($answer -notmatch '^(y|yes)$') { throw 'Stopped at the estimate; nothing is deployed.' }
+        if (-not $Unattended) {
+            $answer = Read-Host "Open the spend run with these Azure lines plus the token estimate, run cap ${RunCap}? [y/N]"
+            if ($answer -notmatch '^(y|yes)$') { throw 'Stopped at the estimate; nothing is deployed.' }
+        }
         if (-not $MonthlyCap) { $MonthlyCap = [double](Read-Host 'Your monthly cap for this subscription (billing currency)') }
         $openArgs = @($Guard, '--ledger', $LedgerPath, '--sandbox', $Sandbox, 'open', '--purpose', "avd-swarm S1a spike ($Provider)",
             '--resource-group', 'rg-avdswarm-spike', '--hours', '6', '--estimate', [string]$estimate.manualAmount,
@@ -258,10 +268,10 @@ try {
 
     # ---------- Deploy, Q1 ----------
     Invoke-Step 'deploy' {
-        if ($Provider -eq 'Anthropic') {
-            Write-Host 'Deploying the resource group, the MCP server, the agents app and the host pool, and creating the Agent ID blueprint; 5 to 15 minutes.'
-            & (Join-Path $Kit 'scripts/Start-Spike.ps1') -RunId $RunId -Provider Anthropic -Location northcentralus `
-                -PromptShields:$PromptShields -PromptShieldsMode $PromptShieldsMode |
+        if ($Provider -in @('Anthropic', 'AzureOpenAI')) {
+            Write-Host "Deploying the resource group, the MCP server, the agents app ($Provider) and the host pool, and creating the Agent ID blueprint; 5 to 15 minutes."
+            & (Join-Path $Kit 'scripts/Start-Spike.ps1') -RunId $RunId -Provider $Provider -Location northcentralus `
+                -PromptShields:$PromptShields -PromptShieldsMode $PromptShieldsMode -ScaleToZero $ScaleToZero -BrainCommit $BrainCommit |
                 Select-Object -Last 1 | Set-Content "$Spike/state.json"
         }
         else {
@@ -270,6 +280,17 @@ try {
         }
     }
     $s = Get-Content "$Spike/state.json" | ConvertFrom-Json
+    if ($Provider -eq 'AzureOpenAI') {
+        Save-SpikeResult 'Q1' "keyless Azure OpenAI fallback ladder deployed: $($s.compareDeployments -join ' -> ')"
+        Invoke-Step 'azure-openai-check' {
+            $operatorToken = az account get-access-token --scope "api://$($s.mcpAppId)/Mcp.Tools.ReadWrite" --query accessToken -o tsv
+            Write-Host 'Checking keyless Entra token acquisition for Azure OpenAI (no model call, no tokens spent)'
+            $check = Invoke-WebRequest -Uri "$($s.agentsUrl)/claude-check" -Method Post -SkipHttpErrorCheck -Headers @{ Authorization = "Bearer $operatorToken" }
+            Write-Host "  $($check.StatusCode): $($check.Content)"
+            if ($check.StatusCode -ne 200) { throw "Keyless Azure OpenAI check failed: $($check.Content)" }
+            Save-SpikeResult 'Federation' 'confirmed: managed identity acquired Cognitive Services token for Azure OpenAI, no API key or Claude Console rule needed'
+        }
+    }
     if ($Provider -eq 'Anthropic') {
         Save-SpikeResult 'Q1' 'not tested: no Claude quota in Foundry; fallback to Anthropic''s API'
 
@@ -343,7 +364,7 @@ None of these IDs is a secret; they're saved in $Spike/anthropic.json, not in an
     }
     $allowed = Get-Content "$Spike/allowed-tools"
 
-    if ($Provider -eq 'Anthropic') {
+    if ($Provider -in @('Anthropic', 'AzureOpenAI')) {
         $evalArgs = @('--agent-url', $s.agentsUrl, '--app-id', $s.mcpAppId, '--identity', $s.agentIdentityAppId)
 
         Invoke-Step 'q2-identity' {

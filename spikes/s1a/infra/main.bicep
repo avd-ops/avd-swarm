@@ -19,8 +19,8 @@ param avdLocation string = resourceGroup().location
 @description('Spend run ID from spend/spend_guard.py, tagged on every resource (docs/spend.md).')
 param runId string
 
-@description('foundry: Claude in Foundry and hosted agents. anthropic: the fallback, Anthropic\'s API from a Container App.')
-@allowed(['foundry', 'anthropic'])
+@description('foundry: Claude in Foundry and hosted agents. azure-openai: keyless Foundry OpenAI models (gpt-4.1-nano / gpt-4.1-mini / gpt-4o-mini) from a Container App. anthropic: Anthropic\'s API from a Container App.')
+@allowed(['foundry', 'azure-openai', 'anthropic'])
 param provider string = 'foundry'
 
 @description('Short unique suffix for globally unique names.')
@@ -32,9 +32,12 @@ var tags = {
 }
 var desktopVirtualizationReaderRoleId = '49a72310-ab8d-41df-bbb0-79b649203868'
 var cognitiveServicesUserRoleId = 'a97b65f3-24c7-4388-baec-2e87135dc908'
+var cognitiveServicesOpenAiUserRoleId = '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd'
+var useContainerAppAgents = provider == 'anthropic' || provider == 'azure-openai'
+var deployFoundryAccount = provider == 'foundry' || provider == 'azure-openai'
 
 // ---------- Foundry ----------
-resource foundry 'Microsoft.CognitiveServices/accounts@2025-06-01' = if (provider == 'foundry') {
+resource foundry 'Microsoft.CognitiveServices/accounts@2025-06-01' = if (deployFoundryAccount) {
   name: 'avdswarm-spike-${suffix}'
   location: location
   tags: tags
@@ -231,22 +234,32 @@ param promptShields bool = false
 @allowed(['observe', 'enforce'])
 param promptShieldsMode string = 'observe'
 
-var scanOn = provider == 'anthropic' && promptShields
+var scanOn = useContainerAppAgents && promptShields
 
 // Two jobs, both without a secret: the blueprint's federated credential (FIC subject), and the identity
-// Anthropic's workload identity federation rule matches (oid) to let this app call Claude.
-resource agentsIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = if (provider == 'anthropic') {
+// that calls Azure OpenAI (Cognitive Services OpenAI User) or Anthropic's workload identity federation rule (oid).
+resource agentsIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = if (useContainerAppAgents) {
   name: 'id-avdswarm-agents-${suffix}'
   location: location
   tags: tags
 }
 
-resource agentsApp 'Microsoft.App/containerApps@2024-03-01' = if (provider == 'anthropic') {
+resource agentsFoundryOpenAiUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (provider == 'azure-openai') {
+  name: guid(foundry.id, agentsIdentity.id, cognitiveServicesOpenAiUserRoleId)
+  scope: foundry
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', cognitiveServicesOpenAiUserRoleId)
+    principalId: agentsIdentity!.properties.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource agentsApp 'Microsoft.App/containerApps@2024-03-01' = if (useContainerAppAgents) {
   name: 'ca-avdswarm-agents-${suffix}'
   location: location
   tags: tags
-  // The scan's role assignment exists before the app starts (it can still take minutes to apply; scan errors are counted).
-  dependsOn: [contentSafetyUser]
+  // The scan's and Foundry's role assignments exist before the app starts (they can still take minutes to apply; scan errors are counted).
+  dependsOn: [contentSafetyUser, agentsFoundryOpenAiUser]
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: { '${agentsIdentity.id}': {} }
@@ -276,11 +289,13 @@ resource agentsApp 'Microsoft.App/containerApps@2024-03-01' = if (provider == 'a
           ]
           resources: { cpu: json('0.5'), memory: '1Gi' }
           env: [
+            { name: 'MODEL_PROVIDER', value: provider == 'azure-openai' ? 'azure-openai' : 'anthropic' }
+            { name: 'AZURE_OPENAI_ENDPOINT', value: provider == 'azure-openai' ? 'https://${foundry!.properties.customSubDomainName}.openai.azure.com' : '' }
             { name: 'CLAUDE_AUDIENCE_APP_ID', value: claudeAudienceAppId }
             // Anthropic federation IDs (organization, service account, rule, workspace): not secrets, set by Invoke-Spike.ps1 once the rule exists
             { name: 'AZURE_TENANT_ID', value: tenant().tenantId }
             { name: 'BLUEPRINT_APP_ID', value: blueprintAppId }
-            { name: 'UAMI_CLIENT_ID', value: provider == 'anthropic' ? agentsIdentity!.properties.clientId : '' }
+            { name: 'UAMI_CLIENT_ID', value: useContainerAppAgents ? agentsIdentity!.properties.clientId : '' }
             { name: 'MCP_APP_ID', value: mcpAppId }
             { name: 'MCP_URL', value: 'https://${mcpServer.properties.configuration.ingress.fqdn}' }
             { name: 'OPERATOR_OID', value: operatorObjectId }
@@ -313,8 +328,8 @@ resource agentsApp 'Microsoft.App/containerApps@2024-03-01' = if (provider == 'a
   }
 }
 
-// ---------- Prompt Shields for the Anthropic path (red team R26), off by default ----------
-// Foundry's guardrails never see calls to Anthropic's API, so the agent service scans untrusted text itself.
+// ---------- Prompt Shields for the Container App path (red team R26), off by default ----------
+// Foundry's hosted-agent guardrails never see calls from the Container App, so the agent service scans untrusted text itself.
 // Entra only: local auth is disabled, so no key exists, and the agents' identity calls it with its own token.
 resource contentSafety 'Microsoft.CognitiveServices/accounts@2025-06-01' = if (scanOn) {
   name: 'cs-avdswarm-spike-${suffix}'
@@ -340,11 +355,12 @@ resource contentSafetyUser 'Microsoft.Authorization/roleAssignments@2022-04-01' 
   }
 }
 
-output foundryName string = provider == 'foundry' ? foundry!.name : ''
+output foundryName string = deployFoundryAccount ? foundry!.name : ''
 output projectEndpoint string = provider == 'foundry' ? 'https://${foundry!.properties.customSubDomainName}.services.ai.azure.com/api/projects/${project!.name}' : ''
-output agentsUrl string = provider == 'anthropic' ? 'https://${agentsApp!.properties.configuration.ingress.fqdn}' : ''
-output agentsAppName string = provider == 'anthropic' ? agentsApp!.name : ''
-output agentsIdentityPrincipalId string = provider == 'anthropic' ? agentsIdentity!.properties.principalId : ''
+output azureOpenAiEndpoint string = provider == 'azure-openai' ? 'https://${foundry!.properties.customSubDomainName}.openai.azure.com' : ''
+output agentsUrl string = useContainerAppAgents ? 'https://${agentsApp!.properties.configuration.ingress.fqdn}' : ''
+output agentsAppName string = useContainerAppAgents ? agentsApp!.name : ''
+output agentsIdentityPrincipalId string = useContainerAppAgents ? agentsIdentity!.properties.principalId : ''
 output mcpUrl string = 'https://${mcpServer.properties.configuration.ingress.fqdn}'
 output mcpAppId string = mcpAppId
 output logWorkspaceId string = logs.id

@@ -59,6 +59,7 @@ from avd_gateway.shield import DECOY_ERROR, MODES as SHIELD_MODES, SCOPE as CONT
 from avd_runner.api import load_all
 from avd_runner.runbook import SCOPE_KEYS
 
+import openai_compat
 import rag_tools
 import runbook_endpoint
 import specialists
@@ -72,18 +73,30 @@ UAMI_CLIENT_ID = os.environ["UAMI_CLIENT_ID"]
 MCP_APP_ID = os.environ["MCP_APP_ID"]
 MCP_URL = os.environ["MCP_URL"]
 OPERATOR_OID = os.environ["OPERATOR_OID"]
-COORDINATOR_MODEL = os.environ.get("COORDINATOR_MODEL", "claude-haiku-5-5")
+MODEL_PROVIDER = os.environ.get("MODEL_PROVIDER", "anthropic")
+if MODEL_PROVIDER not in ("anthropic", "azure-openai"):
+    raise SystemExit(f"MODEL_PROVIDER must be 'anthropic' or 'azure-openai', not {MODEL_PROVIDER!r}")
+AZURE_OPENAI_ENDPOINT = os.environ.get("AZURE_OPENAI_ENDPOINT", "").rstrip("/")
+AZURE_OPENAI_API_VERSION = os.environ.get("AZURE_OPENAI_API_VERSION", openai_compat.AZURE_OPENAI_API_VERSION)
+AZURE_OPENAI_FALLBACKS = tuple(
+    m.strip() for m in os.environ.get("AZURE_OPENAI_FALLBACKS", ",".join(openai_compat.AZURE_OPENAI_LADDER)).split(",")
+    if m.strip()
+) or openai_compat.AZURE_OPENAI_LADDER
+DEFAULT_COORDINATOR_MODEL = "gpt-4.1-nano" if MODEL_PROVIDER == "azure-openai" else "claude-haiku-5-5"
+DEFAULT_RUNBOOK_MODEL = "gpt-4.1-nano" if MODEL_PROVIDER == "azure-openai" else "claude-sonnet-5-5"
+COORDINATOR_MODEL = os.environ.get("COORDINATOR_MODEL", DEFAULT_COORDINATOR_MODEL)
 COORDINATOR_EFFORT = os.environ.get("COORDINATOR_EFFORT", "low")
 HOSTS_EFFORT = os.environ.get("HOSTS_EFFORT", "medium")
 # Q4: the only MCP tools the Hosts agent is offered. Set after Q3 (Invoke-Spike updates the app); empty means /ask refuses.
 HOSTS_ALLOWED_TOOLS = [t.strip() for t in os.environ.get("HOSTS_ALLOWED_TOOLS", "").split(",") if t.strip()]
-MODELS = {"claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"}
+MODELS = set(openai_compat.ALL_MODELS)
 MAX_STEPS = 20  # a tool loop ends here even if the model keeps calling tools (lesson 0008)
 MAX_TOKENS = 16000
-# The run's cap on Claude spend, checked before every call; docs/spikes/s1a.md section 3 puts the token upper bound near $15.
+# The run's cap on model spend, checked before every call; docs/spikes/s1a.md section 3 puts the token upper bound near $15.
 # Prices come from governance/model-prices.yml at the same commit; an unpriced model is refused.
+PRICE_BOOK = PriceBook.load(os.environ.get("MODEL_PRICES_FILE", "/tmp/model-prices.yml"))
 meter = Meter(cap_usd=float(os.environ.get("TOKEN_SPEND_CAP_USD", "15")),
-              prices=PriceBook.load(os.environ.get("MODEL_PRICES_FILE", "/tmp/model-prices.yml")))
+              prices=PRICE_BOOK, provider=MODEL_PROVIDER)
 CONTENT_SAFETY_ENDPOINT = os.environ.get("CONTENT_SAFETY_ENDPOINT", "")  # empty: the scan is off
 PROMPT_SHIELDS_MODE = os.environ.get("PROMPT_SHIELDS_MODE", "observe")
 if PROMPT_SHIELDS_MODE not in SHIELD_MODES:  # fail at start, not on every question
@@ -104,7 +117,7 @@ RUNBOOKS = load_all(ROOT)
 KQL_QUERIES = runbook_endpoint.catalog_queries(ROOT)
 RUNBOOK_CALLERS = runbook_endpoint.parse_callers(os.environ.get("RUNBOOK_CALLERS", ""))  # fails at start if malformed
 RUNBOOK_IDENTITY_APP_ID = os.environ.get("RUNBOOK_IDENTITY_APP_ID", "")
-RUNBOOK_MODEL = os.environ.get("RUNBOOK_MODEL", "claude-sonnet-5-5")
+RUNBOOK_MODEL = os.environ.get("RUNBOOK_MODEL", DEFAULT_RUNBOOK_MODEL)
 RUNBOOK_MAX_TOKENS = 4000  # an investigation's worst case has to fit a runbook's budget
 LOG_WORKSPACE_ID = os.environ.get("LOG_WORKSPACE_ID", "")
 LOG_ANALYTICS = "https://api.loganalytics.io"
@@ -126,7 +139,9 @@ CLAUDE_AUDIENCE_APP_ID = os.environ.get("CLAUDE_AUDIENCE_APP_ID", "")
 # Anthropic workload identity federation: IDs from the Claude Console, set once the rule exists. Not secrets.
 FEDERATION = {k: os.environ.get(f"ANTHROPIC_{k.upper()}", "") for k in
               ("organization_id", "service_account_id", "federation_rule_id", "workspace_id")}
-CLAUDE_CONFIGURED = bool(CLAUDE_AUDIENCE_APP_ID and FEDERATION["organization_id"] and FEDERATION["federation_rule_id"])
+ANTHROPIC_CONFIGURED = bool(CLAUDE_AUDIENCE_APP_ID and FEDERATION["organization_id"] and FEDERATION["federation_rule_id"])
+AZURE_OPENAI_CONFIGURED = bool(AZURE_OPENAI_ENDPOINT)
+CLAUDE_CONFIGURED = AZURE_OPENAI_CONFIGURED if MODEL_PROVIDER == "azure-openai" else ANTHROPIC_CONFIGURED
 sync_identity = SyncManagedIdentityCredential(client_id=UAMI_CLIENT_ID)
 
 
@@ -145,7 +160,7 @@ def claude_credentials() -> anthropic.WorkloadIdentityCredentials:
     )
 
 
-claude = anthropic.AsyncAnthropic(credentials=claude_credentials(), max_retries=4) if CLAUDE_CONFIGURED else None
+claude = anthropic.AsyncAnthropic(credentials=claude_credentials(), max_retries=4) if ANTHROPIC_CONFIGURED else None
 jwks = jwt.PyJWKClient(f"{LOGIN}/discovery/v2.0/keys")
 jobs: dict[str, dict] = {}
 
@@ -280,10 +295,60 @@ def text_of(message) -> str:
     return "\n".join(block.text for block in message.content if block.type == "text").strip()
 
 
+async def azure_openai_post(deployment: str, payload: dict, timeout: float = 90.0) -> dict:
+    """Calls Azure OpenAI Chat Completions with the managed identity's Cognitive Services token."""
+    token = (await managed_identity.get_token(openai_compat.AZURE_OPENAI_SCOPE)).token
+    url = openai_compat.chat_completions_url(AZURE_OPENAI_ENDPOINT, deployment, AZURE_OPENAI_API_VERSION)
+    async with httpx.AsyncClient(timeout=timeout) as http:
+        response = await http.post(url, headers={"Authorization": f"Bearer {token}"}, json=payload)
+    if response.status_code != 200:
+        code = ""
+        if "json" in response.headers.get("content-type", ""):
+            code = ((response.json().get("error") or {}).get("code") or "")
+        raise RuntimeError(f"Azure OpenAI {deployment} returned {response.status_code} {code}".strip())
+    return response.json()
+
+
+async def ask_azure_openai(model: str, system: str, tools: list, messages: list, totals: dict,
+                           meters: tuple = (), max_tokens: int = MAX_TOKENS, timeout: float = 90.0, **options):
+    """Calls Azure OpenAI across the fallback ladder (gpt-4.1-nano -> gpt-4.1-mini -> gpt-4o-mini), metering each try."""
+    payload = openai_compat.build_chat_completion_payload(
+        system=system, tools=tools, messages=messages, max_tokens=max_tokens,
+        tool_choice=options.get("tool_choice"),
+    )
+    input_tokens = estimate_input_tokens(len(json.dumps(payload, default=str)))
+    candidates = openai_compat.candidate_models_for(model, AZURE_OPENAI_FALLBACKS)
+
+    async def invoke_one(candidate: str):
+        held = []
+        try:
+            for m in (meter, *meters):
+                held.append((m, m.reserve(candidate, input_tokens, max_tokens)))
+            raw = await azure_openai_post(candidate, payload, timeout=timeout)
+            msg = openai_compat.from_openai_chat_completion(raw, model_override=candidate)
+        except BaseException:
+            for m, reservation in held:
+                m.release(reservation)
+            raise
+        for m, reservation in held:
+            m.book(reservation, candidate, msg.usage.model_dump())
+        add_usage(totals, candidate, msg.usage)
+        return msg
+
+    response, _used, attempts = await openai_compat.call_with_fallback_ladder(
+        candidates, invoke_one, non_retriable=(SpendRefused,)
+    )
+    if len(attempts) > 1:
+        totals.setdefault("_fallbackAttempts", []).append(attempts)
+    return response
+
+
 async def ask_claude(model: str, effort: str, system: str, tools: list, messages: list, totals: dict,
                      meters: tuple = (), max_tokens: int = MAX_TOKENS, client=None, **options):
     """One request, metered by the run's meter and any extra ones (a runbook's budget): each must accept the call's
     worst case. Caching, effort and max_tokens as in agent/main.py's model_options."""
+    if MODEL_PROVIDER == "azure-openai" or model in openai_compat.AZURE_OPENAI_LADDER:
+        return await ask_azure_openai(model, system, tools, messages, totals, meters=meters, max_tokens=max_tokens, **options)
     input_tokens = estimate_input_tokens(len(json.dumps([system, tools, messages], default=str)))
     held = []
     try:
@@ -442,7 +507,7 @@ async def run_job(job_id: str, question: str, model: str, identity_app_id: str) 
 async def ask(request: Request) -> JSONResponse:
     body = await request.json()
     if not CLAUDE_CONFIGURED:
-        return JSONResponse({"error": "Anthropic federation IDs aren't set on the app yet (Invoke-Spike.ps1 sets them)."}, status_code=409)
+        return JSONResponse({"error": "Model provider credentials/endpoints aren't set on the app yet (Invoke-Spike.ps1 sets them)."}, status_code=409)
     if not HOSTS_ALLOWED_TOOLS:
         return JSONResponse({"error": "HOSTS_ALLOWED_TOOLS is empty: set it from list_mcp_tools.py's output."}, status_code=409)
     if meter.stopped:
@@ -456,9 +521,18 @@ async def ask(request: Request) -> JSONResponse:
 
 
 async def claude_check(_request: Request) -> JSONResponse:
-    """One token exchange with Anthropic and nothing else: proves the federation rule without spending tokens."""
+    """One token check with the configured model provider and nothing else: proves keyless auth without spending tokens."""
     if not CLAUDE_CONFIGURED:
-        return JSONResponse({"error": "Anthropic federation IDs aren't set on the app yet."}, status_code=409)
+        return JSONResponse({"error": "Model provider credentials/endpoints aren't set on the app yet."}, status_code=409)
+    if MODEL_PROVIDER == "azure-openai":
+        try:
+            tok = await managed_identity.get_token(openai_compat.AZURE_OPENAI_SCOPE)
+        except Exception as error:
+            return JSONResponse({"step": "entra-token", "type": type(error).__name__, "message": str(error)}, status_code=502)
+        evidence = {k: v for k, v in claims_of(tok.token).items() if k in ("aud", "oid", "azp", "idtyp")}
+        return JSONResponse({"ok": True, "provider": "azure-openai", "endpoint": AZURE_OPENAI_ENDPOINT,
+                             "fallbackLadder": list(AZURE_OPENAI_FALLBACKS), "expiresAt": tok.expires_on,
+                             "entraClaims": evidence})
     try:
         entra = await asyncio.to_thread(entra_token_for_claude)
     except Exception as error:  # the full error (lesson 0012)
@@ -469,7 +543,7 @@ async def claude_check(_request: Request) -> JSONResponse:
     except anthropic.WorkloadIdentityError as error:
         return JSONResponse({"step": "anthropic-exchange", "status": error.status_code, "body": error.body,
                              "requestId": error.request_id, "message": str(error), "entraClaims": evidence}, status_code=502)
-    return JSONResponse({"ok": True, "expiresAt": exchanged.expires_at, "entraClaims": evidence})
+    return JSONResponse({"ok": True, "provider": "anthropic", "expiresAt": exchanged.expires_at, "entraClaims": evidence})
 
 
 async def stop(request: Request) -> JSONResponse:
@@ -540,7 +614,7 @@ async def runbook_investigate(instructions: str, rows: str, budget_usd: float) -
     totals: dict = {}
     try:
         rows = await guard.scan_result(rows, "runbook", "reads")
-        budget = Meter(cap_usd=budget_usd, prices=meter.prices)
+        budget = Meter(cap_usd=budget_usd, prices=meter.prices, provider=MODEL_PROVIDER)
         response = await ask_claude(
             RUNBOOK_MODEL, HOSTS_EFFORT, RUNBOOK_SYSTEM, [REPORT_TOOL],
             [{"role": "user", "content": [{"type": "text", "text": instructions},
@@ -572,7 +646,7 @@ async def runbook(request: Request) -> JSONResponse:
     except (PermissionError, jwt.PyJWTError) as error:
         return JSONResponse({"error": f"unauthorized: {error}"}, status_code=401)
     if not (CLAUDE_CONFIGURED and RUNBOOK_IDENTITY_APP_ID and LOG_WORKSPACE_ID and HOSTS_ALLOWED_TOOLS):
-        return JSONResponse({"error": "set the Anthropic federation IDs, RUNBOOK_IDENTITY_APP_ID, LOG_WORKSPACE_ID and "
+        return JSONResponse({"error": "set the model provider config, RUNBOOK_IDENTITY_APP_ID, LOG_WORKSPACE_ID and "
                                       "HOSTS_ALLOWED_TOOLS on the app first (Invoke-Spike.ps1 does)"}, status_code=409)
     try:
         body = await request.json()
@@ -593,7 +667,9 @@ async def runbook_findings(_request: Request) -> JSONResponse:
 
 
 async def health(_request: Request) -> JSONResponse:
-    return JSONResponse({"ok": True, "allowedTools": HOSTS_ALLOWED_TOOLS, "claudeConfigured": CLAUDE_CONFIGURED,
+    return JSONResponse({"ok": True, "modelProvider": MODEL_PROVIDER,
+                         "fallbackLadder": list(AZURE_OPENAI_FALLBACKS) if MODEL_PROVIDER == "azure-openai" else list(openai_compat.CLAUDE_MODELS),
+                         "allowedTools": HOSTS_ALLOWED_TOOLS, "claudeConfigured": CLAUDE_CONFIGURED,
                          "meter": meter.status(), "runbookReady": bool(RUNBOOK_IDENTITY_APP_ID and LOG_WORKSPACE_ID),
                          "promptShields": PROMPT_SHIELDS_MODE if CONTENT_SAFETY_ENDPOINT else "off"})
 

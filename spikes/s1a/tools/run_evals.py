@@ -26,13 +26,24 @@ import httpx
 
 QUESTIONS = Path(__file__).resolve().parent.parent / "evals" / "questions.json"
 STOP_INPUT_TOKENS = 2_000_000  # docs/spikes/s1a.md section 3 stop rule
-# Anthropic list prices per 1M tokens (input, output); cache reads bill at 0.1x input, 5-minute cache writes at 1.25x.
-PRICES = {"claude-opus-5-5": (4.00, 20.00), "claude-sonnet-5-5": (2.00, 10.00), "claude-haiku-5-5": (0.10, 0.50)}
+# List prices per 1M tokens (input, output); cache reads bill at 0.1x–0.25x input, 5-minute cache writes at 1.25x.
+PRICES = {
+    "claude-opus-5-5": (4.00, 20.00),
+    "claude-sonnet-5-5": (2.00, 10.00),
+    "claude-haiku-5-5": (0.10, 0.50),
+    "gpt-4.1-nano": (0.10, 0.40),
+    "gpt-4.1-mini": (0.40, 1.60),
+    "gpt-4o-mini": (0.15, 0.60),
+}
+
+
+def _model_entries(usage: dict):
+    return ((m, u) for m, u in usage.items() if not m.startswith("_") and isinstance(u, dict))
 
 
 def cost_of(usage: dict) -> float:
     total = 0.0
-    for model, u in usage.items():
+    for model, u in _model_entries(usage):
         price_in, price_out = PRICES.get(model, (0.0, 0.0))
         total += (u["input"] + 0.1 * u["cacheRead"] + 1.25 * u["cacheWrite"]) * price_in / 1e6 + u["output"] * price_out / 1e6
     return round(total, 5)
@@ -82,11 +93,12 @@ def run_agent_api(args, questions: list, out: Path) -> None:
             answer = result["answer"] or ""
             missing = [p for p in question.get("expect", []) if not re.search(p, answer, re.IGNORECASE)]
             usage = result["usage"]
+            model_usages = [u for _, u in _model_entries(usage)]
             record = {
                 "id": question["id"], "kind": question["kind"], "agent": "agent-api", "model": args.model,
                 "seconds": result["seconds"], "handedOff": result["handedOff"],
-                "inputTokens": sum(u["input"] + u["cacheRead"] + u["cacheWrite"] for u in usage.values()),
-                "outputTokens": sum(u["output"] for u in usage.values()),
+                "inputTokens": sum(u["input"] + u["cacheRead"] + u["cacheWrite"] for u in model_usages),
+                "outputTokens": sum(u["output"] for u in model_usages),
                 "costUsd": cost_of(usage), "usage": usage, "evidence": result["evidence"],
                 "expectMet": not missing if "expect" in question else None, "expectMissing": missing, "answer": answer,
             }

@@ -16,12 +16,17 @@ param(
     [double] $TokenUpperBound = 13.00,
     # One hosted agent per model the Hosts agent is compared on (Opus, Sonnet, Haiku).
     [int] $Agents = 3,
+    # AzureOpenAI: keyless Azure AI Foundry OpenAI models (gpt-4.1-nano -> gpt-4.1-mini -> gpt-4o-mini).
     # Anthropic: the fallback. No hosted agents; one more Container App (the agents), and tokens billed by Anthropic.
-    [ValidateSet('Foundry', 'Anthropic')][string] $Provider = 'Foundry',
-    # Anthropic only: the Prompt Shields scan's free-tier Content Safety resource (gateway/avd_gateway/shield.py).
+    [ValidateSet('Foundry', 'Anthropic', 'AzureOpenAI')][string] $Provider = 'Foundry',
+    # Anthropic / AzureOpenAI: the Prompt Shields scan's free-tier Content Safety resource (gateway/avd_gateway/shield.py).
     [switch] $PromptShields
 )
 $ErrorActionPreference = 'Stop'
+
+if ($Provider -eq 'AzureOpenAI' -and -not $PSBoundParameters.ContainsKey('TokenUpperBound')) {
+    $TokenUpperBound = 1.00
+}
 
 function Get-RetailMeter {
     param([string] $Filter)
@@ -50,7 +55,7 @@ $lines = @(
        Filter = "armRegionName eq '$Region' and contains(productName, 'Foundry')"; Match = { $_.meterName -match 'Hosted' -and $_.meterName -match 'Memory' } }
 )
 
-if ($Provider -eq 'Anthropic') {
+if ($Provider -in @('Anthropic', 'AzureOpenAI')) {
     $lines = @($lines | Where-Object { $_.Name -notmatch 'Foundry hosted agent' }) + @(
         @{ Name = 'Container Apps vCPU (agents)'; Quantity = 0.5 * $Hours * 3600; Unit = 'vCPU-seconds'
            Filter = "serviceName eq 'Azure Container Apps' and armRegionName eq '$Region'"; Match = { $_.meterName -match 'vCPU' -and $_.meterName -match 'Active' -and $_.skuName -match 'Consumption|Standard' } }
@@ -61,10 +66,15 @@ if ($Provider -eq 'Anthropic') {
 
 $total = $TokenUpperBound
 $note = [System.Collections.Generic.List[string]]::new()
-$billedBy = if ($Provider -eq 'Anthropic') { 'billed by Anthropic, not Azure' } else { 'billed through Azure' }
-$note.Add("Tokens upper bound $('{0:N2}' -f $TokenUpperBound) ($billedBy; Opus 5.5 4/20, Sonnet 5.5 2/10, Haiku 5.5 0.10/0.50 per 1M; docs/spikes/s1a.md section 3)")
+if ($Provider -eq 'AzureOpenAI') {
+    $note.Add("Tokens upper bound $('{0:N2}' -f $TokenUpperBound) (billed through Azure OpenAI Global Standard; gpt-4.1-nano 0.10/0.40, gpt-4.1-mini 0.40/1.60, gpt-4o-mini 0.15/0.60 per 1M)")
+}
+else {
+    $billedBy = if ($Provider -eq 'Anthropic') { 'billed by Anthropic, not Azure' } else { 'billed through Azure' }
+    $note.Add("Tokens upper bound $('{0:N2}' -f $TokenUpperBound) ($billedBy; Opus 5.5 4/20, Sonnet 5.5 2/10, Haiku 5.5 0.10/0.50 per 1M; docs/spikes/s1a.md section 3)")
+}
 $unpriced = 0
-if ($PromptShields -and $Provider -eq 'Anthropic') {
+if ($PromptShields -and $Provider -in @('Anthropic', 'AzureOpenAI')) {
     # F0 has no meter: past its monthly quota calls are refused, never billed, and the scan counts them as unscanned.
     $note.Add('Content Safety F0 (Prompt Shields): 0.00 (free tier, 5,000 text records a month, about 2,000 expected; one F0 resource of a kind per subscription)')
 }
