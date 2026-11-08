@@ -30,9 +30,9 @@ if ($group) {
                 '--query', "[?name=='avdswarm-spike-$RunId'].properties.outputs.mcpAppId.value"))
         $McpAppId = @($last | Where-Object { $_ })[0]
     }
-    Write-SpikeStep "Deleting resource group $SpikeResourceGroup; this takes several minutes"
+    Write-SpikeStep "Deleting resource group $SpikeResourceGroup; polling every 15s so Cloud Shell stays alive"
     if ($PSCmdlet.ShouldProcess($SpikeResourceGroup, 'delete resource group')) {
-        $null = Invoke-SpikeAz -Step 'delete-rg' -Arguments @('group', 'delete', '-n', $SpikeResourceGroup, '--yes')
+        Remove-SpikeResourceGroup -ResourceGroup $SpikeResourceGroup
     }
 }
 else {

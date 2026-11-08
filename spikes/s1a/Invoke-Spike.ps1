@@ -107,12 +107,17 @@ function Invoke-NativeAz {
 function Wait-SpikeAgentsHealthy {
     # The agents app reinstalls on each revision; wait until it answers with the expected allowlist (at most 10 minutes).
     param([string] $Url, [string] $Allowed)
+    $waitStarted = [datetime]::UtcNow
     for ($i = 0; $i -lt 60; $i++) {
         try {
             $health = Invoke-RestMethod -Uri "$Url/healthz" -TimeoutSec 10
             if (($health.allowedTools -join ',') -eq $Allowed) { Write-Host "Agents app is up with allowlist: $Allowed"; return }
         }
         catch { Write-Verbose "not up yet: $($_.Exception.Message)" }
+        if (($i + 1) % 2 -eq 0) {
+            $elapsed = ([datetime]::UtcNow - $waitStarted).ToString('mm\m\ ss\s')
+            Write-Host "  [$elapsed] Still waiting for agents app revision with allowlist..."
+        }
         Start-Sleep -Seconds 10
     }
     throw "The agents app didn't come back with the new allowlist in 10 minutes ($Url/healthz)."
@@ -164,6 +169,7 @@ Start-Transcript -Path (Join-Path $Spike "transcript-$([datetime]::UtcNow.ToStri
 try {
     # ---------- Prerequisites ----------
     Write-Phase 'Checking the subscription and the tools'
+    Import-Module (Join-Path $Kit 'scripts/Spike.psm1') -Force
     $account = az account show -o json | ConvertFrom-Json
     Write-Host "Subscription: $($account.name)  User: $($account.user.name)"
 
@@ -180,6 +186,23 @@ try {
     if ((Test-Path "$Spike/provider") -and (Get-Content "$Spike/provider") -ne $Provider) {
         $Provider = Get-Content "$Spike/provider"
         Write-Host "Resuming the open run with -Provider $Provider, the provider it was opened with."
+    }
+
+    # Cloud Shell's default MSI token proxy (user.cloudShellID = true) rejects custom api://<mcpAppId> audiences.
+    # Run az logout + az login --use-device-code upfront (before opening the spend run) so all custom api:// scopes work.
+    if ($account.user.cloudShellID -eq $true) {
+        Write-Host 'Cloud Shell MSI token proxy detected (rejects custom api:// audiences for the MCP server).' -ForegroundColor Yellow
+        Write-Host 'Running az logout + az login --use-device-code so custom api:// scopes work across all steps...' -ForegroundColor Yellow
+        $null = & az logout 2>$null
+        & az login --tenant $account.tenantId --use-device-code --only-show-errors -o none 2>&1 |
+            ForEach-Object { Write-Host "  $_" -ForegroundColor Yellow }
+        if ($LASTEXITCODE) { throw 'az login --use-device-code failed. Nothing was deployed.' }
+        $null = & az account set --subscription $account.id
+        $account = az account show -o json | ConvertFrom-Json
+    }
+
+    if ($Provider -in @('Anthropic', 'AzureOpenAI') -and 'deploy' -notin (Get-SpikeProgress).done) {
+        Connect-SpikeAgentGraph -TenantId $account.tenantId
     }
 
     # The deployment registers the MCP server's Entra app, and Q2 assigns its app role to the agents.
@@ -284,7 +307,7 @@ try {
     if ($Provider -eq 'AzureOpenAI') {
         Save-SpikeResult 'Q1' "keyless Azure OpenAI fallback ladder deployed: $($s.compareDeployments -join ' -> ')"
         Invoke-Step 'azure-openai-check' {
-            $operatorToken = az account get-access-token --scope "api://$($s.mcpAppId)/Mcp.Tools.ReadWrite" --query accessToken -o tsv
+            $operatorToken = Get-SpikeOperatorToken -AppId $s.mcpAppId -TenantId $s.tenantId -SubscriptionId $account.id
             Write-Host 'Checking keyless Entra token acquisition for Azure OpenAI (no model call, no tokens spent)'
             $check = Invoke-WebRequest -Uri "$($s.agentsUrl)/claude-check" -Method Post -SkipHttpErrorCheck -Headers @{ Authorization = "Bearer $operatorToken" }
             Write-Host "  $($check.StatusCode): $($check.Content)"
@@ -326,7 +349,7 @@ None of these IDs is a secret; they're saved in $Spike/anthropic.json, not in an
                 catch { Write-Verbose "not up yet: $($_.Exception.Message)" }
                 Start-Sleep -Seconds 10
             }
-            $operatorToken = az account get-access-token --scope "api://$($s.mcpAppId)/Mcp.Tools.ReadWrite" --query accessToken -o tsv
+            $operatorToken = Get-SpikeOperatorToken -AppId $s.mcpAppId -TenantId $s.tenantId -SubscriptionId $account.id
             for ($try = 1; ; $try++) {
                 Write-Host 'Checking the token exchange with Anthropic (no model call, no tokens spent)'
                 $check = Invoke-WebRequest -Uri "$($s.agentsUrl)/claude-check" -Method Post -SkipHttpErrorCheck -Headers @{ Authorization = "Bearer $operatorToken" }
@@ -375,7 +398,7 @@ None of these IDs is a secret; they're saved in $Spike/anthropic.json, not in an
             Wait-SpikeAgentsHealthy $s.agentsUrl $allowed
             & (Join-Path $Kit 'scripts/Connect-SpikeAgent.ps1') -AgentPrincipalId $s.agentIdentityId -McpAppSpId $s.mcpAppSpId -McpAppRoleId $s.mcpAppRoleId
             Write-Host 'Waiting a minute for the app role to reach the token service...'
-            Start-Sleep -Seconds 60
+            for ($w = 15; $w -le 60; $w += 15) { Start-Sleep -Seconds 15; Write-Host "  [$w/60s] Waiting for app role propagation..." }
             $null = Invoke-Native 'Q2: first question, end to end, with the agent identity' (@((Join-Path $Kit 'tools/run_evals.py')) + $evalArgs +
                 @('--model', $s.hostsDeployment, '--out', "$Spike/evals.jsonl", '--only', 'q01'))
             Save-SpikeResult 'Q2' 'fallback: answered q01 with an Agent ID created without Foundry; check the answer and mcpTokenClaims in evals.jsonl'
@@ -400,13 +423,18 @@ None of these IDs is a secret; they're saved in $Spike/anthropic.json, not in an
             Write-Host 'Telling the agents app which identity reads for runbooks (a new revision; it reinstalls, a minute or two).'
             $null = Invoke-NativeAz @('containerapp', 'update', '-g', $s.resourceGroup, '-n', $s.agentsAppName,
                 '--set-env-vars', "RUNBOOK_IDENTITY_APP_ID=$($s.agentIdentityAppId)")
+            $waitStarted = [datetime]::UtcNow
             for ($i = 0; $i -lt 60; $i++) {
                 try { if ((Invoke-RestMethod -Uri "$($s.agentsUrl)/healthz" -TimeoutSec 10).runbookReady) { break } }
                 catch { Write-Verbose "not up yet: $($_.Exception.Message)" }
+                if (($i + 1) % 2 -eq 0) {
+                    $elapsed = ([datetime]::UtcNow - $waitStarted).ToString('mm\m\ ss\s')
+                    Write-Host "  [$elapsed] Still waiting for agents app revision with runbook identity..."
+                }
                 Start-Sleep -Seconds 10
             }
             Write-Host 'Waiting a minute for the role assignment to reach Log Analytics...'
-            Start-Sleep -Seconds 60
+            for ($w = 15; $w -le 60; $w += 15) { Start-Sleep -Seconds 15; Write-Host "  [$w/60s] Waiting for Log Analytics Reader propagation..." }
             $env:AGENT_API_URL = $s.agentsUrl
             $env:AGENT_API_RESOURCE = "api://$($s.mcpAppId)"
             $env:AGENT_API_SCOPE = "api://$($s.mcpAppId)/Mcp.Tools.ReadWrite"  # the operator's own token, as for /ask

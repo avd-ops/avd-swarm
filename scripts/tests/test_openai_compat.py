@@ -165,6 +165,24 @@ class OpenAICompatTests(unittest.TestCase):
         unknown = passed_params - declared_params
         self.assertEqual(unknown, set(), f"Start-Spike.ps1 passes unrecognized Bicep parameters: {sorted(unknown)}")
 
+    def test_spike_scripts_poll_long_operations_and_handle_cloud_shell_msi_tokens(self) -> None:
+        spike_psm1 = (ROOT / "spikes/s1a/scripts/Spike.psm1").read_text(encoding="utf-8")
+        start_spike = (ROOT / "spikes/s1a/scripts/Start-Spike.ps1").read_text(encoding="utf-8")
+        remove_spike = (ROOT / "spikes/s1a/scripts/Remove-Spike.ps1").read_text(encoding="utf-8")
+        invoke_spike = (ROOT / "spikes/s1a/Invoke-Spike.ps1").read_text(encoding="utf-8")
+
+        self.assertIn("function Get-SpikeOperatorToken", spike_psm1)
+        self.assertIn("not a supported MSI token audience", spike_psm1)
+        self.assertIn("function Invoke-SpikeDeployment", spike_psm1)
+        self.assertIn("function Remove-SpikeResourceGroup", spike_psm1)
+        self.assertIn("Get-SpikeOperatorToken", start_spike)
+        self.assertIn("Invoke-SpikeDeployment", start_spike)
+        self.assertNotIn("az account get-access-token", start_spike)
+        self.assertIn("Remove-SpikeResourceGroup", remove_spike)
+        self.assertIn("cloudShellID", invoke_spike)
+        self.assertIn("Get-SpikeOperatorToken", invoke_spike)
+        self.assertNotIn("az account get-access-token", invoke_spike)
+
 
 if __name__ == "__main__":
     unittest.main()

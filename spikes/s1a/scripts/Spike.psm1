@@ -129,4 +129,93 @@ function Invoke-SpikeAgentGraph {
     }
 }
 
-Export-ModuleMember -Function Write-SpikeStep, Invoke-SpikeAz, Get-SpikeContext, Get-SpikeRoleId, Invoke-SpikeGraph, Connect-SpikeAgentGraph, Invoke-SpikeAgentGraph -Variable SpikeResourceGroup, ExemptedAssignment
+function Get-SpikeOperatorToken {
+    <# Gets a delegated access token for the MCP server's Entra app, signing in with --use-device-code if Cloud Shell's MSI proxy rejects custom api:// audiences. #>
+    param(
+        [Parameter(Mandatory)][string] $AppId,
+        [Parameter(Mandatory)][string] $TenantId,
+        [string] $SubscriptionId
+    )
+    $scope = "api://$AppId/Mcp.Tools.ReadWrite"
+    $stderrFile = New-TemporaryFile
+    try {
+        $token = (& az account get-access-token --scope $scope --query accessToken -o tsv 2> $stderrFile.FullName | Out-String).Trim()
+        $exitCode = $LASTEXITCODE
+        $stderr = Get-Content -Raw -LiteralPath $stderrFile.FullName
+    }
+    finally {
+        Remove-Item -LiteralPath $stderrFile.FullName -ErrorAction SilentlyContinue
+    }
+    if ($exitCode -ne 0 -or -not $token) {
+        if ($stderr -match 'not a supported MSI token audience') {
+            Write-SpikeStep 'Cloud Shell MSI proxy rejects custom api:// scopes; running az logout + az login --use-device-code so MCP and agent API tokens work'
+            $null = & az logout 2>$null
+            & az login --tenant $TenantId --use-device-code --only-show-errors -o none 2>&1 |
+                ForEach-Object { Write-Host "  $_" -ForegroundColor Yellow }
+            if ($LASTEXITCODE -ne 0) { throw '[operator-token] az login --use-device-code failed.' }
+            if ($SubscriptionId) {
+                $null = & az account set --subscription $SubscriptionId
+            }
+            $token = (& az account get-access-token --scope $scope --query accessToken -o tsv 2>&1 | Out-String).Trim()
+            if ($LASTEXITCODE -ne 0 -or -not $token) {
+                throw "[operator-token] az account get-access-token failed after az login: $token"
+            }
+            return $token
+        }
+        throw "[operator-token] az account get-access-token for $scope failed ($exitCode): $stderr"
+    }
+    return $token
+}
+
+function Invoke-SpikeDeployment {
+    <# Starts a resource group Bicep deployment with --no-wait and polls every 15 seconds with a printed heartbeat so Cloud Shell stays alive. #>
+    param(
+        [Parameter(Mandatory)][string] $ResourceGroup,
+        [Parameter(Mandatory)][string] $Name,
+        [Parameter(Mandatory)][string] $TemplateFile,
+        [Parameter(Mandatory)][string[]] $Parameters
+    )
+    $null = Invoke-SpikeAz -Step 'deploy-start' -Arguments (@('deployment', 'group', 'create', '--no-wait',
+            '-g', $ResourceGroup, '-n', $Name, '-f', $TemplateFile, '-p') + $Parameters)
+    $started = [datetime]::UtcNow
+    while ($true) {
+        Start-Sleep -Seconds 15
+        $elapsed = ([datetime]::UtcNow - $started).ToString('mm\m\ ss\s')
+        $deployment = Invoke-SpikeAz -Step 'deploy-poll' -Arguments @('deployment', 'group', 'show', '-g', $ResourceGroup, '-n', $Name)
+        $state = $deployment.properties.provisioningState
+        $ops = @(Invoke-SpikeAz -Step 'deploy-ops' -AllowNotFound -Arguments @('deployment', 'operation', 'group', 'list',
+                '-g', $ResourceGroup, '-n', $Name, '--query', '[?properties.targetResource.resourceName!=null].{name:properties.targetResource.resourceName, state:properties.provisioningState}'))
+        $doneCount = @($ops | Where-Object { $_.state -eq 'Succeeded' }).Count
+        $runningNames = @($ops | Where-Object { $_.state -notin @('Succeeded', 'Failed', 'Canceled') } | ForEach-Object name)
+        $runningNote = if ($runningNames.Count -gt 0) { "; in progress: $($runningNames -join ', ')" } else { '' }
+        Write-Host "  [$elapsed] Bicep deploy ${Name}: $state ($doneCount/$($ops.Count) resources succeeded$runningNote)"
+        if ($state -eq 'Succeeded') { return $deployment }
+        if ($state -in @('Failed', 'Canceled')) {
+            $failed = @(Invoke-SpikeAz -Step 'deploy-failed-ops' -AllowNotFound -Arguments @('deployment', 'operation', 'group', 'list',
+                    '-g', $ResourceGroup, '-n', $Name, '--query', "[?properties.provisioningState=='Failed'].{resource:properties.targetResource.resourceName, error:properties.statusMessage}"))
+            throw "[deploy] Bicep deployment $Name ${state}: $($failed | ConvertTo-Json -Depth 10 -Compress)"
+        }
+    }
+}
+
+function Remove-SpikeResourceGroup {
+    <# Starts asynchronous resource group deletion and polls every 15 seconds with a printed heartbeat so Cloud Shell does not time out. #>
+    param([Parameter(Mandatory)][string] $ResourceGroup)
+    $null = Invoke-SpikeAz -Step 'delete-rg' -Arguments @('group', 'delete', '-n', $ResourceGroup, '--yes', '--no-wait')
+    $started = [datetime]::UtcNow
+    while ($true) {
+        Start-Sleep -Seconds 15
+        $elapsed = ([datetime]::UtcNow - $started).ToString('mm\m\ ss\s')
+        $rg = Invoke-SpikeAz -Step 'poll-delete-rg' -AllowNotFound -Arguments @('group', 'show', '-n', $ResourceGroup)
+        if (-not $rg) {
+            Write-Host "  [$elapsed] Resource group $ResourceGroup deleted."
+            return
+        }
+        $remaining = @(Invoke-SpikeAz -Step 'poll-rg-resources' -AllowNotFound -Arguments @('resource', 'list', '-g', $ResourceGroup, '--query', '[].name'))
+        $names = @($remaining | Where-Object { $_ })
+        $preview = if ($names.Count -gt 0) { ": $($names -join ', ')" } else { '' }
+        Write-Host "  [$elapsed] Deleting $ResourceGroup ($($names.Count) resource(s) remaining$preview)..."
+    }
+}
+
+Export-ModuleMember -Function Write-SpikeStep, Invoke-SpikeAz, Get-SpikeContext, Get-SpikeRoleId, Invoke-SpikeGraph, Connect-SpikeAgentGraph, Invoke-SpikeAgentGraph, Get-SpikeOperatorToken, Invoke-SpikeDeployment, Remove-SpikeResourceGroup -Variable SpikeResourceGroup, ExemptedAssignment
