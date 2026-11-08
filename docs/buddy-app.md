@@ -7,14 +7,14 @@
 
 ## 1. What it is, in one paragraph
 
-avd-buddy is a progressive web app (PWA): the same static chat page from spec §3, plus a web app manifest and a service worker, so an operator can add it to the home screen of an iPhone, iPad or Android phone and open it like an app, full screen, with its own icon. It signs in with Entra through Static Web Apps, holds no token and no secret, caches only its own code, and shows plans and approval links exactly as spec §5 says. Approving still happens in GitHub, on the exact plan, never in the app.
+avd-buddy is a progressive web app (PWA): the same static chat page from spec §3, plus a web app manifest and a service worker, so an operator can add it to the home screen of an iPhone, iPad or Android phone and open it like an app, full screen, with its own icon. It runs on an Azure Container App in the Consumption plan (scaling to zero inside the monthly free grant; [decision 0010](decisions/0010-avd-buddy-container-app-hosting.md)), signs in with Entra through Container Apps built-in authentication, holds no token and no secret, caches only its own code, and shows plans and approval links exactly as spec §5 says. Approving still happens in GitHub, on the exact plan, never in the app.
 
 ## 2. Rules
 
 These hold in every phase; each is a test in §12.
 
 1. **Front end only.** The app relays the conversation and renders what the API returns. It has no logic that decides anything (spec §1), no write credential, and no "approve" or "confirm" button. Every change is a plan from the plan store that a person approves in the GitHub Environment `approve` (spec §5, steps 4 to 6).
-2. **No token or secret in the client.** Sign-in is Static Web Apps' built-in auth (§4): the browser holds only an HTTP-only session cookie. No MSAL cache, no access token, no API key in JavaScript, storage or the bundle.
+2. **No token or secret in the client.** Sign-in is Container Apps' built-in auth (§4): the browser holds only an HTTP-only session cookie. No MSAL cache, no access token, no API key in JavaScript, storage or the bundle.
 3. **No IDs in the bundle.** No tenant, client, subscription or object ID ships in the static files. They are app settings the adopter's deployment fills in (spec §6, identities.md rule).
 4. **No requests to other sites.** The page fetches only from its own origin: no CDN, font service, analytics, error reporter or third-party script. A content security policy enforces it (§8). Entra sign-in and "learn more" links are navigations the operator starts, not fetches. Push (§7), if it ships, is the one exception, and it carries nothing.
 5. **Nothing from the estate is kept on the device.** The service worker caches the app shell only. Conversations, plans, facts and names stay on the server; signing out leaves nothing behind (§8).
@@ -46,16 +46,16 @@ One main screen, the conversation. Everything else opens from it and returns to 
 
 ## 4. Sign-in with Entra
 
-**Use Static Web Apps' built-in auth with a custom Entra provider, not MSAL.js.** Spec §6 already chose it (custom app registration, this tenant only, assignment required, one operators group, Conditional Access with phishing-resistant MFA and a short session). For the installable app it has two more advantages:
+**Use Container Apps' built-in authentication ("Easy Auth") with a custom Entra provider, not MSAL.js** ([decision 0010](decisions/0010-avd-buddy-container-app-hosting.md)). Spec §6 sets the policy (custom app registration, this tenant only, assignment required, one operators group, Conditional Access with phishing-resistant MFA and a short session). Built-in auth is included in the Container Apps Consumption plan at no extra cost (replacing Static Web Apps Standard's $9/month fee) and keeps the two key installable-app properties:
 
-- **No token in the browser at all.** Static Web Apps runs the OpenID Connect flow on its side and gives the browser an HTTP-only cookie; the API reads the operator from the `x-ms-client-principal` header the platform adds ([access user information](https://learn.microsoft.com/azure/static-web-apps/user-information)). That keeps spec §3's rule: the API passes the operator's identity as a claim, never a token. MSAL.js would put tokens in browser storage, where any script injection could read them.
-- **No client secret either.** The registration trusts a user-assigned managed identity as a federated credential (`OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID`), so the app has no secret to rotate ([custom authentication, "Use a managed identity instead of a secret"](https://learn.microsoft.com/azure/static-web-apps/authentication-custom#configure-a-custom-identity-provider)). Add that identity to the table in [identities.md](identities.md) when this is built: it has no Azure role and no Graph permission.
+- **No token in the browser at all.** Container Apps' authentication middleware runs the OpenID Connect flow on its side and gives the browser an HTTP-only session cookie (`AppServiceAuthSession`, token store disabled or server-side only); the app reads the operator from the `X-MS-CLIENT-PRINCIPAL` header the platform injects ([Container Apps authentication](https://learn.microsoft.com/azure/container-apps/authentication)). That keeps spec §3's rule: the relay passes the operator's identity as a claim, never a token. MSAL.js would put tokens in browser storage, where any script injection could read them.
+- **No client secret either.** The Entra app registration trusts a user-assigned managed identity on the Container App as a federated credential (`OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID`), so the app has no secret to rotate ([Entra sign-in on Container Apps](https://learn.microsoft.com/azure/container-apps/authentication-entra)). That identity is listed in [identities.md](identities.md): it has no Azure role and no Graph permission.
 
-**The tenant ID problem.** The provider's `openIdIssuer` in `staticwebapp.config.json` contains the tenant ID. That file is generated at deploy time in the adopter's private repo (spec §5b) from a repository variable; the public repo holds a template with `<tenant-id>`. The client ID is an app setting (`clientIdSettingName`), never in the file.
+**The tenant ID problem.** The provider's `openIdIssuer` in the Container App's `authConfigs` Bicep resource takes the tenant ID as a deployment parameter in the adopter's private repo (spec §5b) from a repository variable; the public repo holds a Bicep parameter template with `<tenant-id>`. The client ID is passed the same way and never committed.
 
-**Installed-app behavior.** Sign-in is a full-page redirect (`/.auth/login/aad`), which works in a home-screen app on iOS and Android; no popups. `/.auth/*` and `/api/*` are excluded from the service worker and from `navigationFallback`. A short Conditional Access session means the operator signs in again often; the app shows a calm "Sign in again to continue" and keeps the draft message in memory (not storage) across the redirect only if the platform allows it, otherwise it's lost and says so.
+**Installed-app behavior.** Sign-in is a full-page redirect (`/.auth/login/aad`), which works in a home-screen app on iOS and Android; no popups. `/.auth/*` and `/api/*` are excluded from the service worker and from SPA fallback routing. A short Conditional Access session means the operator signs in again often; the app shows a calm "Sign in again to continue" and keeps the draft message in memory (not storage) across the redirect only if the platform allows it, otherwise it's lost and says so.
 
-**If avd-buddy ever leaves Static Web Apps,** use MSAL.js with the authorization code flow and PKCE, redirect only, and an in-memory cache ([MSAL.js SPA guidance](https://learn.microsoft.com/entra/identity-platform/scenario-spa-overview)). That is a design change and needs its own red team pass.
+**If avd-buddy ever runs on a static host without platform auth,** use MSAL.js with the authorization code flow and PKCE, redirect only, and an in-memory cache ([MSAL.js SPA guidance](https://learn.microsoft.com/entra/identity-platform/scenario-spa-overview)). That is a design change and needs its own red team pass.
 
 ## 5. Installable
 
@@ -99,7 +99,7 @@ Feasible, with limits, and **not in step 2**. There's nothing to approve until s
 
 ## 8. Privacy and security
 
-- **Content security policy** in `staticwebapp.config.json`: `default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`, plus `Referrer-Policy: no-referrer` and `Permissions-Policy` denying camera, microphone and location. No inline script or style (the design system already bans inline styles).
+- **Content security policy** sent by `avd-buddy`'s server on every response: `default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`, plus `Referrer-Policy: no-referrer` and `Permissions-Policy` denying camera, microphone and location. No inline script or style (the design system already bans inline styles).
 - **Rendering untrusted text.** Agent answers, tool output and quoted evidence are untrusted (spec §6). They render as text through a small Markdown subset with no raw HTML; links show their full host before the operator opens them.
 - **No analytics, no telemetry, by default and with no switch to turn them on.** The only signals the client sends are the conversation and the explicit thumbs up or down (spec §6b). Behavior signals (rephrasing, abandoned plans) are computed on the server from the transcript.
 - **Pseudonyms stay server-side.** The client never receives a mapping table; it shows what the API returns, which is already redacted the way spec §6 requires.
@@ -109,12 +109,14 @@ Feasible, with limits, and **not in step 2**. There's nothing to approve until s
 
 ## 9. Hosting, performance and accessibility
 
-**Hosting.** Azure Static Web Apps, Standard plan, in the swarm's own resource group (spec §3, §6), deployed from the adopter's private repo. It needs nothing from the landing zone and keeps working, and saying so, when the landing zone is down or deleted. Two facts from the [API constraints](https://learn.microsoft.com/azure/static-web-apps/apis-overview) shape the API:
+**Hosting.** An Azure Container App on the Consumption plan (scaling to zero inside the monthly free grant; [decision 0010](decisions/0010-avd-buddy-container-app-hosting.md)), in the swarm's own resource group and Container Apps environment (spec §3, §6), deployed from the adopter's private repo. It needs nothing from the landing zone and keeps working, and saying so, when the landing zone is down or deleted. Four properties shape how it runs at near-zero cost:
 
-- **Bring your own Functions, not managed functions.** The API needs a managed identity (to call the coordinator and read Key Vault), which managed functions don't have ([comparison](https://learn.microsoft.com/azure/static-web-apps/apis-functions)). Linking one needs the Standard plan, which spec §6 already requires.
-- **HTTP only, 45 seconds per request.** No WebSockets, and an agent answer can take longer. So a turn is short requests: `POST /api/turns` returns a turn ID, and the client long-polls `GET /api/turns/{id}?after=n` (each poll under 30 seconds) for new chunks until the turn ends. It works through the platform's proxy and on flaky mobile networks, and a dropped poll just retries.
+- **One scale-to-zero Container App, no separate Functions app or Static Web Apps Standard.** `avd-buddy` serves its static PWA shell and its thin `/api` relay from the same lightweight container, holding the user-assigned managed identity that calls `agent_api` over internal Container Apps environment ingress (red team V1-16). It deploys in the same region as the rest of the swarm (`northcentralus` included) with no location-policy exemption and no `SWA_CLI_DEPLOYMENT_TOKEN` secret.
+- **Public container image on GitHub Container Registry (`ghcr.io`), pinned by SHA-256 digest.** Pulling a digest-pinned image from `ghcr.io` avoids deploying an Azure Container Registry (ACR Basic, about $5 a month idle).
+- **Short poll turns for mobile resilience.** Even without Static Web Apps' 45-second HTTP cliff, mobile connections drop between towers and locks: `POST /api/turns` returns a turn ID, and the client polls `GET /api/turns/{id}?after=n` (each poll under 30 seconds) for new chunks until the turn ends.
+- **Deterministic zero-token endpoints for status and healthy checks.** Status views (`GET /api/status`), open-run banners, and manual or scheduled runbook cards whose `expect:` assertions pass ([core-and-adapters.md](core-and-adapters.md) §3.2) read from the plan store or C11 facts and return fixed cards without calling a model.
 
-GitHub Pages or the avd-ops site can't host it: neither offers the sign-in or the `/api` proxy, and avd-ops.dev stays a public site with no estate behind it.
+GitHub Pages or the avd-ops site can't host it: neither offers the Entra sign-in or the internal-ingress `/api` relay, and avd-ops.dev stays a public site with no estate behind it.
 
 **Performance budgets** (checked in CI on a throttled mid-range phone profile):
 
@@ -157,7 +159,7 @@ Using the web app testing skill (Playwright with the session's Chromium), agains
 1. **Manifest and install:** required fields, icons present at every size, `id` and `scope` correct, the hex colors equal the tokens.
 2. **Service worker:** shell precached; offline reload shows the Offline screen; `/api` and `/.auth` never served from cache; an update shows "Update ready".
 3. **No requests to other sites:** record every request in a full session (sign-in mocked); any origin but the app's own fails.
-4. **CSP present** on every route in `staticwebapp.config.json`, and an injected inline script in a fixture answer doesn't run.
+4. **CSP present** on every route served by `avd-buddy`, and an injected inline script in a fixture answer doesn't run.
 5. **Nothing left on the device:** after a session with plans and names in the fixtures, scan `localStorage`, `sessionStorage`, IndexedDB and every cache for JWT shapes, GUIDs and fixture names; after sign-out, every store is empty but settings.
 6. **Front end only:** the plan card renders a fixture plan exactly (snapshot), shows the plan ID and hash prefix, has one link to GitHub and no button that POSTs anything about the plan.
 7. **Voice:** a hard steady fixture with an `aside` field renders no aside; `humor: off` hides every aside.
@@ -181,8 +183,7 @@ Lighthouse no longer has a PWA category, so it's used for performance only; the 
 Linked, not restated:
 
 - PWAs: [MDN Progressive web apps](https://developer.mozilla.org/docs/Web/Progressive_web_apps), [web.dev Learn PWA](https://web.dev/learn/pwa/), [maskable icons](https://web.dev/articles/maskable-icon).
-- Sign-in: [Static Web Apps authentication](https://learn.microsoft.com/azure/static-web-apps/authentication-authorization), [custom Entra provider with a managed identity](https://learn.microsoft.com/azure/static-web-apps/authentication-custom), [user information](https://learn.microsoft.com/azure/static-web-apps/user-information); MSAL.js only as the fallback in §4.
-- Hosting: [API constraints](https://learn.microsoft.com/azure/static-web-apps/apis-overview), [bring your own Functions](https://learn.microsoft.com/azure/static-web-apps/functions-bring-your-own).
+- Sign-in and hosting: [Azure Container Apps authentication](https://learn.microsoft.com/azure/container-apps/authentication), [custom Entra provider with a federated managed identity](https://learn.microsoft.com/azure/container-apps/authentication-entra), [Container Apps billing and free grant](https://learn.microsoft.com/azure/container-apps/billing); MSAL.js only as the fallback in §4.
 - Push on Apple devices: [WebKit's announcement](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/).
 - Approvals: [GitHub, reviewing deployments](https://docs.github.com/actions/how-tos/deploy/configure-and-manage-deployments/review-deployments).
 - Chat UI: [Bot Framework Web Chat](https://github.com/microsoft/BotFramework-WebChat); [Open WebUI](https://github.com/open-webui/open-webui) as an example of an installable chat front end.
@@ -196,4 +197,4 @@ What we found no prior art for, and so wrote: a chat PWA that by rule can't appr
 - **BQ2** Does GitHub Mobile let a reviewer approve a deployment on a phone? GitHub's docs describe the web flow only. Check on a real device in phase B; if not, the "Review and approve in GitHub" link opens the mobile web page, which works.
 - **BQ3** Push (phase C) at all? Default: only if the owner asks after phase B.
 - **BQ4** Web Chat or our own chat view (§11)? Default: our own, unless Web Chat fits the budgets.
-- **BQ5** A custom domain for the adopter's app? Default: the Static Web Apps default host; never a subdomain of avd-ops.dev.
+- **BQ5** A custom domain for the adopter's app? Default: the Container App's default hostname; never a subdomain of avd-ops.dev.
