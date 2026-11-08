@@ -300,10 +300,62 @@ async def ask_claude(model: str, effort: str, system: str, tools: list, messages
     return response
 
 
+async def query_workspace_as(identity_app_id: str, kql: str) -> dict:
+    """Runs one vetted catalog KQL query against LOG_WORKSPACE_ID as the given agent identity."""
+    token = await agent_identity_token(identity_app_id, f"{LOG_ANALYTICS}/.default")
+    async with httpx.AsyncClient(timeout=60) as http:
+        response = await http.post(f"{LOG_ANALYTICS}/v1/workspaces/{LOG_WORKSPACE_ID}/query", json={"query": kql},
+                                   headers={"Authorization": f"Bearer {token}"})
+    if response.status_code != 200:  # status and error code only: the body can quote the query's names
+        code = (response.json().get("error") or {}).get("code", "") if "json" in response.headers.get("content-type", "") else ""
+        raise RuntimeError(f"Log Analytics {response.status_code} {code}".strip())
+    return response.json()
+
+
+async def concierge_search_call(question: str, top: int) -> dict:
+    """Calls the deterministic Concierge search over HTTP or in-process."""
+    if CONCIERGE_URL:
+        async with httpx.AsyncClient(timeout=15) as http:
+            response = await http.post(f"{CONCIERGE_URL}/search", json={"question": question, "top": top})
+        if response.status_code != 200:
+            raise RuntimeError(f"Concierge search returned {response.status_code}")
+        return response.json()
+    from avd_concierge import Concierge
+    svc = Concierge(repo_root=Path(CONCIERGE_BRAIN_ROOT))
+    return {"hits": await asyncio.to_thread(svc.search, question, top=top)}
+
+
+async def concierge_facts_call(ids: list[str]) -> dict:
+    """Calls the deterministic Concierge C11 facts reader over HTTP or in-process."""
+    if CONCIERGE_URL:
+        body: dict = {"ids": ids}
+        if CONCIERGE_FACTS_SNAPSHOT:
+            body["snapshot"] = CONCIERGE_FACTS_SNAPSHOT
+        async with httpx.AsyncClient(timeout=15) as http:
+            response = await http.post(f"{CONCIERGE_URL}/facts", json=body)
+        if response.status_code != 200:
+            raise RuntimeError(f"Concierge facts returned {response.status_code}")
+        return response.json()
+    from avd_concierge import Concierge
+    svc = Concierge(
+        repo_root=Path(CONCIERGE_BRAIN_ROOT),
+        facts_store=Path(CONCIERGE_FACTS_STORE) if CONCIERGE_FACTS_STORE else None,
+    )
+    snap = Path(CONCIERGE_FACTS_SNAPSHOT) if CONCIERGE_FACTS_SNAPSHOT else None
+    return await asyncio.to_thread(svc.facts, ids, snapshot=snap)
+
+
 async def run_hosts(question: str, model: str, identity_app_id: str, totals: dict, evidence: dict,
                     guard: Shield) -> str:
     token = await agent_identity_token(identity_app_id, f"api://{MCP_APP_ID}/.default")
     evidence["mcpTokenClaims"] = claims_of(token)
+    rag = rag_tools.RagRuntime(
+        root=ROOT,
+        agent="hosts",
+        query_logs=(lambda kql: query_workspace_as(identity_app_id, kql)) if LOG_WORKSPACE_ID else None,
+        concierge_search=concierge_search_call if (CONCIERGE_URL or CONCIERGE_BRAIN_ROOT) else None,
+        concierge_facts=concierge_facts_call if (CONCIERGE_URL or CONCIERGE_FACTS_SNAPSHOT or CONCIERGE_FACTS_STORE) else None,
+    )
     async with streamablehttp_client(MCP_URL, headers={"Authorization": f"Bearer {token}"}) as (read, write, _):
         async with ClientSession(read, write) as session:
             await session.initialize()
@@ -316,8 +368,9 @@ async def run_hosts(question: str, model: str, identity_app_id: str, totals: dic
                     break
             tools = [{"name": t.name, "description": t.description or "", "input_schema": t.inputSchema}
                      for t in sorted(offered, key=lambda t: t.name) if t.name in HOSTS_ALLOWED_TOOLS]
+            tools += rag.tools_for(HOSTS_ALLOWED_TOOLS)
             evidence["hostsTools"] = [t["name"] for t in tools]
-            tools += decoys_for([t.name for t in offered])  # after the evidence: hostsTools stays the allowlist
+            tools += decoys_for([t.name for t in offered] + [t["name"] for t in tools])  # after the evidence: hostsTools stays the allowlist
             messages: list = [{"role": "user", "content": question}]
             for _ in range(MAX_STEPS):
                 response = await ask_claude(model, HOSTS_EFFORT, HOSTS_SYSTEM, tools, messages, totals)
@@ -326,7 +379,9 @@ async def run_hosts(question: str, model: str, identity_app_id: str, totals: dic
                     return f"[refused: {response.stop_details.category if response.stop_details else 'no details'}]"
                 calls = [b for b in response.content if b.type == "tool_use"]
                 if response.stop_reason != "tool_use" or not calls:
-                    return text_of(response)
+                    final_text = text_of(response)
+                    evidence["citations"] = rag_tools.verify_citations(final_text, rag.observed_refs)
+                    return final_text
                 messages.append({"role": "assistant", "content": response.content})
                 results = []
                 for call in calls:
@@ -335,6 +390,12 @@ async def run_hosts(question: str, model: str, identity_app_id: str, totals: dic
                     if kind != "allowed":
                         error = DECOY_ERROR.format(name=call.name) if kind == "decoy" else f"{call.name} is not allowed"
                         results.append({"type": "tool_result", "tool_use_id": call.id, "is_error": True, "content": error})
+                        continue
+                    if call.name in rag_tools.LOCAL_RAG_TOOLS:
+                        content, is_error = await rag.call(call.name, call.input)
+                        content = await guard.scan_result(content, "hosts", call.name)
+                        results.append({"type": "tool_result", "tool_use_id": call.id, "is_error": is_error,
+                                        "content": content or "(no text)"})
                         continue
                     result = await session.call_tool(call.name, call.input)
                     content = "\n".join(c.text for c in result.content if getattr(c, "type", "") == "text")

@@ -209,6 +209,15 @@ param repo string = 'avd-ops/avd-swarm'
 @description('anthropic only: the pushed commit the agents app runs (its tarball: agent_api, the gateway, the runner, runbooks, the KQL catalog, model prices).')
 param repoCommit string = ''
 
+@description('anthropic only: the second-brain repository (owner/name) bundled for the in-process deterministic Concierge when brainCommit is set.')
+param brainRepo string = 'avd-ops/avd-second-brain'
+
+@description('anthropic only: optional pushed commit of avd-second-brain to unpack into /tmp/brain so concierge_search and concierge_facts run in-process with zero extra containers.')
+param brainCommit string = ''
+
+@description('anthropic only: scale agentsApp to zero when idle (minReplicas: 0) for the <$1/month standing sandbox RAG mode.')
+param scaleToZero bool = false
+
 @description('anthropic only: the run\'s cap on Claude spend in USD, metered from each response before the next call (gateway/avd_gateway/meter.py).')
 param tokenSpendCapUsd string = '15'
 
@@ -260,9 +269,10 @@ resource agentsApp 'Microsoft.App/containerApps@2024-03-01' = if (provider == 'a
           image: 'docker.io/library/python:3.13-slim'
           command: ['sh', '-c']
           // No image build: fetch the pushed commit's tarball (agent_api, the gateway's meter and Prompt Shields scan, the runner,
-          // the runbooks and KQL catalog the runbook endpoint loads, the pinned model prices), install the pinned requirements, run it.
+          // the runbooks and KQL catalog the runbook endpoint loads, the pinned model prices), optionally unpack avd-second-brain for
+          // the in-process deterministic Concierge, install the pinned requirements, and run it.
           args: [
-            'python -c "import io, tarfile, urllib.request as u; tarfile.open(fileobj=io.BytesIO(u.urlopen(\'https://codeload.github.com/${repo}/tar.gz/${repoCommit}\').read())).extractall(\'/tmp/src\', filter=\'data\')" && cd /tmp/src/* && pip install --no-cache-dir -q -r spikes/s1a/agent_api/requirements.txt && MODEL_PRICES_FILE=governance/model-prices.yml PYTHONPATH=gateway:runner:spikes/s1a/agent_api exec python spikes/s1a/agent_api/main.py'
+            'python -c "import io, os, tarfile, urllib.request as u; tarfile.open(fileobj=io.BytesIO(u.urlopen(\'https://codeload.github.com/${repo}/tar.gz/${repoCommit}\').read())).extractall(\'/tmp/src\', filter=\'data\'); bc = os.environ.get(\'BRAIN_COMMIT\', \'\'); bc and tarfile.open(fileobj=io.BytesIO(u.urlopen(f\'https://codeload.github.com/${brainRepo}/tar.gz/{bc}\').read())).extractall(\'/tmp/brain-src\', filter=\'data\')" && if [ -d /tmp/brain-src ]; then mv /tmp/brain-src/* /tmp/brain; fi && cd /tmp/src/* && pip install --no-cache-dir -q -r spikes/s1a/agent_api/requirements.txt && MODEL_PRICES_FILE=governance/model-prices.yml PYTHONPATH=gateway:runner:spikes/s1a/agent_api:/tmp/brain/concierge exec python spikes/s1a/agent_api/main.py'
           ]
           resources: { cpu: json('0.5'), memory: '1Gi' }
           env: [
@@ -289,12 +299,14 @@ resource agentsApp 'Microsoft.App/containerApps@2024-03-01' = if (provider == 'a
             { name: 'LOG_WORKSPACE_ID', value: logs.properties.customerId }
             { name: 'RUNBOOK_IDENTITY_APP_ID', value: '' }
             { name: 'RUNBOOK_CALLERS', value: '' }
+            { name: 'BRAIN_COMMIT', value: brainCommit }
+            { name: 'CONCIERGE_BRAIN_ROOT', value: empty(brainCommit) ? '' : '/tmp/brain' }
           ]
         }
       ]
-      // One replica that stays up for the run: jobs live in memory, and installing at start takes a minute.
+      // One replica that stays up for the S1a spike run (minReplicas: 1), or scales to zero (scaleToZero: true) for the <$1/month standing sandbox RAG mode.
       scale: {
-        minReplicas: 1
+        minReplicas: scaleToZero ? 0 : 1
         maxReplicas: 1
       }
     }

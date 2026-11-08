@@ -1,0 +1,15 @@
+// Logon and connection checkpoint latency (p50/p95 elapsed ms from connection start) in the last 24 hours by checkpoint name and session host; no user names leave the workspace.
+// Columns: learn.microsoft.com/azure/azure-monitor/reference/tables/wvdcheckpoints
+let started = WVDCheckpoints
+    | where TimeGenerated > ago(24h)
+    | summarize StartTime = min(TimeGenerated) by CorrelationId;
+WVDCheckpoints
+| where TimeGenerated > ago(24h)
+| join kind=inner started on CorrelationId
+| extend ElapsedMs = datetime_diff('millisecond', TimeGenerated, StartTime)
+| where ElapsedMs >= 0
+| summarize Samples = count(),
+            ElapsedP50Ms = round(percentile(ElapsedMs, 50), 0),
+            ElapsedP95Ms = round(percentile(ElapsedMs, 95), 0)
+    by SessionHostName, Name, Source
+| order by ElapsedP95Ms desc, Samples desc
