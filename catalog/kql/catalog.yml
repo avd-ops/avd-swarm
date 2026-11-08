@@ -16,3 +16,11 @@ queries:
     file: wvd-hosts-without-connections-7d.kql
     tables: [WVDAgentHealthStatus, WVDConnections]
     returns: session host names that reported in the last day with no connection in seven days
+  - id: wvd-connection-transport-rtt-24h
+    file: wvd-connection-transport-rtt-24h.kql
+    tables: [WVDConnections, WVDConnectionNetworkData]
+    returns: connection count, UDP Shortpath count, and p50/p95 round-trip latency per session host over 24 hours, no user names or IP addresses
+  - id: wvd-logon-checkpoints-p95-24h
+    file: wvd-logon-checkpoints-p95-24h.kql
+    tables: [WVDCheckpoints]
+    returns: sample count and p50/p95 elapsed milliseconds from connection start per checkpoint name and session host over 24 hours, no user names

@@ -9,5 +9,7 @@ tools:
   - virtualdesktop_hostpool_host_list
   - win365_license_utilization
   - kql_catalog_run
+  - concierge_search
+  - concierge_facts
 kql:
   - wvd-hosts-without-connections-7d

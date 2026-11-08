@@ -1,0 +1,20 @@
+// Transport type share (UDP Shortpath vs. relay/TCP) and round-trip latency (p50/p95 ms) per session host in the last 24 hours; no user names or IP addresses leave the workspace.
+// Columns: learn.microsoft.com/azure/azure-monitor/reference/tables/wvdconnections and wvdconnectionnetworkdata
+let connections = WVDConnections
+    | where TimeGenerated > ago(24h) and State == "Connected"
+    | project CorrelationId, SessionHostName, TransportType, UdpUse = tostring(UdpUse);
+let net = WVDConnectionNetworkData
+    | where TimeGenerated > ago(24h)
+    | summarize RttP50Ms = percentile(EstRoundTripTimeInMs, 50),
+                RttP95Ms = percentile(EstRoundTripTimeInMs, 95),
+                BandwidthP50KBps = percentile(EstAvailableBandwidthKBps, 50)
+        by CorrelationId;
+connections
+| join kind=leftouter net on CorrelationId
+| summarize Connections = dcount(CorrelationId),
+            UdpShortpathConnections = dcountif(CorrelationId, UdpUse !in ("0", "False", "false", "None", "") or TransportType has "UDP" or TransportType has "Shortpath"),
+            RttP50Ms = round(percentile(RttP50Ms, 50), 1),
+            RttP95Ms = round(percentile(RttP95Ms, 95), 1),
+            BandwidthP50KBps = round(percentile(BandwidthP50KBps, 50), 0)
+    by SessionHostName
+| order by RttP95Ms desc, Connections desc
