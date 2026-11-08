@@ -410,7 +410,9 @@ body.buddy-body {
 .halt-card[hidden],
 .buddy-dropdown[hidden],
 .trip-confirm-box[hidden],
-.composer-bar[hidden] {
+.composer-bar[hidden],
+.composer-mic[hidden],
+.msg-speak-btn[hidden] {
   display: none;
 }
 
@@ -548,6 +550,25 @@ body.buddy-body {
   border: 1px solid var(--line-strong);
   color: var(--muted);
   background: var(--sunken);
+}
+
+.msg-speak-btn {
+  min-height: var(--tap);
+  min-width: var(--tap);
+  margin-left: auto;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-3);
+  font: 600 0.8rem var(--mono);
+  cursor: pointer;
+}
+.msg-speak-btn:hover,
+.msg-speak-btn[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 .msg-answer {
@@ -733,6 +754,27 @@ body.buddy-body {
   font: 400 0.95rem var(--body);
 }
 
+.composer-mic {
+  min-height: var(--tap);
+  min-width: var(--tap);
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-3);
+  font: 600 0.88rem var(--mono);
+  cursor: pointer;
+}
+.composer-mic:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.composer-mic[aria-pressed="true"] {
+  background: var(--bad-soft);
+  color: var(--bad);
+  border-color: var(--bad);
+}
+
 .composer-send {
   min-height: var(--tap);
   min-width: 4.5rem;
@@ -748,6 +790,7 @@ body.buddy-body {
   background: var(--accent-hover);
 }
 .composer-send:disabled,
+.composer-mic:disabled,
 .composer-input:disabled {
   opacity: 0.6;
   cursor: not-allowed;
