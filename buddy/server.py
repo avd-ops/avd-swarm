@@ -118,6 +118,22 @@ def parse_client_principal(headers: dict[str, str]) -> dict[str, str] | None:
     return None
 
 
+def load_static_files(app_dir: Path = APP_DIR) -> dict[str, tuple[str, bytes]]:
+    """Pre-indexes static files under buddy/app/ so request paths never touch the filesystem or mimetypes."""
+    table: dict[str, tuple[str, bytes]] = {}
+    root = app_dir.resolve()
+    for file_path in sorted(root.rglob("*")):
+        if not file_path.is_file():
+            continue
+        rel = "/" + file_path.relative_to(root).as_posix()
+        ext = file_path.suffix.lower()
+        content_type = MIME_OVERRIDES.get(ext, "application/octet-stream")
+        table[rel] = (content_type, file_path.read_bytes())
+    if "/index.html" in table:
+        table["/"] = table["/index.html"]
+    return table
+
+
 class BuddyState:
     """In-memory state for the avd-buddy server process."""
 
@@ -138,6 +154,7 @@ class BuddyState:
         self.token_cap_usd = token_cap_usd
         self.agent_api_url = agent_api_url.rstrip("/")
         self.voice_settings = yaml.safe_load(VOICE_SETTINGS_PATH.read_text(encoding="utf-8"))
+        self.static_files = load_static_files(APP_DIR)
         self.turns: dict[str, dict[str, Any]] = {}
         self.replies_since_aside = 99
         self.history: list[dict[str, str]] = [
@@ -335,20 +352,16 @@ def make_handler(state: BuddyState) -> type[BaseHTTPRequestHandler]:
                 self._send_json(200, {"turnId": turn_id, "done": True, "nextAfter": 1, "turn": turn_obj})
                 return
 
-            # Serve static files from buddy/app/
-            rel = path.lstrip("/") or "index.html"
-            target = (APP_DIR / rel).resolve()
-            if not str(target).startswith(str(APP_DIR.resolve())) or not target.is_file():
-                # SPA fallback for non-API routes
+            # Serve static files from the pre-indexed allowlist table only
+            entry = state.static_files.get(path)
+            if entry is None:
                 if not path.startswith("/api/") and not path.startswith("/.auth/"):
-                    target = APP_DIR / "index.html"
-                else:
+                    entry = state.static_files.get("/index.html")
+                if entry is None:
                     self._send_json(404, {"error": "not-found"})
                     return
 
-            ext = target.suffix.lower()
-            content_type = MIME_OVERRIDES.get(ext) or mimetypes.guess_type(str(target))[0] or "application/octet-stream"
-            data = target.read_bytes()
+            content_type, data = entry
             self.send_response(200)
             self._send_security_headers()
             self.send_header("Content-Type", content_type)

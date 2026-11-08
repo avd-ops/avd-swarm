@@ -116,17 +116,41 @@ class StaticShellAndBudgetTests(unittest.TestCase):
         self.assertIn("SKIP_WAITING", sw_text)
 
     def test_no_inline_styles_or_scripts_and_colors_only_through_tokens(self) -> None:
+        from html.parser import HTMLParser
+
+        class InlineCheckParser(HTMLParser):
+            def __init__(self) -> None:
+                super().__init__()
+                self.inline_styles: list[str] = []
+                self.script_srcs: list[str | None] = []
+                self.in_script = False
+                self.script_data: list[str] = []
+
+            def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+                attr_map = {k.lower(): v for k, v in attrs}
+                if "style" in attr_map:
+                    self.inline_styles.append(tag)
+                if tag.lower() == "script":
+                    self.in_script = True
+                    self.script_srcs.append(attr_map.get("src"))
+
+            def handle_endtag(self, tag: str) -> None:
+                if tag.lower() == "script":
+                    self.in_script = False
+
+            def handle_data(self, data: str) -> None:
+                if self.in_script and data.strip():
+                    self.script_data.append(data.strip())
+
         html_text = (ROOT / "buddy/app/index.html").read_text(encoding="utf-8")
-        self.assertIsNone(re.search(r"\bstyle\s*=", html_text))
-        # Every <script> tag must use src=... with empty body
-        for match in re.finditer(r"<script\b([^>]*)>(.*?)</script>", html_text, re.DOTALL):
-            attrs, body = match.group(1), match.group(2).strip()
-            self.assertIn("src=", attrs)
-            self.assertEqual(body, "")
+        parser = InlineCheckParser()
+        parser.feed(html_text)
+        self.assertEqual(parser.inline_styles, [])
+        self.assertTrue(all(src for src in parser.script_srcs))
+        self.assertEqual(parser.script_data, [])
 
         # app.css must use design system tokens only (no raw hex values)
         css_text = (ROOT / "buddy/app/app.css").read_text(encoding="utf-8")
-        # Strip comments before scanning for #hex
         css_no_comments = re.sub(r"/\*.*?\*/", "", css_text, flags=re.DOTALL)
         self.assertIsNone(re.search(r"#[0-9a-fA-F]{3,8}\b", css_no_comments))
 
