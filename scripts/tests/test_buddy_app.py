@@ -84,10 +84,14 @@ class ManifestAndIconsTests(unittest.TestCase):
             self.assertTrue(path.is_file(), f"Missing generated icon {name}")
             self.assertEqual(_read_png_ihdr(path), (w, h, mode))
 
+        import xml.etree.ElementTree as ET
+
         for svg_name in ("favicon.svg", "avatar.svg"):
             svg_path = self.icons_dir / svg_name
             self.assertTrue(svg_path.is_file(), f"Missing generated SVG {svg_name}")
-            self.assertIn("<svg", svg_path.read_text(encoding="utf-8"))
+            svg_text = svg_path.read_text(encoding="utf-8")
+            self.assertIn("<svg", svg_text)
+            ET.fromstring(svg_text)
 
     def test_mascot_fails_when_review_md_is_missing_and_placeholder_succeeds(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -19,8 +19,14 @@ param managedEnvironmentId string
 @description('Internal HTTPS URL of agent_api inside the Container Apps environment.')
 param agentApiInternalUrl string
 
-@description('Digest-pinned public container image on GHCR (for example ghcr.io/avd-ops/avd-buddy@sha256:...).')
-param buddyImage string
+@description('Digest-pinned public container image on GHCR (for example ghcr.io/avd-ops/avd-buddy@sha256:...). Empty uses python:3.13-slim with the pinned swarmCommit tarball.')
+param buddyImage string = ''
+
+@description('Repository (owner/name) to pull the avd-buddy source tarball from when buddyImage is empty.')
+param repo string = 'avd-ops/avd-swarm'
+
+@description('Pushed commit SHA (or ref) of avd-ops/avd-swarm to unpack when buddyImage is empty.')
+param swarmCommit string = 'main'
 
 @description('Entra ID tenant ID (<tenant-id>) passed from the adopter\'s repository variable; never committed.')
 param tenantId string = tenant().tenantId
@@ -31,10 +37,15 @@ param entraSignInClientId string
 @description('Daily metered token spend cap in USD shown on the Status screen.')
 param tokenSpendCapUsd string = '15.00'
 
+@description('Whether to start in deterministic simulation mode when agent_api is not yet connected.')
+@allowed(['true', 'false'])
+param simMode string = 'false'
+
 @description('Short unique suffix for resource names.')
 param suffix string = take(uniqueString(resourceGroup().id), 6)
 
 var openIdIssuer = '${environment().authentication.loginEndpoint}${tenantId}/v2.0'
+var useTarballRuntime = empty(buddyImage)
 
 // User-assigned managed identity for avd-buddy (docs/identities.md):
 // 1. Federated credential on the Entra sign-in app (OVERRIDE_USE_MI_FIC_ASSERTION_CLIENTID) so Easy Auth has no secret.
@@ -75,7 +86,11 @@ resource buddyApp 'Microsoft.App/containerApps@2024-03-01' = {
       containers: [
         {
           name: 'avd-buddy'
-          image: buddyImage
+          image: useTarballRuntime ? 'docker.io/library/python:3.13-slim' : buddyImage
+          command: useTarballRuntime ? ['sh', '-c'] : []
+          args: useTarballRuntime ? [
+            'python -c "import io, tarfile, urllib.request as u; tarfile.open(fileobj=io.BytesIO(u.urlopen(\'https://codeload.github.com/${repo}/tar.gz/${swarmCommit}\').read())).extractall(\'/tmp/src\', filter=\'data\')" && cd /tmp/src/* && pip install --no-cache-dir -q pyyaml==6.0.2 && python scripts/build_buddy_icons.py && exec python buddy/server.py'
+          ] : []
           resources: {
             cpu: json('0.25')
             memory: '0.5Gi'
@@ -83,7 +98,7 @@ resource buddyApp 'Microsoft.App/containerApps@2024-03-01' = {
           env: [
             { name: 'PORT', value: '8080' }
             { name: 'BUDDY_REQUIRE_EASY_AUTH', value: 'true' }
-            { name: 'BUDDY_SIM_MODE', value: 'false' }
+            { name: 'BUDDY_SIM_MODE', value: simMode }
             { name: 'AGENT_API_URL', value: agentApiInternalUrl }
             { name: 'BUDDY_UAMI_CLIENT_ID', value: buddyIdentity.properties.clientId }
             { name: 'TOKEN_SPEND_CAP_USD', value: tokenSpendCapUsd }
