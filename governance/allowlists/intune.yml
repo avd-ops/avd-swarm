@@ -8,4 +8,6 @@ tools:
   - intune_assignment_filter_list
   - intune_configuration_policy_list
   - intune_compliance_policy_list
+  - concierge_search
+  - concierge_facts
 kql: []
