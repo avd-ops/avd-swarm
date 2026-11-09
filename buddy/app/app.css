@@ -939,9 +939,93 @@ body.buddy-body {
   margin-top: var(--space-3);
 }
 
+.estate-head-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.estate-score-pill {
+  font: 700 0.85rem var(--mono);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--pill);
+  background: var(--good-soft);
+  color: var(--good);
+  border: 1px solid var(--good);
+  white-space: nowrap;
+}
+.estate-score-pill.is-warn {
+  background: var(--caution-soft);
+  color: var(--caution);
+  border-color: var(--caution);
+}
+.estate-score-pill.is-fail {
+  background: var(--bad-soft);
+  color: var(--bad);
+  border-color: var(--bad);
+}
+
+.estate-plane-list {
+  list-style: none;
+  padding: 0;
+  margin: var(--space-3) 0;
+  border-top: 1px solid var(--line);
+}
+
+.estate-plane-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.9rem;
+}
+
+.estate-plane-name {
+  font-weight: 600;
+}
+
+.estate-plane-counts {
+  font: 500 0.8rem var(--mono);
+  color: var(--muted);
+}
+
+.estate-meter-summary {
+  padding: var(--space-2) var(--space-3);
+  background: var(--sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font: 500 0.82rem var(--mono);
+  color: var(--fg);
+  margin-bottom: var(--space-3);
+}
+
+.estate-findings-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.estate-finding-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font-size: 0.86rem;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
 }
+

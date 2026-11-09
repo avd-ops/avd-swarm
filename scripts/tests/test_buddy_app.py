@@ -244,6 +244,21 @@ class ServerAndIntegrationTests(unittest.TestCase):
             self.assertEqual(headers.get("referrer-policy"), "no-referrer")
             self.assertEqual(headers.get("permissions-policy"), "camera=(), microphone=(self), geolocation=()")
 
+    def test_status_returns_phase_d_five_plane_estate_posture(self) -> None:
+        status, _, raw = self._request("/api/status")
+        self.assertEqual(status, 200)
+        payload = json.loads(raw.decode("utf-8"))
+        self.assertIn("estate", payload)
+        estate = payload["estate"]
+        self.assertEqual(
+            [p["id"] for p in estate["planes"]],
+            ["azure", "entra", "intune", "m365", "power-platform"],
+        )
+        self.assertIn("meterAudit", estate)
+        self.assertIn("topFindings", estate)
+        html = (buddy_server.APP_DIR / "index.html").read_text(encoding="utf-8")
+        self.assertIn('id="status-estate-card"', html)
+
     def test_light_mode_allows_clean_aside_and_humor_off_hides_it(self) -> None:
         status, _, raw = self._request(
             "/api/turns",

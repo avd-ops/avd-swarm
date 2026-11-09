@@ -26,7 +26,41 @@
         title: "Weekend idle check: 2 hosts in hp-contoso-sales ran 48h with 0 sessions",
         threadId: "thread-idle-hosts"
       }
-    ]
+    ],
+    estate: {
+      estate: "estate-a1f9c204",
+      collectedAt: "2026-11-09T16:20:00Z",
+      overallStatus: "pass",
+      overallScorePct: 94,
+      planes: [
+        { id: "azure", name: "Azure (avd-azure)", status: "pass", scorePct: 96, pass: 27, warn: 1, fail: 0 },
+        { id: "entra", name: "Entra ID (avd-entra)", status: "pass", scorePct: 95, pass: 18, warn: 1, fail: 0 },
+        { id: "intune", name: "Intune (avd-intune)", status: "pass", scorePct: 92, pass: 14, warn: 1, fail: 0 },
+        { id: "m365", name: "Microsoft 365 (avd-m365)", status: "pass", scorePct: 94, pass: 11, warn: 1, fail: 0 },
+        { id: "power-platform", name: "Power Platform (avd-power-platform)", status: "pass", scorePct: 91, pass: 8, warn: 1, fail: 0 }
+      ],
+      hostPools: [
+        { id: "hp-pooled-01", type: "Pooled", hostsTotal: 4, hostsAvailable: 4, activeSessions: 18, capacityPct: 56, autoscale: "enabled" }
+      ],
+      meterAudit: {
+        runningSessionHosts: 4,
+        deallocatedSessionHosts: 0,
+        unattachedDisks: 0,
+        orphanedNics: 0,
+        publicIps: 0,
+        idleWarnings: []
+      },
+      topFindings: [
+        {
+          checkId: "asm-files-zone-redundant",
+          plane: "azure",
+          outcome: "warn",
+          severity: "medium",
+          title: "Profile storage account uses LRS instead of ZRS",
+          askPrompt: "Why is asm-files-zone-redundant warning on our profile storage account and how do we remediate it?"
+        }
+      ]
+    }
   };
 
   const SWITCH_MEANINGS = {
