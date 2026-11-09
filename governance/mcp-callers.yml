@@ -1,0 +1,64 @@
+# Published tool layer MCP caller policy (core-and-adapters.md section 3.5 WP4; governance.md section 2.3 layer 5; V1-3).
+# Protected path: an agent-authored PR cannot change it, and adding a caller, widening `allowlists`,
+# enabling `allowPropose`, or widening `allowedPositions` counts as capability-raising under section 2.6.
+#
+# Every call checks the kill-switch flag first. At `halt-agents` and above, every caller that is not a
+# person (`runner`, `claude-code`, `sre-agent`, `foundry`) is refused (V1-3). Direct Azure/Graph writes
+# never exist in the tool layer; `propose_change` only drafts a gated plan for human approval in `approve`.
+callers:
+  person:
+    isPerson: true
+    requireScope: Mcp.Tools.ReadWrite
+    allowlists:
+      - hosts
+      - cost
+      - intune
+    allowPropose: true
+    allowedPositions:
+      - run
+      - halt-actions
+      - halt-agents
+  runner:
+    isPerson: false
+    appRole: mcp.runner
+    allowlists:
+      - hosts
+      - cost
+      - intune
+    allowPropose: false
+    allowedPositions:
+      - run
+      - halt-actions
+  claude-code:
+    isPerson: false
+    appRole: mcp.claude-code
+    allowlists:
+      - hosts
+      - cost
+      - intune
+    allowPropose: true
+    allowedPositions:
+      - run
+      - halt-actions
+  sre-agent:
+    isPerson: false
+    appRole: mcp.sre-agent
+    adapter: sre-agent
+    allowlists:
+      - hosts
+    allowPropose: true
+    allowedPositions:
+      - run
+      - halt-actions
+  foundry:
+    isPerson: false
+    appRole: mcp.foundry
+    adapter: foundry
+    allowlists:
+      - hosts
+      - cost
+      - intune
+    allowPropose: true
+    allowedPositions:
+      - run
+      - halt-actions

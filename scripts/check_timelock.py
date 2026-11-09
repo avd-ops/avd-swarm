@@ -293,6 +293,44 @@ def _classify_watchdog(
     return "lowers", reasons
 
 
+def _classify_mcp_callers(
+    path: str, before: dict[str, Any] | None, after: dict[str, Any] | None
+) -> tuple[str, list[str]]:
+    if not isinstance(before, dict) or not isinstance(after, dict):
+        return "raises", [f"{path}: added, removed, or invalid YAML"]
+    b_callers = before.get("callers") if isinstance(before.get("callers"), dict) else {}
+    a_callers = after.get("callers") if isinstance(after.get("callers"), dict) else {}
+    added = sorted(set(a_callers) - set(b_callers))
+    if added:
+        return "raises", [f"{path}:callers: added {', '.join(added)}"]
+    reasons: list[str] = []
+    for removed in sorted(set(b_callers) - set(a_callers)):
+        reasons.append(f"{path}:callers.{removed}: caller removed")
+    for cid in sorted(set(b_callers) & set(a_callers)):
+        bc, ac = b_callers[cid], a_callers[cid]
+        if bc == ac:
+            continue
+        if not isinstance(bc, dict) or not isinstance(ac, dict):
+            return "raises", [f"{path}:callers.{cid}: invalid mapping"]
+        for fixed_key in ("isPerson", "requireScope", "appRole", "adapter"):
+            if bc.get(fixed_key) != ac.get(fixed_key):
+                return "raises", [f"{path}:callers.{cid}.{fixed_key}: changed"]
+        if bc.get("allowPropose") is False and ac.get("allowPropose") is True:
+            return "raises", [f"{path}:callers.{cid}.allowPropose: enabled"]
+        if bc.get("allowPropose") is True and ac.get("allowPropose") is False:
+            reasons.append(f"{path}:callers.{cid}.allowPropose: disabled")
+        for list_key in ("allowlists", "allowedPositions"):
+            b_set = set(bc.get(list_key) or [])
+            a_set = set(ac.get(list_key) or [])
+            if a_set - b_set:
+                return "raises", [f"{path}:callers.{cid}.{list_key}: added {', '.join(sorted(a_set - b_set))}"]
+            if b_set - a_set:
+                reasons.append(f"{path}:callers.{cid}.{list_key}: removed {', '.join(sorted(b_set - a_set))}")
+    if not reasons:
+        return "raises", [f"{path}: modified without tightening MCP caller permissions"]
+    return "lowers", reasons
+
+
 def classify_change(
     path: str,
     before_text: str | None,
@@ -325,6 +363,8 @@ def classify_change(
         effect, reasons = _classify_compliance(path, before_data, after_data)
     elif path == "governance/watchdog.yml":
         effect, reasons = _classify_watchdog(path, before_data, after_data)
+    elif path == "governance/mcp-callers.yml":
+        effect, reasons = _classify_mcp_callers(path, before_data, after_data)
     elif path.startswith("governance/allowlists/") and path.endswith(".yml"):
         effect, reasons = _classify_allowlist(path, before_data, after_data)
     elif path == "governance/protected-paths.yml":
