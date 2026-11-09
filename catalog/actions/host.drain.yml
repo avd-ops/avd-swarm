@@ -1,0 +1,28 @@
+# Personal project, not for production, provided as is; not affiliated with the author's employer, Liquidware or Microsoft.
+id: host.drain
+kind: host
+title: Drain one session host
+defaultWhyKind: fix
+complianceEffect: none
+preconditions:
+  notDrainedByOthers: true
+  restoreDrainStateFound: true
+  noActiveSessions: false
+  notPowerLocked: true
+  notScalingExcluded: true
+  deallocatedNotUnhealthy: true
+  hostPoolAvailableHostsAbove: demand-plus-one-or-min
+  oneHostPerPoolAtATime: true
+  serviceHealthClear: AVD
+limits:
+  perHour: 2
+  perHostPerDay: 2
+  circuitBreakerFailures24h: 3
+verify:
+  positiveEvidenceRequired: true
+  fields:
+    - sessionHost.allowNewSession == false
+rollback:
+  restoreStateFound: true
+  fields:
+    - sessionHost.allowNewSession

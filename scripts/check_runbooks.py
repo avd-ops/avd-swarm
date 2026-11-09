@@ -61,9 +61,11 @@ def repo_errors(root: Path) -> tuple[list[str], dict]:
                 errors.append(f"{path.relative_to(root)}: KQL {kql} isn't in the catalog")
         allowlists[path.stem] = {"tools": set(data.get("tools") or []), "kql": set(data.get("kql") or [])}
 
+    action_dir = root / ACTION_CATALOG
+    action_ids = {p.stem for p in action_dir.glob("*.yml")} if action_dir.is_dir() else set()
     daily = float(load_yaml(root / "governance/gateway.yml")["caps"]["dailyUsd"])
     return errors, {"facts": facts, "kql": kql_ids, "allowlists": allowlists, "daily": daily,
-                    "actions": (root / ACTION_CATALOG).is_dir()}
+                    "actions": action_dir.is_dir(), "action_ids": action_ids}
 
 
 def runbook_errors(root: Path, path: Path, ctx: dict) -> list[str]:
@@ -101,8 +103,11 @@ def runbook_errors(root: Path, path: Path, ctx: dict) -> list[str]:
             errors.append(f"evidence {fact} is {status} in the register, not built yet")
     if m["budget"]["tokensUsd"] > ctx["daily"]:
         errors.append(f"budget ${m['budget']['tokensUsd']} is over the daily cap ${ctx['daily']} in governance/gateway.yml")
-    if m["trigger"]["runMode"] == "propose" and not ctx["actions"]:
-        errors.append("runMode: propose waits for the action catalog (build step 3); v1 runbooks are read-only")
+    if m["trigger"]["runMode"] == "propose":
+        if not ctx["actions"]:
+            errors.append("runMode: propose waits for the action catalog (build step 3); v1 runbooks are read-only")
+        elif m.get("proposes") not in ctx["action_ids"]:
+            errors.append(f"proposes {m.get('proposes')} isn't in {ACTION_CATALOG}/")
     return [f"{rel}: {e}" for e in errors]
 
 

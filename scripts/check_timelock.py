@@ -1,0 +1,447 @@
+#!/usr/bin/env python3
+# Personal project, not for production, provided as is; not affiliated with the author's employer, Liquidware or Microsoft.
+"""Solo-mode 72-hour time-lock and team-mode capability classifier (governance.md section 2.6; R19).
+
+Compares protected files before and after a change to classify each change as `lowers` or `raises`
+capability (defaulting to `raises` whenever a change is ambiguous or touches workflows/code), and
+evaluates whether the pull request satisfies solo-mode (72-hour time-lock + pinned issue for raising
+changes; immediate merge when guard is green for lowering changes) or team-mode (2 human code-owner
+approvals for raising changes; 1 human code-owner approval for lowering changes; AI/bot reviews
+never count).
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+import json
+import sys
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+from check_agent_pr import matches
+
+TIMELOCK_HOURS = 72
+AI_REVIEWER_SLUGS = {
+    "claude",
+    "claude-code-review",
+    "copilot",
+    "github-copilot",
+    "copilot-pull-request-reviewer",
+    "github-actions",
+}
+
+
+def is_protected_path(path: str, policy: dict[str, Any]) -> bool:
+    patterns = (policy.get("protected") or []) + (policy.get("append_only") or [])
+    return any(matches(path, p) for p in patterns)
+
+
+def is_human_reviewer(login: str, user_type: str = "User") -> bool:
+    if not login or not isinstance(login, str):
+        return False
+    norm = login.strip().lower()
+    if norm.endswith("[bot]") or norm.startswith("app/"):
+        return False
+    if user_type and user_type.lower() != "user":
+        return False
+    if norm in AI_REVIEWER_SLUGS:
+        return False
+    return True
+
+
+def _compare_numeric_caps(
+    prefix: str, before: dict[str, Any], after: dict[str, Any]
+) -> tuple[str, list[str]]:
+    keys = sorted(set(before) | set(after))
+    if not keys:
+        return "raises", [f"{prefix}: empty mapping"]
+    reasons: list[str] = []
+    direction = "lowers"
+    for k in keys:
+        if k not in before or k not in after:
+            return "raises", [f"{prefix}.{k}: key added or removed ({before.get(k)!r} -> {after.get(k)!r})"]
+        old_val, new_val = before[k], after[k]
+        if isinstance(old_val, bool) or isinstance(new_val, bool) or not isinstance(old_val, (int, float)) or not isinstance(new_val, (int, float)):
+            if old_val != new_val:
+                return "raises", [f"{prefix}.{k}: non-numeric change ({old_val!r} -> {new_val!r})"]
+            continue
+        if new_val > old_val:
+            return "raises", [f"{prefix}.{k}: raised from {old_val} to {new_val}"]
+        if new_val < old_val:
+            if new_val <= 0:
+                return "raises", [f"{prefix}.{k}: non-positive cap {new_val} is invalid"]
+            reasons.append(f"{prefix}.{k}: lowered from {old_val} to {new_val}")
+    if not reasons:
+        return "raises", [f"{prefix}: no capability-lowering change detected"]
+    return direction, reasons
+
+
+def _classify_action_manifest(
+    path: str, before: dict[str, Any] | None, after: dict[str, Any] | None
+) -> tuple[str, list[str]]:
+    if before is None and after is not None:
+        return "raises", [f"{path}: new action added ({after.get('id', path)})"]
+    if before is not None and after is None:
+        return "lowers", [f"{path}: action removed ({before.get('id', path)})"]
+    if not isinstance(before, dict) or not isinstance(after, dict):
+        return "raises", [f"{path}: unreadable action manifest"]
+
+    reasons: list[str] = []
+    all_keys = sorted(set(before) | set(after))
+    for k in all_keys:
+        if before.get(k) == after.get(k):
+            continue
+        if k == "limits" and isinstance(before.get(k), dict) and isinstance(after.get(k), dict):
+            effect, limit_reasons = _compare_numeric_caps(f"{path}:limits", before[k], after[k])
+            if effect == "raises":
+                return "raises", limit_reasons
+            reasons.extend(limit_reasons)
+        elif k == "preconditions" and isinstance(before.get(k), dict) and isinstance(after.get(k), dict):
+            b_pre, a_pre = before[k], after[k]
+            for pk in sorted(set(b_pre) | set(a_pre)):
+                if b_pre.get(pk) == a_pre.get(pk):
+                    continue
+                if b_pre.get(pk) is False and a_pre.get(pk) is True:
+                    reasons.append(f"{path}:preconditions.{pk}: tightened (false -> true)")
+                else:
+                    return "raises", [f"{path}:preconditions.{pk}: changed ({b_pre.get(pk)!r} -> {a_pre.get(pk)!r})"]
+        else:
+            return "raises", [f"{path}:{k}: changed ({before.get(k)!r} -> {after.get(k)!r})"]
+
+    if not reasons:
+        return "raises", [f"{path}: modified without lowering capability"]
+    return "lowers", reasons
+
+
+def _classify_gateway(
+    path: str, before: dict[str, Any] | None, after: dict[str, Any] | None
+) -> tuple[str, list[str]]:
+    if not isinstance(before, dict) or not isinstance(after, dict):
+        return "raises", [f"{path}: added, removed, or invalid YAML"]
+    for k in sorted(set(before) | set(after)):
+        if k in {"caps", "callers"}:
+            continue
+        if before.get(k) != after.get(k):
+            return "raises", [f"{path}:{k}: changed ({before.get(k)!r} -> {after.get(k)!r})"]
+    if not isinstance(before.get("caps"), dict) or not isinstance(after.get("caps"), dict):
+        return "raises", [f"{path}:caps: missing mapping"]
+    reasons: list[str] = []
+    if before["caps"] != after["caps"]:
+        effect, cap_reasons = _compare_numeric_caps(f"{path}:caps", before["caps"], after["caps"])
+        if effect == "raises":
+            return "raises", cap_reasons
+        reasons.extend(cap_reasons)
+    b_callers = before.get("callers") if isinstance(before.get("callers"), dict) else {}
+    a_callers = after.get("callers") if isinstance(after.get("callers"), dict) else {}
+    if b_callers != a_callers:
+        added_callers = sorted(set(a_callers) - set(b_callers))
+        removed_callers = sorted(set(b_callers) - set(a_callers))
+        if added_callers:
+            return "raises", [f"{path}:callers: added {', '.join(added_callers)}"]
+        for c in removed_callers:
+            reasons.append(f"{path}:callers.{c}: caller removed")
+        for c in sorted(set(b_callers) & set(a_callers)):
+            if b_callers[c] == a_callers[c]:
+                continue
+            if not isinstance(b_callers[c], dict) or not isinstance(a_callers[c], dict):
+                return "raises", [f"{path}:callers.{c}: invalid mapping"]
+            effect, caller_reasons = _compare_numeric_caps(f"{path}:callers.{c}", b_callers[c], a_callers[c])
+            if effect == "raises":
+                return "raises", caller_reasons
+            reasons.extend(caller_reasons)
+    if not reasons:
+        return "raises", [f"{path}: no capability-lowering change detected"]
+    return "lowers", reasons
+
+
+def _classify_allowlist(
+    path: str, before: dict[str, Any] | None, after: dict[str, Any] | None
+) -> tuple[str, list[str]]:
+    if before is None and after is not None:
+        return "raises", [f"{path}: new agent allowlist added"]
+    if before is not None and after is None:
+        return "lowers", [f"{path}: agent allowlist removed"]
+    if not isinstance(before, dict) or not isinstance(after, dict):
+        return "raises", [f"{path}: invalid allowlist YAML"]
+    if before.get("agent") != after.get("agent") or before.get("status") != after.get("status"):
+        return "raises", [f"{path}: agent or status changed"]
+    extra_keys = (set(before) | set(after)) - {"agent", "status", "tools", "kql"}
+    if extra_keys:
+        return "raises", [f"{path}: unknown key(s) {', '.join(sorted(extra_keys))}"]
+
+    reasons: list[str] = []
+    for key in ("tools", "kql"):
+        b_set = set(before.get(key) or [])
+        a_set = set(after.get(key) or [])
+        added = sorted(a_set - b_set)
+        removed = sorted(b_set - a_set)
+        if added:
+            return "raises", [f"{path}:{key}: added {', '.join(added)}"]
+        if removed:
+            reasons.append(f"{path}:{key}: removed {', '.join(removed)}")
+    if not reasons:
+        return "raises", [f"{path}: modified without removing tools or KQL"]
+    return "lowers", reasons
+
+
+def _classify_protected_paths(
+    path: str, before: dict[str, Any] | None, after: dict[str, Any] | None
+) -> tuple[str, list[str]]:
+    if not isinstance(before, dict) or not isinstance(after, dict):
+        return "raises", [f"{path}: added, removed, or invalid YAML"]
+    extra_keys = (set(before) | set(after)) - {"agents", "protected", "append_only"}
+    if extra_keys:
+        return "raises", [f"{path}: unknown key(s) {', '.join(sorted(extra_keys))}"]
+    reasons: list[str] = []
+    for key in ("agents", "protected", "append_only"):
+        b_set = set(before.get(key) or [])
+        a_set = set(after.get(key) or [])
+        removed = sorted(b_set - a_set)
+        added = sorted(a_set - b_set)
+        if removed:
+            return "raises", [f"{path}:{key}: removed {', '.join(removed)}"]
+        if added:
+            reasons.append(f"{path}:{key}: added {', '.join(added)}")
+    if not reasons:
+        return "raises", [f"{path}: modified without tightening protected paths"]
+    return "lowers", reasons
+
+
+def classify_change(
+    path: str,
+    before_text: str | None,
+    after_text: str | None,
+    policy: dict[str, Any],
+) -> dict[str, Any]:
+    """Classifies a single file change as `unprotected`, `lowers`, or `raises`."""
+    if not is_protected_path(path, policy):
+        return {"path": path, "protected": False, "effect": "unprotected", "reasons": []}
+
+    before_data = None
+    after_data = None
+    if path.endswith((".yml", ".yaml")):
+        try:
+            before_data = yaml.safe_load(before_text) if before_text is not None else None
+            after_data = yaml.safe_load(after_text) if after_text is not None else None
+        except yaml.YAMLError as err:
+            return {
+                "path": path,
+                "protected": True,
+                "effect": "raises",
+                "reasons": [f"{path}: invalid YAML ({err})"],
+            }
+
+    if path.startswith("catalog/actions/") and path.endswith(".yml"):
+        effect, reasons = _classify_action_manifest(path, before_data, after_data)
+    elif path == "governance/gateway.yml":
+        effect, reasons = _classify_gateway(path, before_data, after_data)
+    elif path.startswith("governance/allowlists/") and path.endswith(".yml"):
+        effect, reasons = _classify_allowlist(path, before_data, after_data)
+    elif path == "governance/protected-paths.yml":
+        effect, reasons = _classify_protected_paths(path, before_data, after_data)
+    else:
+        effect = "raises"
+        reasons = [f"{path}: protected path change counts as capability-raising"]
+
+    return {"path": path, "protected": True, "effect": effect, "reasons": reasons}
+
+
+def evaluate_timelock(
+    changes: list[dict[str, Any]],
+    *,
+    approvers: list[str],
+    last_commit_utc: datetime,
+    now_utc: datetime,
+    reviews: list[dict[str, Any]] | None = None,
+    pr_author: str = "",
+    pinned_issue_open: bool = True,
+) -> dict[str, Any]:
+    """Evaluates whether a PR passes solo-mode or team-mode guardrail requirements (governance.md section 2.6)."""
+    clean_approvers = [a.strip() for a in approvers if a and a.strip()]
+    mode = "solo" if len(clean_approvers) <= 1 else "team"
+    protected_changes = [c for c in changes if c.get("protected")]
+    raising_changes = [c for c in protected_changes if c.get("effect") == "raises"]
+    lowering_changes = [c for c in protected_changes if c.get("effect") == "lowers"]
+
+    if raising_changes:
+        overall = "raises"
+    elif lowering_changes:
+        overall = "lowers"
+    else:
+        overall = "none"
+
+    valid_approvers: set[str] = set()
+    ignored_reviews: list[str] = []
+    approver_set = {a.lower() for a in clean_approvers}
+    author_norm = pr_author.strip().lower()
+
+    for rev in reviews or []:
+        if (rev.get("state") or "").upper() != "APPROVED":
+            continue
+        user = rev.get("user") if isinstance(rev.get("user"), dict) else {}
+        login = (rev.get("login") or user.get("login") or "").strip()
+        user_type = rev.get("type") or user.get("type") or "User"
+        if not is_human_reviewer(login, user_type):
+            ignored_reviews.append(f"{login or 'unknown'} (non-human/AI review ignored)")
+            continue
+        if login.lower() == author_norm:
+            ignored_reviews.append(f"{login} (PR author cannot approve own PR)")
+            continue
+        if approver_set and login.lower() not in approver_set:
+            ignored_reviews.append(f"{login} (not in approvers team)")
+            continue
+        valid_approvers.add(login.lower())
+
+    elapsed = now_utc - last_commit_utc
+    elapsed_hours = round(elapsed.total_seconds() / 3600.0, 2)
+    remaining_hours = max(0.0, round(TIMELOCK_HOURS - (elapsed.total_seconds() / 3600.0), 2))
+    unlock_at = (last_commit_utc + timedelta(hours=TIMELOCK_HOURS)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    if overall == "none":
+        return {
+            "mode": mode,
+            "overallEffect": overall,
+            "passed": True,
+            "status": "pass",
+            "timelockRequired": False,
+            "requiredApprovals": 0,
+            "validApprovals": len(valid_approvers),
+            "ignoredReviews": ignored_reviews,
+            "elapsedHours": elapsed_hours,
+            "remainingHours": 0.0,
+            "unlockAtUtc": None,
+            "pinnedIssueOpen": pinned_issue_open,
+            "changes": changes,
+            "reason": "No protected paths changed.",
+        }
+
+    if mode == "solo":
+        if overall == "lowers":
+            return {
+                "mode": mode,
+                "overallEffect": overall,
+                "passed": True,
+                "status": "pass",
+                "timelockRequired": False,
+                "requiredApprovals": 0,
+                "validApprovals": len(valid_approvers),
+                "ignoredReviews": ignored_reviews,
+                "elapsedHours": elapsed_hours,
+                "remainingHours": 0.0,
+                "unlockAtUtc": None,
+                "pinnedIssueOpen": pinned_issue_open,
+                "changes": changes,
+                "reason": "Guardrail change strictly lowers capability in solo mode; no 72-hour time-lock required.",
+            }
+        timelock_met = elapsed >= timedelta(hours=TIMELOCK_HOURS)
+        passed = bool(timelock_met and pinned_issue_open)
+        if not pinned_issue_open:
+            reason = "Solo-mode capability-raising change requires an open pinned issue for the 72-hour window."
+        elif not timelock_met:
+            reason = f"72-hour solo-mode time-lock pending ({elapsed_hours}h elapsed, {remaining_hours}h remaining until {unlock_at})."
+        else:
+            reason = f"72-hour solo-mode time-lock satisfied ({elapsed_hours}h elapsed since last commit) and pinned issue is open."
+        return {
+            "mode": mode,
+            "overallEffect": overall,
+            "passed": passed,
+            "status": "pass" if passed else "pending",
+            "timelockRequired": True,
+            "requiredApprovals": 0,
+            "validApprovals": len(valid_approvers),
+            "ignoredReviews": ignored_reviews,
+            "elapsedHours": elapsed_hours,
+            "remainingHours": remaining_hours,
+            "unlockAtUtc": unlock_at,
+            "pinnedIssueOpen": pinned_issue_open,
+            "changes": changes,
+            "reason": reason,
+        }
+
+    required_approvals = 2 if overall == "raises" else 1
+    passed = len(valid_approvers) >= required_approvals
+    reason = (
+        f"Team-mode {overall} change requires {required_approvals} human code-owner approval(s); "
+        f"found {len(valid_approvers)}."
+    )
+    return {
+        "mode": mode,
+        "overallEffect": overall,
+        "passed": passed,
+        "status": "pass" if passed else "pending",
+        "timelockRequired": False,
+        "requiredApprovals": required_approvals,
+        "validApprovals": len(valid_approvers),
+        "ignoredReviews": ignored_reviews,
+        "elapsedHours": elapsed_hours,
+        "remainingHours": 0.0,
+        "unlockAtUtc": None,
+        "pinnedIssueOpen": pinned_issue_open,
+        "changes": changes,
+        "reason": reason,
+    }
+
+
+def format_summary_markdown(result: dict[str, Any]) -> str:
+    """Formats the deterministic guard summary posted on PRs touching protected paths."""
+    lines = [
+        "## `swarm-guard/timelock` deterministic summary",
+        "",
+        f"- **Mode:** `{result['mode']}`",
+        f"- **Capability effect:** `{result['overallEffect']}`",
+        f"- **Status:** `{result['status']}`",
+        f"- **Decision:** {result['reason']}",
+    ]
+    if result.get("timelockRequired"):
+        lines.append(f"- **Unlock at (UTC):** `{result['unlockAtUtc']}`")
+        lines.append(f"- **Pinned issue open:** `{result['pinnedIssueOpen']}`")
+    if result["mode"] == "team":
+        lines.append(
+            f"- **Human code-owner approvals:** `{result['validApprovals']}/{result['requiredApprovals']}`"
+        )
+    if result.get("ignoredReviews"):
+        lines.append(f"- **Ignored advisory/ineligible reviews:** {', '.join(result['ignoredReviews'])}")
+
+    protected = [c for c in result.get("changes", []) if c.get("protected")]
+    if protected:
+        lines.extend(["", "### Protected path changes", ""])
+        for change in protected:
+            details = "; ".join(change.get("reasons") or []) or change["effect"]
+            lines.append(f"- `{change['path']}` (`{change['effect']}`): {details}")
+    return "\n".join(lines) + "\n"
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) != 2:
+        print("Usage: python3 scripts/check_timelock.py INPUT_JSON")
+        return 2
+    root = Path(__file__).resolve().parents[1]
+    policy = yaml.safe_load((root / "governance/protected-paths.yml").read_text(encoding="utf-8")) or {}
+    payload = json.loads(Path(argv[1]).read_text(encoding="utf-8"))
+    classified = [
+        classify_change(item["path"], item.get("before"), item.get("after"), policy)
+        for item in payload.get("files", [])
+    ]
+    last_commit = datetime.fromisoformat(payload["lastCommitUtc"].replace("Z", "+00:00")).astimezone(timezone.utc)
+    now_utc = (
+        datetime.fromisoformat(payload["nowUtc"].replace("Z", "+00:00")).astimezone(timezone.utc)
+        if "nowUtc" in payload
+        else datetime.now(timezone.utc)
+    )
+    result = evaluate_timelock(
+        classified,
+        approvers=payload.get("approvers") or ["owner"],
+        last_commit_utc=last_commit,
+        now_utc=now_utc,
+        reviews=payload.get("reviews") or [],
+        pr_author=payload.get("prAuthor") or "",
+        pinned_issue_open=payload.get("pinnedIssueOpen", True),
+    )
+    print(format_summary_markdown(result), end="")
+    return 0 if result["passed"] else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

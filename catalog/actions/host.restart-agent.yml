@@ -1,0 +1,34 @@
+# Personal project, not for production, provided as is; not affiliated with the author's employer, Liquidware or Microsoft.
+id: host.restart-agent
+kind: host
+title: Restart the AVD agent service on an empty session host
+defaultWhyKind: fix
+complianceEffect: none
+runCommand:
+  script: catalog/actions/scripts/Restart-AvdAgent.ps1
+  sha256: a1fe2c42e8aa6b589455e108ca6935be63382ad0b5f232128d29b504713996c8
+  identity: approve-restart-agent
+  deleteRunCommandAfter: true
+preconditions:
+  notDrainedByOthers: true
+  restoreDrainStateFound: true
+  noActiveSessions: true
+  notPowerLocked: true
+  notScalingExcluded: true
+  deallocatedNotUnhealthy: true
+  hostPoolAvailableHostsAbove: demand-plus-one-or-min
+  oneHostPerPoolAtATime: true
+  serviceHealthClear: AVD
+limits:
+  perHour: 2
+  perHostPerDay: 1
+  circuitBreakerFailures24h: 3
+verify:
+  positiveEvidenceRequired: true
+  fields:
+    - sessionHost.status == Available
+    - sessionHost.lastHeartBeat > actionStartedUtc
+rollback:
+  restoreStateFound: true
+  fields:
+    - sessionHost.allowNewSession
