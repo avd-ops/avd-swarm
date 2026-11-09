@@ -407,6 +407,69 @@ class SpecialistRuntimeLoopTests(unittest.TestCase):
         self.assertTrue(by_id["i5"]["is_error"])
         self.assertIn("not available right now", by_id["i5"]["content"])
 
+    def test_default_scope_injects_subscription_and_relaxes_required_schema(self):
+        self.assertIn("always call the matching handoff tool immediately", specialists.COORDINATOR_SYSTEM)
+        allowed = specialists.allowed_tools_for(ROOT, "hosts")
+        guard = Shield(endpoint="", token=None, post=None, mode="observe")
+        rag = rag_tools.RagRuntime(root=ROOT, agent="hosts")
+        mcp_with_required_sub = [
+            {
+                "name": "virtualdesktop_hostpool_list",
+                "description": "List AVD host pools",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {"subscription": {"type": "string"}, "resource-group": {"type": "string"}},
+                    "required": ["subscription"],
+                },
+            }
+        ]
+        default_scope = {"subscription": "sub-contoso-01", "resourcegroup": "rg-avdswarm-spike"}
+        captured_calls = []
+
+        responses = [
+            {
+                "stop_reason": "tool_use",
+                "content": [
+                    {"type": "tool_use", "id": "h1", "name": "virtualdesktop_hostpool_list", "input": {}},
+                ],
+            },
+            {
+                "stop_reason": "end_turn",
+                "content": [
+                    {"type": "text", "text": "Found host pool hp-avdswarm-spike with 0 session hosts."},
+                ],
+            },
+        ]
+
+        async def ask_fn(system: str, tools: list, messages: list) -> dict:
+            self.assertIn("subscription=sub-contoso-01", system)
+            self.assertIn("resourceGroup=rg-avdswarm-spike", system)
+            hp_tool = next(t for t in tools if t["name"] == "virtualdesktop_hostpool_list")
+            self.assertNotIn("subscription", hp_tool["input_schema"].get("required", []))
+            return responses.pop(0)
+
+        async def call_mcp_tool(name: str, input_args: dict) -> tuple[str, bool]:
+            captured_calls.append((name, dict(input_args)))
+            return '{"hostPools": [{"name": "hp-avdswarm-spike", "sessionHosts": 0}]}', False
+
+        evidence: dict = {}
+        out = asyncio.run(
+            specialists.run_specialist_loop(
+                agent="hosts",
+                question="Which host pools do I have, and how many session hosts are in each?",
+                allowed_tools=allowed,
+                offered_mcp_tools=mcp_with_required_sub,
+                rag=rag,
+                guard=guard,
+                ask_fn=ask_fn,
+                call_mcp_tool=call_mcp_tool,
+                evidence=evidence,
+                default_scope=default_scope,
+            )
+        )
+        self.assertIn("hp-avdswarm-spike", out)
+        self.assertEqual(captured_calls, [("virtualdesktop_hostpool_list", {"subscription": "sub-contoso-01"})])
+
 
 if __name__ == "__main__":
     unittest.main()
