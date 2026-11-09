@@ -1,0 +1,100 @@
+{
+  "schema": "avd-cloud-environments/v1",
+  "contract": "C26",
+  "description": "Canonical cloud environment and capability map for Commercial (AzureCloud + Commercial M365) and Azure US Government / GCC High (AzureUSGovernment + M365 GCC High, non-DoD unclassified).",
+  "clouds": {
+    "commercial": {
+      "cloud": "commercial",
+      "azCloudName": "AzureCloud",
+      "azPsEnvironment": "AzureCloud",
+      "mgGraphEnvironment": "Global",
+      "pacCloudName": "Public",
+      "loginEndpoint": "https://login.microsoftonline.com",
+      "resourceManager": "https://management.azure.com",
+      "graphEndpoint": "https://graph.microsoft.com",
+      "logAnalyticsEndpoint": "https://api.loganalytics.io",
+      "storageEndpoint": "https://storage.azure.com",
+      "storageSuffix": "core.windows.net",
+      "queueEndpointSuffix": "queue.core.windows.net",
+      "keyVaultDns": "vault.azure.net",
+      "avdBrokerDomain": "wvd.microsoft.com",
+      "avdPrivateDnsZones": [
+        "privatelink.wvd.microsoft.com",
+        "privatelink-global.wvd.microsoft.com"
+      ],
+      "sharePointSuffix": ".sharepoint.com",
+      "bapEndpoint": "https://api.bap.microsoft.com",
+      "dataverseSuffix": ".crm.dynamics.com",
+      "supportedAvdRegions": [
+        "eastus",
+        "eastus2",
+        "westus2",
+        "westus3",
+        "centralus",
+        "northcentralus",
+        "southcentralus"
+      ],
+      "capabilities": {
+        "bastionDeveloperSku": true,
+        "bastionFallbackSku": "Developer",
+        "win365Supported": true,
+        "win365MicrosoftHostedNetwork": true,
+        "win365RequiresAnc": false,
+        "win365FrontlineSupported": true,
+        "teamsVdiOptimizationModes": [
+          "SlimCoreAndWebRtc",
+          "WebRtc"
+        ],
+        "teamsVdiDefaultMode": "SlimCoreAndWebRtc",
+        "powerPlatformVnetInjectionRegions": [
+          "eastus",
+          "westus2"
+        ],
+        "defaultComplianceProfile": "standard"
+      }
+    },
+    "usgov": {
+      "cloud": "usgov",
+      "azCloudName": "AzureUSGovernment",
+      "azPsEnvironment": "AzureUSGovernment",
+      "mgGraphEnvironment": "USGov",
+      "pacCloudName": "UsGovHigh",
+      "loginEndpoint": "https://login.microsoftonline.us",
+      "resourceManager": "https://management.usgovcloudapi.net",
+      "graphEndpoint": "https://graph.microsoft.us",
+      "logAnalyticsEndpoint": "https://api.loganalytics.us",
+      "storageEndpoint": "https://storage.azure.com",
+      "storageSuffix": "core.usgovcloudapi.net",
+      "queueEndpointSuffix": "queue.core.usgovcloudapi.net",
+      "keyVaultDns": "vaultcore.usgovcloudapi.net",
+      "avdBrokerDomain": "wvd.azure.us",
+      "avdPrivateDnsZones": [
+        "privatelink.wvd.azure.us",
+        "privatelink-global.wvd.azure.us"
+      ],
+      "sharePointSuffix": ".sharepoint.us",
+      "bapEndpoint": "https://gov.api.bap.microsoft.us",
+      "dataverseSuffix": ".crm9.dynamics.com",
+      "supportedAvdRegions": [
+        "usgovvirginia",
+        "usgovarizona",
+        "usgovtexas"
+      ],
+      "capabilities": {
+        "bastionDeveloperSku": false,
+        "bastionFallbackSku": "Basic",
+        "win365Supported": true,
+        "win365MicrosoftHostedNetwork": false,
+        "win365RequiresAnc": true,
+        "win365FrontlineSupported": false,
+        "teamsVdiOptimizationModes": [
+          "WebRtc",
+          "SlimCoreAndWebRtc"
+        ],
+        "teamsVdiDefaultMode": "WebRtc",
+        "powerPlatformVnetInjectionRegions": [],
+        "defaultComplianceProfile": "itar-cui"
+      }
+    }
+  }
+}

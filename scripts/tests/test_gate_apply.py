@@ -194,6 +194,104 @@ class GateApplyTests(unittest.TestCase):
             apply_out = json.loads(apply_proc.stdout)
             self.assertEqual(apply_out["status"], "applied-and-verified")
 
+    def test_usgov_c26_contract_and_cloud_boundary_gate(self):
+        c26 = json.loads((ROOT / "contracts/cloud-environments.json").read_text(encoding="utf-8"))
+        self.assertEqual(c26["schema"], "avd-cloud-environments/v1")
+        self.assertEqual(c26["contract"], "C26")
+        self.assertEqual(set(c26["clouds"]), {"commercial", "usgov"})
+        self.assertEqual(c26["clouds"]["usgov"]["resourceManager"], "https://management.usgovcloudapi.net")
+        self.assertEqual(c26["clouds"]["usgov"]["graphEndpoint"], "https://graph.microsoft.us")
+        self.assertEqual(c26["clouds"]["usgov"]["loginEndpoint"], "https://login.microsoftonline.us")
+
+        # Valid usgov plan with matching C18 why.cloud, live state cloud, and runner OIDC environment
+        usgov_live = valid_live_state()
+        usgov_live["cloud"] = "usgov"
+        usgov_live["azureEnvironment"] = "AzureUSGovernment"
+        usgov_live["graphEnvironment"] = "USGov"
+        usgov_plan = valid_plan(usgov_live)
+        usgov_plan["cloud"] = "usgov"
+        usgov_plan["why"]["cloud"] = "usgov"
+        checked = gate_apply.check_plan(usgov_plan)
+        self.assertEqual(checked["status"], "ready", checked)
+        self.assertNotEqual(checked["planHash"], gate_apply.check_plan(valid_plan())["planHash"])
+
+        # Mismatched C18 why.cloud fails closed
+        mismatch_why = valid_plan(usgov_live)
+        mismatch_why["cloud"] = "usgov"
+        mismatch_why["why"]["cloud"] = "commercial"
+        self.assertEqual(gate_apply.check_plan(mismatch_why)["status"], "refused")
+
+        # Mismatched live estate cloud fails closed
+        commercial_live = valid_live_state()
+        commercial_live["cloud"] = "commercial"
+        res = gate_apply.apply_approved_plan(
+            plan=usgov_plan,
+            approved_hash=checked["planHash"],
+            read_flag=lambda: "run",
+            read_live_state=lambda: commercial_live,
+            apply_action=lambda _p, _s: {"drained": True},
+            verify_action=lambda _p, _s, _e: True,
+        )
+        self.assertEqual(res["status"], "refused")
+        self.assertTrue(any("does not match approved C9 plan cloud" in r for r in res["reasons"]))
+
+        # Mismatched runner OIDC Azure/Graph environment fails closed before any action
+        bad_oidc = gate_apply.check_plan(
+            usgov_plan,
+            runner_env={
+                "azureEnvironment": "AzureCloud",
+                "graphEnvironment": "Global",
+                "armEndpoint": "https://management.azure.com",
+                "graphEndpoint": "https://graph.microsoft.com",
+            },
+        )
+        self.assertEqual(bad_oidc["status"], "refused")
+        self.assertGreaterEqual(bad_oidc["failedCount"], 4)
+
+        # Unsupported Windows 365 capabilities in usgov (MHN and Frontline) fail closed
+        w365_plan = valid_plan(usgov_live)
+        w365_plan["cloud"] = "usgov"
+        w365_plan["why"]["cloud"] = "usgov"
+        w365_plan["targetSurface"] = "win365"
+        w365_plan["networkConnectionType"] = "mhn"
+        w365_plan["provisioningMode"] = "frontline"
+        w365_check = gate_apply.check_plan(w365_plan)
+        self.assertEqual(w365_check["status"], "refused")
+        self.assertTrue(any("MHN" in r for r in w365_check["reasons"]))
+        self.assertTrue(any("Frontline" in r for r in w365_check["reasons"]))
+
+    def test_usgov_readonly_agent_and_runner_endpoint_routing(self):
+        sys.path.insert(0, str(ROOT / "spikes/s1a/agent_api"))
+        sys.path.insert(0, str(ROOT / "gateway"))
+        sys.path.insert(0, str(ROOT / "runner"))
+        import runbook_endpoint  # noqa: E402
+        from avd_gateway import flag as gw_flag  # noqa: E402
+        from avd_runner import alert as runner_alert  # noqa: E402
+
+        gov = runbook_endpoint.resolve_cloud_endpoints("usgov", "contoso.onmicrosoft.us")
+        self.assertEqual(gov["resourceManager"], "https://management.usgovcloudapi.net")
+        self.assertEqual(gov["graphEndpoint"], "https://graph.microsoft.us")
+        self.assertEqual(gov["loginEndpoint"], "https://login.microsoftonline.us")
+        self.assertEqual(gov["logAnalyticsEndpoint"], "https://api.loganalytics.us")
+        self.assertEqual(gov["issuer"], "https://login.microsoftonline.us/contoso.onmicrosoft.us/v2.0")
+        with self.assertRaises(ValueError):
+            runbook_endpoint.resolve_cloud_endpoints("dod")
+
+        urls = []
+        reader = gw_flag.arm_flag_reader(
+            lambda u: (urls.append(u) or {"tags": {"avd-swarm-switch": "run"}}),
+            "sub-1",
+            "rg-1",
+            "avd-swarm-switch",
+            cloud="usgov",
+        )
+        self.assertEqual(reader(), "run")
+        self.assertTrue(urls[0].startswith("https://management.usgovcloudapi.net/subscriptions/sub-1/"))
+
+        q = runner_alert.Queue("govacct", "alerts", cloud="usgov")
+        self.assertEqual(q.base, "https://govacct.queue.core.usgovcloudapi.net/alerts/messages")
+
 
 if __name__ == "__main__":
     unittest.main()
+

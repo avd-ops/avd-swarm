@@ -72,15 +72,28 @@ def arm_get_json(url: str) -> dict:
     return json.loads(az("rest", "--method", "get", "--url", url))
 
 
-def flag_position(subscription: str, resource_group: str, tag: str, refuse_at: list[str]) -> tuple[int, str]:
-    return flag_position_with(arm_get_json, subscription, resource_group, tag, refuse_at)
+def flag_position(
+    subscription: str,
+    resource_group: str,
+    tag: str,
+    refuse_at: list[str],
+    cloud: str = "commercial",
+) -> tuple[int, str]:
+    return flag_position_with(arm_get_json, subscription, resource_group, tag, refuse_at, cloud=cloud)
 
 
-def flag_position_with(get_json, subscription: str, resource_group: str, tag: str, refuse_at: list[str]) -> tuple[int, str]:
+def flag_position_with(
+    get_json,
+    subscription: str,
+    resource_group: str,
+    tag: str,
+    refuse_at: list[str],
+    cloud: str = "commercial",
+) -> tuple[int, str]:
     """(0, position) when agents may run, (REFUSED, why) at a refusing position, (UNREADABLE, why) otherwise.
     get_json signs in as the caller: the Azure CLI here, the managed identity in the alert job."""
-    read = flags.arm_flag_reader(get_json, subscription, resource_group, tag)
     try:
+        read = flags.arm_flag_reader(get_json, subscription, resource_group, tag, cloud=cloud)
         position = read()
     except Exception as error:
         return UNREADABLE, f"kill switch flag unreadable, refusing: {type(error).__name__}: {error}"[:300]
@@ -153,6 +166,7 @@ def main(argv: list[str] | None = None) -> int:
     f.add_argument("--subscription", required=True)
     f.add_argument("--resource-group", required=True)
     f.add_argument("--tag", default=TAG_DEFAULT)
+    f.add_argument("--cloud", default=os.environ.get("CLOUD_ENVIRONMENT", "commercial"))
     t = sub.add_parser("title")
     t.add_argument("--id", required=True)
     r = sub.add_parser("run")
@@ -174,7 +188,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "flag":
         import yaml
         config = yaml.safe_load((ROOT / "governance/gateway.yml").read_text(encoding="utf-8"))
-        code, detail = flag_position(args.subscription, args.resource_group, args.tag, list(flags.refusals(config)))
+        code, detail = flag_position(
+            args.subscription,
+            args.resource_group,
+            args.tag,
+            list(flags.refusals(config)),
+            cloud=args.cloud,
+        )
         print({0: f"switch: {detail}", REFUSED: f"skipped: {detail}"}.get(code, f"::error::{detail}"))
         return code
     if args.command == "alert-job":

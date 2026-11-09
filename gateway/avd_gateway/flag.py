@@ -13,11 +13,22 @@ from typing import Callable
 from .prices import SpendRefused
 
 POSITIONS = ("run", "halt-actions", "halt-agents", "halt-all")
-ARM = "https://management.azure.com"
-ARM_SCOPE = "https://management.azure.com/.default"
+CLOUD_ARM = {
+    "commercial": "https://management.azure.com",
+    "usgov": "https://management.usgovcloudapi.net",
+}
+ARM = CLOUD_ARM["commercial"]
+ARM_SCOPE = f"{ARM}/.default"
 RG_API_VERSION = "2021-04-01"
 
 FlagReader = Callable[[], str]  # returns the position; raises when it can't read it
+
+
+def arm_endpoint(cloud: str = "commercial") -> str:
+    """Returns the ARM endpoint for 'commercial' or 'usgov', failing closed on unknown cloud profiles."""
+    if not isinstance(cloud, str) or cloud not in CLOUD_ARM:
+        raise ValueError(f"cloud {cloud!r} isn't in {tuple(CLOUD_ARM)}")
+    return CLOUD_ARM[cloud]
 
 
 def position_from_tags(tags: dict | None, tag: str) -> str:
@@ -28,10 +39,17 @@ def position_from_tags(tags: dict | None, tag: str) -> str:
     return value
 
 
-def arm_flag_reader(get_json: Callable[[str], dict], subscription: str, resource_group: str, tag: str) -> FlagReader:
+def arm_flag_reader(
+    get_json: Callable[[str], dict],
+    subscription: str,
+    resource_group: str,
+    tag: str,
+    cloud: str = "commercial",
+) -> FlagReader:
     """A reader that GETs the resource group through ARM (Reader on that group is enough).
     get_json(url) signs in with the caller's managed identity and raises on any non-2xx."""
-    url = (f"{ARM}/subscriptions/{subscription}/resourcegroups/{resource_group}"
+    base = arm_endpoint(cloud)
+    url = (f"{base}/subscriptions/{subscription}/resourcegroups/{resource_group}"
            f"?api-version={RG_API_VERSION}")
     return lambda: position_from_tags(get_json(url).get("tags"), tag)
 

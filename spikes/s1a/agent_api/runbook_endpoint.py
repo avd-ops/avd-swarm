@@ -81,6 +81,45 @@ def allowed_buddy_caller(claims: dict, operator_oid: str, buddy_caller_oid: str 
     return False
 
 
+CLOUD_ENDPOINTS: dict[str, dict[str, str]] = {
+    "commercial": {
+        "cloud": "commercial",
+        "azCloudName": "AzureCloud",
+        "mgGraphEnvironment": "Global",
+        "loginEndpoint": "https://login.microsoftonline.com",
+        "resourceManager": "https://management.azure.com",
+        "graphEndpoint": "https://graph.microsoft.com",
+        "logAnalyticsEndpoint": "https://api.loganalytics.io",
+    },
+    "usgov": {
+        "cloud": "usgov",
+        "azCloudName": "AzureUSGovernment",
+        "mgGraphEnvironment": "USGov",
+        "loginEndpoint": "https://login.microsoftonline.us",
+        "resourceManager": "https://management.usgovcloudapi.net",
+        "graphEndpoint": "https://graph.microsoft.us",
+        "logAnalyticsEndpoint": "https://api.loganalytics.us",
+    },
+}
+
+
+def resolve_cloud_endpoints(cloud: str = "commercial", tenant_id: str = "") -> dict[str, str]:
+    """Resolves C26 cloud endpoints for agent_api ('commercial' default, 'usgov' for Azure US Gov / GCC High).
+    Fails closed on any unknown cloud profile."""
+    if not isinstance(cloud, str) or cloud not in CLOUD_ENDPOINTS:
+        raise ValueError(f"CLOUD_ENVIRONMENT must be one of {tuple(CLOUD_ENDPOINTS)}, not {cloud!r}")
+    base = dict(CLOUD_ENDPOINTS[cloud])
+    if tenant_id:
+        base["authority"] = f"{base['loginEndpoint']}/{tenant_id}"
+        base["issuer"] = f"{base['loginEndpoint']}/{tenant_id}/v2.0"
+        base["jwksUri"] = f"{base['loginEndpoint']}/{tenant_id}/discovery/v2.0/keys"
+        base["tokenUri"] = f"{base['loginEndpoint']}/{tenant_id}/oauth2/v2.0/token"
+    base["armScope"] = f"{base['resourceManager']}/.default"
+    base["graphScope"] = f"{base['graphEndpoint']}/.default"
+    base["logAnalyticsScope"] = f"{base['logAnalyticsEndpoint']}/.default"
+    return base
+
+
 def catalog_queries(root: Path) -> dict[str, str]:
     """The KQL catalog's query text by ID."""
     import yaml

@@ -43,8 +43,25 @@ ALERTS_API = "2019-05-05-preview"
 QUEUE_API = "2021-12-02"
 MAX_DEQUEUE = 5
 MAX_RUNBOOKS = 4  # per alert, so one message's runs fit the job's replica timeout (templates/alert-path)
-ARM = "https://management.azure.com"
+CLOUD_ENDPOINTS = {
+    "commercial": {
+        "arm": "https://management.azure.com",
+        "queueSuffix": "queue.core.windows.net",
+    },
+    "usgov": {
+        "arm": "https://management.usgovcloudapi.net",
+        "queueSuffix": "queue.core.usgovcloudapi.net",
+    },
+}
+ARM = CLOUD_ENDPOINTS["commercial"]["arm"]
 STORAGE = "https://storage.azure.com"
+
+
+def resolve_cloud_endpoints(cloud: str = "commercial") -> dict[str, str]:
+    """Resolves the ARM and Queue Storage suffixes for 'commercial' or 'usgov', failing closed on unknown values."""
+    if not isinstance(cloud, str) or cloud not in CLOUD_ENDPOINTS:
+        raise ValueError(f"cloud {cloud!r} isn't in {tuple(CLOUD_ENDPOINTS)}")
+    return CLOUD_ENDPOINTS[cloud]
 
 
 class BadMessage(ValueError):
@@ -70,9 +87,10 @@ class Alert:
     condition: str  # Fired or Resolved
 
 
-def read_alert(get_json: Callable[[str], dict], alert: str) -> Alert:
+def read_alert(get_json: Callable[[str], dict], alert: str, cloud: str = "commercial") -> Alert:
     """Reads the alert back from Azure Monitor (Alerts Management), never from the message."""
-    body = get_json(f"{ARM}{alert}?api-version={ALERTS_API}")
+    arm_base = resolve_cloud_endpoints(cloud)["arm"]
+    body = get_json(f"{arm_base}{alert}?api-version={ALERTS_API}")
     essentials = (body.get("properties") or {}).get("essentials") or {}
     rule, condition = essentials.get("alertRule"), essentials.get("monitorCondition")
     if not isinstance(rule, str) or not rule.strip() or not isinstance(condition, str):
@@ -88,13 +106,13 @@ def matching(runbooks: dict[str, Runbook], rule: str) -> list[str]:
 
 
 def handle(message_text: str, get_json: Callable[[str], dict], runbooks: dict[str, Runbook],
-           run_one: Callable[[str], dict]) -> list[str]:
+           run_one: Callable[[str], dict], cloud: str = "commercial") -> list[str]:
     """One message: log lines with no names. run_one(runbook_id) asks the agent API with startedBy alert; each
     finding's summary (report.summary: ID, outcome, fact values) goes to the log, and the agent API keeps the
     finding itself for the plan store and avd-buddy. The alert path opens no GitHub issue: it holds no GitHub
     credential, by design (P-3)."""
     try:
-        alert = read_alert(get_json, alert_id(message_text))
+        alert = read_alert(get_json, alert_id(message_text), cloud=cloud)
     except BadMessage:
         return ["dropped a message that isn't an alert ID"]
     except Exception as error:
@@ -138,8 +156,9 @@ def msi_token(resource: str, env=os.environ, send=http, now=time.time) -> str:
     return raw["access_token"]
 
 
-def arm_get_json(url: str, token=msi_token, send=http) -> dict:
-    return json.loads(send("GET", url, {"Authorization": f"Bearer {token(ARM)}"}))
+def arm_get_json(url: str, token=msi_token, send=http, cloud: str = "commercial") -> dict:
+    arm_base = resolve_cloud_endpoints(cloud)["arm"]
+    return json.loads(send("GET", url, {"Authorization": f"Bearer {token(arm_base)}"}))
 
 
 @dataclass
@@ -151,8 +170,9 @@ class Message:
 
 
 class Queue:
-    def __init__(self, account: str, name: str, token=msi_token, send=http):
-        self.base = f"https://{account}.queue.core.windows.net/{name}/messages"
+    def __init__(self, account: str, name: str, token=msi_token, send=http, cloud: str = "commercial"):
+        suffix = resolve_cloud_endpoints(cloud)["queueSuffix"]
+        self.base = f"https://{account}.{suffix}/{name}/messages"
         self.token, self.send = token, send
 
     def _headers(self) -> dict:
@@ -180,9 +200,10 @@ def main(env=os.environ, out=print) -> int:
     from .cli import (ROOT, TIMEOUT_SECONDS, UNREADABLE, checked_finding, flag_position_with, flags,
                       post_runbook, unreachable)
 
+    cloud = env.get("CLOUD_ENVIRONMENT", "commercial")
     runbooks = load_all(ROOT)
     config = yaml.safe_load((ROOT / "governance/gateway.yml").read_text(encoding="utf-8"))
-    queue = Queue(env["ALERT_QUEUE_ACCOUNT"], env["ALERT_QUEUE_NAME"])
+    queue = Queue(env["ALERT_QUEUE_ACCOUNT"], env["ALERT_QUEUE_NAME"], cloud=cloud)
     # Hidden for as long as the replica may run: a message can't be handed out twice while it is handled.
     visibility = MAX_RUNBOOKS * TIMEOUT_SECONDS + 300
     try:
@@ -193,8 +214,14 @@ def main(env=os.environ, out=print) -> int:
     if message is None:
         out("no message")
         return 0
-    code, detail = flag_position_with(arm_get_json, env["AZURE_SUBSCRIPTION_ID"], env["AVD_SWARM_RESOURCE_GROUP"],
-                                      env.get("AVD_SWARM_SWITCH_TAG", "avd-swarm-switch"), list(flags.refusals(config)))
+    code, detail = flag_position_with(
+        lambda url: arm_get_json(url, cloud=cloud),
+        env["AZURE_SUBSCRIPTION_ID"],
+        env["AVD_SWARM_RESOURCE_GROUP"],
+        env.get("AVD_SWARM_SWITCH_TAG", "avd-swarm-switch"),
+        list(flags.refusals(config)),
+        cloud=cloud,
+    )
     if code == UNREADABLE and message.dequeue_count <= MAX_DEQUEUE:
         # Leave it hidden, not deleted: it comes back after the visibility timeout, at most MAX_DEQUEUE times,
         # so a broken flag read can't start an execution every polling interval.
@@ -214,7 +241,7 @@ def main(env=os.environ, out=print) -> int:
     elif code != 0:
         lines = [f"dropped: {detail}"]
     else:
-        lines = handle(message.text, arm_get_json, runbooks, run_one)
+        lines = handle(message.text, lambda url: arm_get_json(url, cloud=cloud), runbooks, run_one, cloud=cloud)
     for line in lines:
         out(line)
     try:

@@ -21,7 +21,14 @@ import hashlib
 import json
 from typing import Callable
 
-from .evidence import data_loss_guard_refusals, refusals as evidence_refusals
+from .evidence import (
+    CLOUD_ENVIRONMENTS,
+    CLOUDS,
+    cloud_refusals,
+    data_loss_guard_refusals,
+    refusals as evidence_refusals,
+    resolve_cloud_environment,
+)
 
 WHY_KINDS = ("build", "configure", "expand", "contract", "fix", "recover", "retire")
 KILL_SWITCH_REFUSE_ACTIONS = ("halt-actions", "halt-agents", "halt-all")
@@ -124,9 +131,12 @@ def canonical_plan_hash(plan: dict, live_state: dict | None = None) -> str:
     """Computes the SHA-256 digest over the security-critical plan fields and resolved target state
     (spec section 5 steps 3 and 7)."""
     state = live_state if isinstance(live_state, dict) else (plan.get("preconditionState") if isinstance(plan.get("preconditionState"), dict) else {})
+    why = plan.get("why") if isinstance(plan.get("why"), dict) else {}
+    resolved_cloud = str(state.get("cloud") or why.get("cloud") or plan.get("cloud") or "commercial")
     material = {
         "planId": str(plan.get("planId", "")),
         "action": str(plan.get("action", "")),
+        "cloud": resolved_cloud,
         "targetSurface": plan.get("targetSurface", "avd"),
         "desktopDevOpsAction": plan.get("desktopDevOpsAction"),
         "targetDigest": str(state.get("targetDigest") or plan.get("targetDigest") or ""),
@@ -140,7 +150,7 @@ def canonical_plan_hash(plan: dict, live_state: dict | None = None) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def check_plan(plan: object, live_state: dict | None = None) -> dict:
+def check_plan(plan: object, live_state: dict | None = None, runner_env: dict | None = None) -> dict:
     """Runs all gate rules on a plan and returns a redacted summary dict (never target names or IDs)."""
     if not isinstance(plan, dict):
         return {
@@ -159,7 +169,7 @@ def check_plan(plan: object, live_state: dict | None = None) -> dict:
     rule_groups = [
         evidence_refusals(plan),
         data_loss_guard_refusals(plan),
-        why_refusals(plan),
+        [*why_refusals(plan), *cloud_refusals(plan, state, runner_env=runner_env)],
         host_precondition_refusals(action, state, plan_id=plan_id),
     ]
     reasons = [r for group in rule_groups for r in group]
@@ -184,6 +194,7 @@ def apply_approved_plan(
     read_live_state: Callable[[], dict],
     apply_action: Callable[[dict, dict], dict],
     verify_action: Callable[[dict, dict, dict], bool],
+    runner_env: dict | None = None,
 ) -> dict:
     """Executes an approved plan inside the `approve` environment after re-reading the kill switch and live state
     (spec section 5 step 7, section 5a, section 6d). Fails closed on any drift or missing verification."""
@@ -228,7 +239,7 @@ def apply_approved_plan(
             "reasons": ["live-reread: failed to read live target state"],
         }
 
-    gate_check = check_plan(plan, live_state=live_state)
+    gate_check = check_plan(plan, live_state=live_state, runner_env=runner_env)
     if gate_check["failedCount"] > 0:
         return {
             "planId": plan_id,
