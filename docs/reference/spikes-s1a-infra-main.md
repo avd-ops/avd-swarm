@@ -14,9 +14,16 @@
 | `mcpAppId` | string |  |  |
 | `blueprintAppId` | string | `''` | anthropic only: client ID of the agent identity blueprint (Start-Spike.ps1 creates it). |
 | `operatorObjectId` | string | `''` | anthropic only: object ID of the person running the spike; the only caller the agent service accepts. |
-| `agentCodeUrl` | string | `''` | anthropic only: base URL of agent_api/ at the pushed commit (raw.githubusercontent.com); the container installs and runs it. |
+| `buddyCallerObjectId` | string | `''` |  |
+| `repo` | string | `'avd-ops/avd-swarm'` | anthropic only: the repository (owner/name) the agents app runs from. |
+| `repoCommit` | string | `''` | anthropic only: the pushed commit the agents app runs (its tarball: agent_api, the gateway, the runner, runbooks, the KQL catalog, model prices). |
+| `brainRepo` | string | `'avd-ops/avd-second-brain'` | anthropic only: the second-brain repository (owner/name) bundled for the in-process deterministic Concierge when brainCommit is set. |
+| `brainCommit` | string | `''` | anthropic only: optional pushed commit of avd-second-brain to unpack into /tmp/brain so concierge_search and concierge_facts run in-process with zero extra containers. |
+| `scaleToZero` | bool | `false` | anthropic only: scale agentsApp to zero when idle (minReplicas: 0) for the <$1/month standing sandbox RAG mode. |
 | `tokenSpendCapUsd` | string | `'15'` |  |
 | `claudeAudienceAppId` | string | `''` | anthropic only: client ID of the app registration Entra issues Claude API tokens for (workload identity federation, Start-Spike.ps1 creates it). |
+| `promptShields` | bool | `false` | anthropic only: scan the question and every tool result with Prompt Shields (gateway/avd_gateway/shield.py, red team R26). Off by default; the free tier allows one Content Safety F0 resource per subscription. |
+| `promptShieldsMode` | string | `'observe'` | anthropic only: observe counts hits and passes text through; enforce withholds flagged documents. |
 
 ## Outputs
 
@@ -24,8 +31,12 @@
 |---|---|---|
 | `foundryName` | string |  |
 | `projectEndpoint` | string |  |
+| `azureOpenAiEndpoint` | string |  |
+| `managedEnvironmentId` | string |  |
 | `agentsUrl` | string |  |
 | `agentsAppName` | string |  |
 | `agentsIdentityPrincipalId` | string |  |
 | `mcpUrl` | string |  |
 | `mcpAppId` | string |  |
+| `logWorkspaceId` | string |  |
+| `promptShields` | string |  |
