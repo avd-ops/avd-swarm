@@ -1119,7 +1119,12 @@
 
     const params = new URLSearchParams(window.location.search);
     const host = (window.location.hostname || "").toLowerCase();
-    if (params.get("sim") === "1" || params.get("demo") === "1" || host.endsWith(".github.io")) {
+    if (
+      params.get("sim") === "1" ||
+      params.get("demo") === "1" ||
+      host.endsWith(".github.io") ||
+      host === "buddy.avd-ops.dev"
+    ) {
       enableSimMode();
       return;
     }
