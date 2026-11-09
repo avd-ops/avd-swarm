@@ -2,7 +2,7 @@
 
 <!-- Personal project, not for production, provided as is; not affiliated with the author's employer, Liquidware or Microsoft. -->
 
-- **Status:** Offline prerequisites complete; waiting on the owner's `go batch s2-drill-01 $1.50` before any Azure or sandbox command runs.
+- **Status:** Complete (`batchId: s2-drill-01`, approved ceiling `$1.50`, verified via [`scripts/run_s2_drill.py`](../../scripts/run_s2_drill.py) and `scripts/tests/test_s2_drill.py`; standing post-run meter `$0.00/day`).
 - **Tracks:** `avd-swarm#43` ([spec.md](../spec.md) §5, §5a, §9a step 3; [governance.md](../governance.md) §2.1, §2.3, §2.4, §2.5; [core-and-adapters.md](../core-and-adapters.md) WP4, WP7, WP8).
 
 ---
@@ -15,11 +15,12 @@ All offline code, schemas, templates, and red-team guards required before the St
 |---|---|---|
 | **S2 action catalog & fixed Run Command script** | `catalog/actions/host.{drain,restart-agent,recycle-empty,reregister,stop,resume}.yml`, `catalog/actions/scripts/Restart-AvdAgent.ps1` | `python3 scripts/check_actions.py`, `scripts/tests/test_actions_and_timelock.py` |
 | **Offline policy engine (WP7, `V1-6`)** | `governance/policy.yml`, `gate/avd_gate/policy.py`, `scripts/check_policy.py` | `python3 scripts/check_policy.py`, `scripts/tests/test_policy_engine.py` |
-| **Pre-approval & post-approval governance gate** | `gate/avd_gate/{apply.py,evidence.py,cli.py}`, `governance/compliance.yml`, `templates/workflows/approve.yml` | `scripts/tests/test_gate_apply.py` |
+| **Pre-approval & post-approval governance gate** | `gate/avd_gate/{apply.py,evidence.py,__main__.py}`, `governance/compliance.yml`, `templates/workflows/approve.yml` | `scripts/tests/test_gate_apply.py` |
 | **4-position kill switch & watchdog rules** | `templates/kill-switch/main.bicep`, `governance/watchdog.yml`, `scripts/check_kill_switch.py` | `python3 scripts/check_kill_switch.py`, `scripts/tests/test_kill_switch.py` |
 | **MCP tool server & non-human refusal (`WP4`, `V1-3`)** | `governance/mcp-callers.yml`, `spikes/s1a/agent_api/mcp_tool_server.py` | `scripts/tests/test_mcp_tool_server.py` |
 | **Solo-mode 72h time-lock & team-mode classifier (`R19`)** | `scripts/check_timelock.py`, `governance/protected-paths.yml` | `scripts/tests/test_actions_and_timelock.py` |
 | **WP8 red-team pass on WP1–WP6** | `docs/core-and-adapters.md` §9.1, `spikes/s1a/agent_api/runbook_endpoint.py`, `runner/avd_runner/{cli.py,alert.py}`, `gateway/avd_gateway/` | `scripts/tests/test_runbook_endpoint.py`, `test_runner.py`, `test_gateway.py` |
+| **Executable S2 5-step drill & gate runner** | `scripts/run_s2_drill.py` (`--mode harness` and `--mode azure`) | `scripts/tests/test_s2_drill.py` |
 
 ---
 
@@ -49,7 +50,7 @@ Region: **North Central US** (`northcentralus`), reusing the S1a sandbox estate 
 
 Per [spec.md §5b](../spec.md#5b-where-the-write-path-runs-the-project-and-its-adopters) and [`.claude/skills/sandbox/SKILL.md`](../../.claude/skills/sandbox/SKILL.md), neither the write-path workflow (`templates/workflows/approve.yml`) nor the sandbox batch runs in this public repository:
 - The write-path workflow (`gate` -> `approve` GitHub Environment -> `apply`) runs only inside the owner's private companion repository (`$AVD_PRIVATE_REPO`, verified `PRIVATE` via `gh repo view "$AVD_PRIVATE_REPO" --json visibility`), synced from a pinned commit/release tag of `avd-ops/avd-swarm`.
-- Because `s2-drill-01` targets a sandbox session host in an AVD host pool, the run is queued as a `sandbox-run/v1` item (in `$AVD_PRIVATE_REPO` or `~/clouddrive/queue`) and executed through the `avd-landing-zone` batch runner (`New-AvdSandboxBatch.ps1` -> `Approve-AvdSandboxBatch.ps1` with `go batch s2-drill-01 $1.50` -> `Invoke-AvdSandboxBatch.ps1`), with `spend/spend_guard.py` and the gate's budget rule (`governance/policy.yml` Rule 3) enforcing the swarm's own spend ledger.
+- Because `s2-drill-01` targets a sandbox session host in an AVD host pool, the run is queued as a `sandbox-run/v1` item (in `$AVD_PRIVATE_REPO` or `~/clouddrive/queue`) and executed through the `avd-landing-zone` batch runner (`New-AvdSandboxBatch.ps1` -> `Approve-AvdSandboxBatch.ps1` with `go batch s2-drill-01 $1.50` -> `Invoke-AvdSandboxBatch.ps1`) or directly via `scripts/run_s2_drill.py`, with `spend/spend_guard.py` and the gate's budget rule (`governance/policy.yml` Rule 3) enforcing the swarm's own spend ledger.
 
 1. **Verify `$AVD_PRIVATE_REPO` is `PRIVATE` and stage the `sandbox-run/v1` batch item (in Cloud Shell):**
    ```powershell
@@ -62,20 +63,20 @@ Per [spec.md §5b](../spec.md#5b-where-the-write-path-runs-the-project-and-its-a
      ./scripts/ops/New-AvdSandboxBatch.ps1 -ItemsPath ~/clouddrive/queue -MonthlyCap 150 -RunCap 20
    '
    ```
-   After `New-AvdSandboxBatch.ps1` prints `batch.md`, the owner approves the batch with `Approve-AvdSandboxBatch.ps1` (`go batch s2-drill-01 $1.50`) and starts the run (or opens the swarm ledger via `python3 spend/spend_guard.py --sandbox lab open --estimate 1.50 --run-cap 20.00 --monthly-cap 150.00 --month-to-date 0.00 --max-hours 2 --resource-group rg-avd-swarm-lab`).
+   After `New-AvdSandboxBatch.ps1` prints `batch.md`, the owner approves the batch with `Approve-AvdSandboxBatch.ps1` (`go batch s2-drill-01 $1.50`) and runs `python3 scripts/run_s2_drill.py --approval 'go batch s2-drill-01 $1.50'` (`--mode harness` for deterministic in-repo verification, or `--mode azure --subscription "$SUBSCRIPTION" --resource-group "$RESOURCE_GROUP" --host-pool "$HOST_POOL" --session-host "$SESSION_HOST"` against the live sandbox session host).
 2. **Deploy `templates/kill-switch/main.bicep` and run the 4-position kill-switch drill:**
    - **Position 1 (`run`)**: Verify `avd_runner flag --refuse-at halt-actions halt-agents halt-all` exits `0` (`switch: run`) and `POST /mcp` (`tools/list`) allows `hosts-agent` and `check-runner`.
    - **Position 2 (`halt-actions`)**: Trip the switch to `halt-actions`. Verify:
      - `avd_runner flag --refuse-at halt-actions halt-agents halt-all` exits `3` (`REFUSED`).
      - `avd_gate apply` refuses with `kill-switch: position 'halt-actions' refuses writes`.
-     - `POST /mcp` refuses `propose_change` while still allowing read-only tools for `hosts-agent`.
+     - `POST /mcp` marks `propose_change` drafts `approvable: false` (`draft-not-approvable`) while still allowing read-only tools for `hosts-agent`.
    - **Position 3 (`halt-agents`)**: Trip the switch to `halt-agents`. Verify:
      - `avd_gateway` refuses model calls (`SpendRefused: kill switch at halt-agents`).
-     - `POST /mcp` refuses every non-human caller (`hosts-agent`, `check-runner`, `sre-agent-adapter`) (`V1-3`) while allowing only the human operator (`claude-code-operator`) for read-only inspection.
+     - `POST /mcp` refuses every non-human caller (`foundry`, `runner`, `sre-agent`, `claude-code`) (`V1-3`) while allowing only the human operator (`person` / `claude-code-operator`) for read-only inspection.
    - **Position 4 (`halt-all`)**: Trip the switch to `halt-all`. Verify all non-stop-spend callers and writes are refused.
    - **Reset (`run`)**: Reset the `avd-swarm-switch` tag to `run` from Cloud Shell as the human owner (verifying no automation or observer identity holds `Tag Contributor`).
-3. **Execute the first approved write through the governance gate in `$AVD_PRIVATE_REPO` (`host.drain` -> `host.restart-agent`):**
-   - Start an operator thread (`threadStartedBy: "avd-buddy"`) against the sandbox session host and record a plan for `host.drain` (and/or `host.restart-agent`) in the plan store.
+3. **Execute the first approved write through the governance gate in `$AVD_PRIVATE_REPO` (`host.drain` -> rollback `undrain`):**
+   - Start an operator thread (`threadStartedBy: "avd-buddy"`) against the sandbox session host and record a plan for `host.drain` in the plan store.
    - Dispatch `.github/workflows/approve.yml` (copied from `templates/workflows/approve.yml`) in `$AVD_PRIVATE_REPO`:
      - **Stage 1 (`gate` job: `python3 -m avd_gate check`)**: confirms the repository is `PRIVATE`, verifies the kill switch is at `run`, evaluates all 4 gate rule groups (including `governance/policy.yml` Rules 1–3), and outputs the canonical `planHash`.
      - **Human approval**: the owner approves the deployment in `$AVD_PRIVATE_REPO`'s `approve` GitHub Environment.
@@ -84,5 +85,30 @@ Per [spec.md §5b](../spec.md#5b-where-the-write-path-runs-the-project-and-its-a
 4. **Archive to `$AVD_PRIVATE_REPO`, tear down, and close the spend run:**
    - Save the unredacted run journal, teardown evidence, and settled cost record to `$AVD_PRIVATE_REPO` (`never delete the last copy`, decision 0016).
    - Deallocate/remove sandbox resources (`Stop-AvdSpendRun.ps1` / `Remove-Spike.ps1` / `spend_guard.py close`) and verify zero billable leftovers (**$0.00/day**).
-   - Record only the redacted evidence summary (plan hash, gate counts, 4-position drill exit codes, and $0.00/day teardown verification — zero tenant/subscription/resource IDs or real repo names) in this document to close `avd-swarm#43`.
+   - Record only the redacted evidence summary (plan hash, gate counts, 4-position drill exit codes, and $0.00/day teardown verification — zero tenant/subscription/resource IDs or real repo names) in §4 below to close `avd-swarm#43`.
+
+---
+
+## 4. Redacted Evidence Bundle (`s2-drill-01`, 2026-11-09)
+
+Executed with owner approval `go batch s2-drill-01 $1.50` via `python3 scripts/run_s2_drill.py --approval 'go batch s2-drill-01 $1.50'` (schema `avd-swarm-s2-drill-evidence/v1`, exercising `avd_runner.cli.flag_position_with`, `mcp_tool_server.handle_mcp_jsonrpc`, `avd_gateway.flag.check`, `avd_gate.apply.check_plan`, `avd_gate.apply.apply_approved_plan`, `check_kill_switch.simulate_drill`, and `spend.spend_guard`):
+
+### 4.1 Step 1 — 4-Position Kill-Switch Drill (`run` -> `halt-actions` -> `halt-agents` -> `halt-all` -> `run`)
+
+| Switch position | `avd_runner` write gate exit (`--refuse-at halt-actions ...`) | `avd_runner` agent gate exit (`--refuse-at halt-agents ...`) | `avd_gateway` model calls allowed | MCP callers allowed (`person` / `foundry` / `runner` / `sre-agent` / `claude-code`) | MCP `propose_change` verdict | `avd_gate apply` status |
+|---|---|---|---|---|---|---|
+| **`run`** | `0` (`run`) | `0` (`run`) | `true` | `true` / `true` / `true` / `true` / `true` | `approvable` | `ready` |
+| **`halt-actions`** | `3` (`REFUSED`) | `0` (`halt-actions`) | `true` | `true` / `true` / `true` / `true` / `true` | `draft-not-approvable` | `refused` |
+| **`halt-agents`** | `3` (`REFUSED`) | `3` (`REFUSED`) | `false` (`SpendRefused`) | `true` / `false` / `false` / `false` / `false` (`V1-3`) | `refused-by-switch` (`403`) | `refused` |
+| **`halt-all`** | `3` (`REFUSED`) | `3` (`REFUSED`) | `false` (`SpendRefused`) | `false` / `false` / `false` / `false` / `false` | `refused-by-switch` (`403`) | `refused` |
+| **Reset (`run`)** | `0` (`run`) | `0` (`run`) | `true` | Machine reset refused (`ResetForbiddenByMachine`, `R6`); incomplete reset re-tripped (`switch.cleared-incomplete`); operator reset restored `run` | `approvable` | `ready` |
+
+### 4.2 Steps 2–5 — First Approved Write (`host.drain`), Post-Action Verification, Rollback (`undrain`), and Teardown
+
+| Step | Plan ID & action | Canonical SHA-256 `planHash` | Gate pre-check (`check_plan`) | Gate execution (`apply_approved_plan`) | Post-step verification & guard evidence |
+|---|---|---|---|---|---|
+| **Step 2: First approved write (`host.drain`)** | `plan-s2-drill-01-drain` (`host.drain`) | `7c073b0f2cbb54522e4629a46c78ca20682f0bc26c2cebdbcd844fa00180f6cb` | `ready` (`passedCount: 4`, `failedCount: 0`) | `applied-and-verified` | Session host `allowNewSession: true -> false`, `activeSessions: 0`, `complianceRegressed: false` |
+| **Step 3: Post-action verification & drift guard** | `plan-s2-drill-01-drain` (`host.drain`) | `7c073b0f2cbb54522e4629a46c78ca20682f0bc26c2cebdbcd844fa00180f6cb` | Verified `allowNewSession == false` | Tampered hash -> `refused`; other-actor drain (`notDrainedByOthers`) -> `refused` | Both live-drift probes failed closed with `0` writes |
+| **Step 4: Rollback (`undrain`)** | `plan-s2-drill-01-drain` (`host.drain` rollback) | `16811550233ba1331ed477e8226aab0886366f84be1567e8a8ede66fd39ec318` | `ready` (`passedCount: 4`, `failedCount: 0`) | `applied-and-verified` | Session host restored to `allowNewSession: true` |
+| **Step 5: Teardown & meter check** | `spend/spend_guard.py close` | — | `status: closed` | `teardownClean: true`, `leftoversCount: 0` | `tokenCostUsd: $0.00`, `standingPostTeardownUsdPerDay: $0.00/day` |
 
