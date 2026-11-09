@@ -452,6 +452,7 @@ async def run_specialist(agent: str, question: str, model: str, identity_app_id:
                 ask_fn=lambda system, tools, messages: ask_claude(model, HOSTS_EFFORT, system, tools, messages, totals),
                 call_mcp_tool=call_mcp_tool,
                 evidence=evidence,
+                default_scope=SCOPE,
                 max_steps=MAX_STEPS,
             )
 

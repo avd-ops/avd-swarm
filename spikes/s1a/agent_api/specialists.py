@@ -115,11 +115,14 @@ HANDOFF_TO_AGENT: dict[str, str] = {
 
 COORDINATOR_SYSTEM = (
     "You route questions about an Azure Virtual Desktop, Windows 365, and Intune desktop estate. You have no "
-    "data tools of your own and must never answer domain questions yourself: hand host pool, session host, "
-    "session, WVD* telemetry, or Cloud PC health questions to handoff_to_hosts; hand spend, forecast, idle-host "
+    "data tools of your own and must never answer domain questions yourself or ask the user for confirmation "
+    "before handing off: always call the matching handoff tool immediately. Hand host pool, session host, "
+    "user session, workspace, application group, max session limit, estate summary, WVD* telemetry, Cloud PC "
+    "health, or host/pool change and delete questions to handoff_to_hosts; hand spend, forecast, idle-host "
     "cost, or Windows 365 license utilization questions to handoff_to_cost; and hand Intune assignment filter, "
     "configuration policy, compliance policy, or policy-drift questions to handoff_to_intune. If the question "
-    "is outside AVD, Windows 365, and Intune desktop operations, say so in one sentence without calling a tool."
+    "is outside AVD, Windows 365, and Intune desktop operations (such as weather or general trivia) or explicitly "
+    "tells you not to hand off, say so in one sentence without calling a tool."
 )
 
 
@@ -180,18 +183,55 @@ def resolve_handoff(content_blocks: list[Any]) -> str | None:
     return None
 
 
-def _mcp_tool_entry(tool: Any) -> dict[str, Any]:
+def _mcp_tool_entry(tool: Any, default_scope: dict[str, str] | None = None) -> dict[str, Any]:
     if isinstance(tool, dict):
-        return {
-            "name": tool["name"],
-            "description": tool.get("description") or "",
-            "input_schema": tool.get("input_schema") or tool.get("inputSchema") or {"type": "object", "properties": {}},
-        }
+        raw_schema = tool.get("input_schema") or tool.get("inputSchema") or {"type": "object", "properties": {}}
+        name = tool["name"]
+        desc = tool.get("description") or ""
+    else:
+        raw_schema = getattr(tool, "inputSchema", None) or {"type": "object", "properties": {}}
+        name = tool.name
+        desc = getattr(tool, "description", "") or ""
+    schema = dict(raw_schema) if isinstance(raw_schema, dict) else {"type": "object", "properties": {}}
+    if default_scope and default_scope.get("subscription") and isinstance(schema.get("required"), list):
+        schema["required"] = [r for r in schema["required"] if r != "subscription"]
     return {
-        "name": tool.name,
-        "description": getattr(tool, "description", "") or "",
-        "input_schema": getattr(tool, "inputSchema", None) or {"type": "object", "properties": {}},
+        "name": name,
+        "description": desc,
+        "input_schema": schema,
     }
+
+
+def format_system_prompt(base_prompt: str, default_scope: dict[str, str] | None = None) -> str:
+    """Appends default Azure subscription/resource-group context when configured on the container."""
+    if not default_scope:
+        return base_prompt
+    sub = (default_scope.get("subscription") or "").strip()
+    rg = (default_scope.get("resourcegroup") or "").strip()
+    if not sub and not rg:
+        return base_prompt
+    parts = [p for p in (f"subscription={sub}" if sub else "", f"resourceGroup={rg}" if rg else "") if p]
+    return (
+        f"{base_prompt} Default Azure scope for tool calls when not specified by the user: {', '.join(parts)}. "
+        "Never ask the user for the subscription ID or resource group when this default scope is present."
+    )
+
+
+def apply_default_mcp_scope(
+    tool_schema: dict[str, Any] | None,
+    input_args: dict[str, Any],
+    default_scope: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Fills missing `subscription` in MCP tool arguments from `default_scope` when the tool accepts it."""
+    merged = dict(input_args or {})
+    if not default_scope:
+        return merged
+    sub = (default_scope.get("subscription") or "").strip()
+    if sub and not merged.get("subscription"):
+        props = (tool_schema or {}).get("properties") if isinstance(tool_schema, dict) else None
+        if not isinstance(props, dict) or not props or "subscription" in props:
+            merged["subscription"] = sub
+    return merged
 
 
 def build_specialist_tools(
@@ -200,11 +240,12 @@ def build_specialist_tools(
     offered_mcp_tools: list[Any],
     rag: rag_tools.RagRuntime,
     evidence: dict[str, Any],
+    default_scope: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """Builds the specialist's offered tool list (allowed MCP tools + allowed RAG tools + decoys)
     and records `<agent>Tools` in `evidence` before adding decoys."""
     profile = SPECIALISTS[agent]
-    mcp_entries = [_mcp_tool_entry(t) for t in offered_mcp_tools]
+    mcp_entries = [_mcp_tool_entry(t, default_scope=default_scope) for t in offered_mcp_tools]
     tools = [
         t for t in sorted(mcp_entries, key=lambda item: item["name"])
         if t["name"] in allowed_tools and t["name"] not in rag_tools.LOCAL_RAG_TOOLS
@@ -231,15 +272,20 @@ async def run_specialist_loop(
     ask_fn: Callable[[str, list[dict[str, Any]], list[dict[str, Any]]], Awaitable[Any]],
     call_mcp_tool: Callable[[str, dict[str, Any]], Awaitable[tuple[str, bool]]],
     evidence: dict[str, Any],
+    default_scope: dict[str, str] | None = None,
     max_steps: int = 20,
 ) -> str:
     """Runs the bounded tool-use loop for `agent` ('hosts', 'cost', or 'intune') with Prompt Shields,
     decoy tripwires, RagRuntime, and deterministic citation verification."""
     profile = SPECIALISTS[agent]
-    tools = build_specialist_tools(agent, allowed_tools, offered_mcp_tools, rag, evidence)
+    system_prompt = format_system_prompt(profile.system_prompt, default_scope)
+    tools = build_specialist_tools(
+        agent, allowed_tools, offered_mcp_tools, rag, evidence, default_scope=default_scope
+    )
+    schemas_by_name = {t["name"]: t.get("input_schema") for t in tools}
     messages: list[dict[str, Any]] = [{"role": "user", "content": question}]
     for _ in range(max_steps):
-        response = await ask_fn(profile.system_prompt, tools, messages)
+        response = await ask_fn(system_prompt, tools, messages)
         stop_reason = response.get("stop_reason") if isinstance(response, dict) else getattr(response, "stop_reason", None)
         evidence[f"{agent}StopReason"] = stop_reason
         evidence["specialistStopReason"] = stop_reason
@@ -276,7 +322,8 @@ async def run_specialist_loop(
                     "content": text_out or "(no text)",
                 })
                 continue
-            raw_text, is_error = await call_mcp_tool(call_name, call_input)
+            effective_input = apply_default_mcp_scope(schemas_by_name.get(call_name), call_input, default_scope)
+            raw_text, is_error = await call_mcp_tool(call_name, effective_input)
             scanned = await guard.scan_result(raw_text, agent, call_name)
             results.append({
                 "type": "tool_result",

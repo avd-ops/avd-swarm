@@ -1,6 +1,6 @@
 # S1a spike: does the S1 stack actually work?
 
-- **Status:** Planned (2026-10-17). Nothing in this plan has run yet.
+- **Status:** Completed on the Container App + keyless Azure OpenAI fallback ladder path (2026-11-09); Foundry hosted-agent Claude path (`-Provider Foundry`) remains pending East US 2 Claude TPM quota.
 - **Part of:** [spec.md](../spec.md) §9 (S1a). Estimated, capped and closed through the public spend guard ([spend/](../../spend/README.md), [spend.md](../spend.md)).
 - **Timebox:** one working session, at most 6 hours of deployed time, torn down the same day.
 
@@ -88,15 +88,19 @@ The runbook is [spikes/s1a/README.md](../../spikes/s1a/README.md): nine self-con
 8. **Evidence** stays in `~/clouddrive/avdswarm-spike/`, never in this repo.
 9. **Tear down:** `Remove-Spike.ps1` deletes the group, purges the soft-deleted Foundry resource, deletes the MCP app registration and checks for every leftover, including the exemption, which a resource group cost check can't see. Then `spend_guard.py close` with that evidence, and `settle` three days later.
 
-## 5. Result (filled in after the run)
+## 5. Result (2026-11-09 live run in `northcentralus`, `-Provider AzureOpenAI -PromptShields -PromptShieldsMode enforce`)
 
 | # | Result | Evidence |
 |---|---|---|
-| Q1–Q6 | | |
-| Cost | Estimate / actual (settled) | The run's record from `spend_guard.py settle` (kept private) |
-| Teardown | Clean / leftovers | Run record |
-
-Spec §3, §6, §7 and §9 change to match the results in the same PR.
+| Q1 | **Replaced (Tier 1/2 keyless Azure OpenAI ladder):** Claude in Foundry had 0 TPM quota in `eastus2`; the in-group Foundry `AIServices` resource in `northcentralus` deployed `gpt-4.1-nano` (`2025-04-14`, `GlobalStandard`) and `gpt-4.1-mini` (`2025-04-14`, `GlobalStandard`). `gpt-4o-mini` (`2024-07-18`) was rejected by ARM with `ServiceModelDeprecating`. The Container App's user-assigned managed identity acquired `https://cognitiveservices.azure.com/.default` tokens (`idtyp: app`) with `disableLocalAuth: true` and zero API keys (`/claude-check` `200 OK`). | `state.json`, `/claude-check` response |
+| Q2 | **Confirmed on Container App (`agent_api/main.py`):** Coordinator (`gpt-4.1-nano`) and specialist loop (`specialists.py`) ran inside `ca-avdswarm-agents-*` (`scaleToZero: true`, `minReplicas: 0`) with `avd-swarm` and `avd-second-brain` (`avd_concierge`) unpacked in-process and Prompt Shields (`cs-avdswarm-spike-*`, `F0`) in `enforce` mode. | `evals.jsonl`, `evals-gpt-4.1-nano.jsonl`, `evals-gpt-4.1-mini.jsonl` |
+| Q3 | **Confirmed (`RESULT Q3 PASS`):** Azure MCP Server (`--read-only --namespace virtualdesktop`) exposed 3 tools (`virtualdesktop_hostpool_list`, `virtualdesktop_hostpool_host_list`, `virtualdesktop_hostpool_host_user-list`), all marked `readOnly=True, destructive=False`. Real-run finding: `@azure/mcp` marks `subscription` as `"required"` in `virtualdesktop_*` tool schemas and does not expose workspace or application-group tools; `specialists.py` now auto-injects `SCOPE_SUBSCRIPTION` into MCP tool calls and relaxes `required` when `SCOPE_SUBSCRIPTION` is set. | `mcp-tools.txt` |
+| Q4 | **Confirmed:** Allowlist enforced in code (`specialists.py` + `Shield.tool_call()`), verified by probes `p01` (coordinator direct tool call refused) and `p02` (specialist write/destructive tool probe refused) plus decoy tripwire `export_session_recordings`. | `evals.jsonl` (`p01`, `p02`) |
+| Q5 | **Confirmed without Foundry:** Autonomous Entra Agent ID flow (`managed identity -> blueprint FIC -> AgentIdentity.CreateAsManager -> agent identity token`) created `avdswarm-spike-hosts-*` under blueprint `avdswarm-spike-agents-*` (`roles: ["AgentIdentity.CreateAsManager"]`, `xms_act_fct: "3 9"`, `xms_sub_fct: "3 9"`), assigned `Mcp.Tools.ReadWrite.All` on the MCP app, and authenticated MCP and Log Analytics KQL reads as the agent identity. | `/setup` `blueprintTokenClaims`, `evals.jsonl` (`mcpTokenClaims`) |
+| Q6 | **Measured:** Across the 10 eval questions, `gpt-4.1-nano` averaged `874` input / `63` output tokens per question (`$0.0011` total for 10 questions; `$0.00011`/question), and `gpt-4.1-mini` averaged `876` input / `50` output tokens per question (`$0.0031` total for 10 questions; `$0.00031`/question). Total model spend across all 23 eval calls (`q2-identity`, `q4-probes`, and two 10-question `Q6` passes) was **`$0.0045`**. | `evals-gpt-4.1-nano.jsonl`, `evals-gpt-4.1-mini.jsonl` |
+| WP2 / WP6 Runbook | **Confirmed (`hosts.agent-unhealthy: finding`):** `python -m avd_runner run --id hosts.agent-unhealthy --started-by manual` executed against the live Container App and Log Analytics workspace as the agent identity (`Log Analytics Reader`) and short-circuited deterministically at **0 model tokens** when `reportingHosts` returned 0 rows. | `runbook-finding.json` |
+| Cost | Estimate `$3.02` (`$3.04` batch wrapper) / metered model tokens `$0.0045` (`< 1` hour deployed compute) | `spend_guard.py` run record (kept private; settle in 3 days) |
+| Teardown | **Clean:** 9 baseline resources in 4 resource groups before and after; soft-deleted Foundry and Content Safety resources purged; MCP Entra app, Agent ID, and blueprint deleted. | `teardown-*.json`, `spend_guard.py close` |
 
 ## 6. What you need before it can start
 
