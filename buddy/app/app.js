@@ -70,7 +70,7 @@
   function saveSettings() {
     try {
       // Purge any non-settings keys so only settings stay in localStorage (docs/buddy-app.md section 8).
-      const allowed = new Set([SETTINGS_KEY, "avd-ops-theme", "avd-ops-runin"]);
+      const allowed = new Set([SETTINGS_KEY, "avd-ops-theme", "avd-ops-runin", "avd-ops-devmode"]);
       for (let i = window.localStorage.length - 1; i >= 0; i -= 1) {
         const key = window.localStorage.key(i);
         if (key && !allowed.has(key)) {
@@ -90,6 +90,45 @@
     } else {
       root.removeAttribute("data-theme");
     }
+  }
+
+  function isDevMode() {
+    if (window.AvdOpsDev && typeof window.AvdOpsDev.isOn === "function") {
+      return Boolean(window.AvdOpsDev.isOn());
+    }
+    try {
+      return window.localStorage.getItem("avd-ops-devmode") === "on";
+    } catch (_err) {
+      return false;
+    }
+  }
+
+  function syncDevModeUI() {
+    const on = isDevMode();
+    const devSelect = document.getElementById("setting-devmode");
+    if (devSelect) {
+      devSelect.value = on ? "on" : "off";
+    }
+    const menuDevBtn = document.getElementById("menu-devmode-btn");
+    if (menuDevBtn) {
+      menuDevBtn.setAttribute("aria-pressed", on ? "true" : "false");
+      menuDevBtn.textContent = on ? "Dev Mode: On (IDs shown)" : "Dev Mode: Off";
+    }
+  }
+
+  function setDevMode(on) {
+    if (window.AvdOpsDev && typeof window.AvdOpsDev.set === "function") {
+      window.AvdOpsDev.set(Boolean(on));
+    } else {
+      try {
+        window.localStorage.setItem("avd-ops-devmode", on ? "on" : "off");
+      } catch (_err) {
+        // Ignore storage errors
+      }
+      document.documentElement.setAttribute("data-devmode", on ? "on" : "off");
+    }
+    syncDevModeUI();
+    renderMessages();
   }
 
   function isOffline() {
@@ -421,11 +460,13 @@
       const ul = document.createElement("ul");
       ul.className = "gate-list";
       const gates = Array.isArray(plan.gateResults) ? plan.gateResults : [];
+      const dev = isDevMode();
       for (const g of gates) {
         const li = document.createElement("li");
         const pass = g.outcome === "pass";
         li.className = "gate-item " + (pass ? "gate-pass" : "gate-fail");
-        li.textContent = String(g.gate || "") + " — " + String(g.text || (pass ? "Pass" : "Fail"));
+        const gateText = dev && g.devText ? g.devText : g.text;
+        li.textContent = String(g.gate || "") + " — " + String(gateText || (pass ? "Pass" : "Fail"));
         ul.appendChild(li);
       }
       dd.appendChild(ul);
@@ -558,9 +599,11 @@
       eyebrow.textContent = "Sources cited";
       citBox.appendChild(eyebrow);
       const ul = document.createElement("ul");
+      const dev = isDevMode();
       for (const c of turn.citations) {
         const li = document.createElement("li");
-        li.textContent = String(c.label || c.id || "");
+        const citLabel = dev && c.devLabel ? c.devLabel : c.label;
+        li.textContent = String(citLabel || c.id || "");
         ul.appendChild(li);
       }
       citBox.appendChild(ul);
@@ -1189,6 +1232,7 @@
     if (themeSelect) {
       themeSelect.value = state.settings.theme;
     }
+    syncDevModeUI();
     updateVoiceUI();
 
     const params = new URLSearchParams(window.location.search);
@@ -1473,6 +1517,22 @@
         applyThemeSetting(state.settings.theme);
       });
     }
+    const devSelect = document.getElementById("setting-devmode");
+    if (devSelect) {
+      devSelect.addEventListener("change", () => {
+        setDevMode(devSelect.value === "on");
+      });
+    }
+    const menuDevBtn = document.getElementById("menu-devmode-btn");
+    if (menuDevBtn) {
+      menuDevBtn.addEventListener("click", () => {
+        setDevMode(!isDevMode());
+      });
+    }
+    window.addEventListener("avd-ops-devmode", () => {
+      syncDevModeUI();
+      renderMessages();
+    });
 
     // Sign out buttons
     for (const id of ["menu-signout-btn", "settings-signout-btn"]) {

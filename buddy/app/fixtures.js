@@ -87,7 +87,12 @@
     why: "sh-pooled-03 missed 4 consecutive heartbeats in WVDAgentHealthStatus over the last 15 minutes while the VM power state is running and 0 sessions are active.",
     gateResults: [
       { gate: "Allowlist", outcome: "pass", text: "Pass: catalog action hosts.drain-and-restart-agent" },
-      { gate: "Says why", outcome: "pass", text: "Pass: cites WVDAgentHealthStatus heartbeat gap and C15 fact ID" },
+      {
+        gate: "Says why",
+        outcome: "pass",
+        text: "Pass: cites WVDAgentHealthStatus heartbeat gap and Fact Register ID",
+        devText: "Pass: cites WVDAgentHealthStatus heartbeat gap and Fact Register (C15) ID"
+      },
       { gate: "Live re-read", outcome: "pass", text: "Pass: 0 active sessions verified before proposal" },
       { gate: "Kill switch", outcome: "pass", text: "Pass: switch position is run" }
     ],
@@ -224,7 +229,11 @@
         "`hp-contoso-prod` has `maxSessionLimit` set to `8` on `Standard_D4s_v5` hosts (4 vCPUs, 16 GiB RAM), which matches the sizing decision recorded when the pool was built for knowledge-worker workloads (2 sessions per vCPU, 2 GiB RAM per user). " +
         "Want the longer version on how CPU oversubscription affects logon latency?",
       citations: [
-        { id: "call-c11-01", label: "C11 current-state fact: hostPool.maxSessionLimit = 8 (C15: AVD-HP-004)" },
+        {
+          id: "call-c11-01",
+          label: "Estate Facts: hostPool.maxSessionLimit = 8 (Fact Register: AVD-HP-004)",
+          devLabel: "Estate Facts (C11): hostPool.maxSessionLimit = 8 (Fact Register C15: AVD-HP-004)"
+        },
         { id: "call-brain-01", label: "Concierge lifecycle record: sizing decision for hp-contoso-prod" }
       ],
       learnLinks: [

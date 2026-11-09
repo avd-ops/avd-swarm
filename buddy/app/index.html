@@ -46,6 +46,7 @@
         <button type="button" data-nav="history" class="menu-item">History</button>
         <button type="button" data-nav="status" class="menu-item">Status &amp; switch</button>
         <button type="button" data-nav="settings" class="menu-item">Settings</button>
+        <button type="button" id="menu-devmode-btn" class="menu-item" aria-pressed="false">Dev Mode: Off</button>
         <button type="button" id="menu-signout-btn" class="menu-item menu-danger">Sign out</button>
       </nav>
     </div>
@@ -310,6 +311,17 @@
               <option value="system">System default</option>
               <option value="light">Light</option>
               <option value="dark">Dark</option>
+            </select>
+          </div>
+
+          <div class="setting-row">
+            <div>
+              <label for="setting-devmode" class="setting-title">Developer mode (contract &amp; decision IDs)</label>
+              <p class="setting-desc">Off by default. Shows internal contract and decision codes (such as <code>C11</code>, <code>C15</code>, <code>C21</code>) next to friendly names.</p>
+            </div>
+            <select id="setting-devmode" class="setting-select">
+              <option value="off">Off (friendly names only)</option>
+              <option value="on">On (show contract &amp; decision IDs)</option>
             </select>
           </div>
 
