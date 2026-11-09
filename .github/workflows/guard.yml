@@ -48,6 +48,8 @@ jobs:
         run: python3 scripts/check_actions.py
       - name: Kill switch template, watchdog rules and 4-position drill invariants (governance sections 2.3 and 2.4)
         run: python3 scripts/check_kill_switch.py
+      - name: Offline policy engine evaluates three gate rules against governance/ (governance section 2.1, V1-6)
+        run: python3 scripts/check_policy.py
       - name: Adapters are off by default, write nothing and nothing depends on them (decision 0009)
         run: python3 scripts/check_adapters.py
       - name: No write path in a public repo, no default-token PRs, no untrusted credentials (spec section 5b)

@@ -1,0 +1,89 @@
+# avd-swarm governance gate policy (governance.md section 2.1; core-and-adapters.md WP7; red team V1-6).
+# Personal project, not for production, provided as is; not affiliated with the author's employer, Liquidware or Microsoft.
+#
+# Protected path: agent-authored PRs cannot touch this file, and any capability-raising change
+# (adding an allow rule, removing a deny rule, widening a scope glob, or raising a cap) requires
+# the 72-hour solo-mode time-lock or 2 human code-owner approvals in team mode (check_timelock.py).
+#
+# V1-6 limits:
+# - Only `allow` and `deny` decisions exist here. Approval (`require_approval` / `ask`), quorum,
+#   the kill switch, and the MCP tool server live outside the policy engine in their own layers.
+# - Evaluated 100% offline in CI and in the gate job with zero network calls.
+
+engine: avd-swarm-policy/v1
+defaultDecision: deny
+
+limits:
+  allowedDecisions:
+    - allow
+    - deny
+  offlineOnly: true
+  networkCallsAllowed: false
+  forbiddenFeatures:
+    - require_approval
+    - ask
+    - quorum
+    - in_process_kill_switch
+    - mcp_security_gateway
+
+# Rule 1: Action allowlist and explicit deny rules (deny always outranks allow; default is deny).
+rules:
+  - id: deny-swarm-control-plane
+    decision: deny
+    actions:
+      - "*"
+    surfaces:
+      - "*"
+    targetGlobs:
+      - "/subscriptions/*/resourceGroups/rg-*-swarm*/*"
+      - "/subscriptions/*/resourceGroups/rg-*-runstore*/*"
+      - "*/providers/Microsoft.Authorization/roleAssignments/*"
+      - "*/providers/Microsoft.Authorization/policyAssignments/*"
+    reason: "Plans may never target the swarm control plane, run store, or RBAC/Policy assignments."
+
+  - id: allow-s2-avd-host-actions
+    decision: allow
+    actions:
+      - host.drain
+      - host.restart-agent
+      - host.recycle-empty
+      - host.reregister
+      - host.stop
+      - host.resume
+    surfaces:
+      - avd
+    targetGlobs:
+      - "/subscriptions/*/resourceGroups/rg-avd-*/*"
+      - "/subscriptions/*/resourceGroups/rg-*-avd-*/*"
+
+# Rule 2: Resource scope and blast-radius limits (spec section 5a, governance section 2.1).
+scope:
+  allowTenantWide: false
+  allowedTargetGlobs:
+    - "/subscriptions/*/resourceGroups/rg-avd-*/*"
+    - "/subscriptions/*/resourceGroups/rg-*-avd-*/*"
+  deniedTargetGlobs:
+    - "/subscriptions/*/resourceGroups/rg-*-swarm*/*"
+    - "/subscriptions/*/resourceGroups/rg-*-runstore*/*"
+    - "*/providers/Microsoft.Authorization/roleAssignments/*"
+    - "*/providers/Microsoft.Authorization/policyAssignments/*"
+
+blastRadius:
+  maxHostsPerPool: 1
+  maxHostsPerPlan: 1
+  maxUsersPerGroupChange: 5
+
+# Rule 3: Cross-action rate limits, spend budget gate, and business-hours window (governance section 2.1, spend.md).
+rateLimits:
+  maxPlansPerHour: 6
+  maxWritesPerDay: 10
+
+budgetGate:
+  perRunCapUsd: 20.00
+  monthlyCapUsd: 150.00
+  allowUnpricedResources: false
+  requireSingleOpenRun: true
+
+window:
+  requireReasonDuringBusinessHours: true
+  stopSpendAlwaysAllowed: true
