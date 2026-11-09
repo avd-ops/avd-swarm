@@ -674,6 +674,27 @@ async def runbook_findings(_request: Request) -> JSONResponse:
     return JSONResponse({"findings": runbook_deps.findings})
 
 
+async def mcp_endpoint(request: Request) -> JSONResponse:
+    try:
+        claims = verified_claims(request)
+    except (PermissionError, jwt.PyJWTError) as error:
+        return JSONResponse({"error": f"unauthorized: {error}"}, status_code=401)
+    try:
+        body = await request.json()
+    except ValueError:
+        return JSONResponse({"error": "the body isn't JSON"}, status_code=400)
+    caller = mcp_tool_server.resolve_mcp_caller(claims, OPERATOR_OID, MCP_CALLERS, MCP_POLICY)
+    status, response_body = await mcp_tool_server.handle_mcp_jsonrpc(
+        body if isinstance(body, dict) else {},
+        caller=caller,
+        read_flag=lambda: "halt-agents" if meter.status().get("stopped") else SWITCH_POSITION,
+        execute_read_tool=runbook_tool,
+        execute_kql_query=lambda qid: runbook_query(KQL_QUERIES[qid]),
+        root=ROOT,
+    )
+    return JSONResponse(response_body, status_code=status)
+
+
 async def health(_request: Request) -> JSONResponse:
     return JSONResponse({"ok": True, "modelProvider": MODEL_PROVIDER,
                          "fallbackLadder": list(AZURE_OPENAI_FALLBACKS) if MODEL_PROVIDER == "azure-openai" else list(openai_compat.CLAUDE_MODELS),
@@ -691,6 +712,7 @@ app = Starlette(routes=[
     Route("/stop", guarded(stop, allow_buddy=True), methods=["POST"]),
     Route("/runbook", runbook, methods=["POST"]),  # its own token check: the operator or a runbook.run caller
     Route("/runbook/findings", guarded(runbook_findings, allow_buddy=True)),
+    Route("/mcp", mcp_endpoint, methods=["POST"]),
 ])
 
 if __name__ == "__main__":
