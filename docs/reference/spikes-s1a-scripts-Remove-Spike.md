@@ -11,4 +11,4 @@ Deletes the spike resource group, purges the soft-deleted Foundry resource, dele
 | `-RunId` | string | yes |  |  |
 | `-Location` | string | no | `'eastus2'` |  |
 | `-McpAppId` | string | no |  |  |
-| `-Provider` | string | no | `'Foundry'` | Anthropic: also delete the fallback's agent identity and blueprint (found by name, through Graph PowerShell). |
+| `-Provider` | string | no | `'Foundry'` | Anthropic / AzureOpenAI: also delete the agent identity and blueprint (found by name, through Graph PowerShell). |

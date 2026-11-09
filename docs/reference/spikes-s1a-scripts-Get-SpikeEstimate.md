@@ -12,4 +12,5 @@ Prices the spike's Azure lines from the retail prices API and prints the amount 
 | `-Hours` | double | no | `6` |  |
 | `-TokenUpperBound` | double | no | `13.00` |  |
 | `-Agents` | int | no | `3` | One hosted agent per model the Hosts agent is compared on (Opus, Sonnet, Haiku). |
-| `-Provider` | string | no | `'Foundry'` | Anthropic: the fallback. No hosted agents; one more Container App (the agents), and tokens billed by Anthropic. |
+| `-Provider` | string | no | `'Foundry'` | AzureOpenAI: keyless Azure AI Foundry OpenAI models (gpt-4.1-nano -> gpt-4.1-mini -> gpt-4o-mini). Anthropic: the fallback. No hosted agents; one more Container App (the agents), and tokens billed by Anthropic. |
+| `-PromptShields` | switch | no |  | Anthropic / AzureOpenAI: the Prompt Shields scan's free-tier Content Safety resource (gateway/avd_gateway/shield.py). |

@@ -20,4 +20,9 @@ Steps 2 to 4 of the spike runbook: resource group and same-day policy exemption,
 | `-CountryCode` | string | no |  |  |
 | `-Industry` | string | no | `'technology'` |  |
 | `-Capacity` | int | no | `50` | Thousands of tokens per minute per deployment. 1 is too small: one agent call with tool results exceeds it. |
-| `-Provider` | string | no | `'Foundry'` | Anthropic: the fallback without Foundry (Anthropic's API from a Container App, Entra Agent ID through Graph). No API key: the agents app calls Claude with Anthropic workload identity federation (its managed identity). |
+| `-Provider` | string | no | `'Foundry'` | AzureOpenAI: keyless Azure AI Foundry OpenAI models (gpt-4.1-nano -> gpt-4.1-mini -> gpt-4o-mini) from the Container App. Anthropic: the fallback without Foundry (Anthropic's API from a Container App, Entra Agent ID through Graph). |
+| `-PromptShields` | switch | no |  | Anthropic / AzureOpenAI: scan the question and every tool result with Prompt Shields (gateway/avd_gateway/shield.py, red team R26), on a free-tier Content Safety resource with local auth disabled. Observe mode counts hits and changes nothing. |
+| `-PromptShieldsMode` | string | no | `'observe'` |  |
+| `-ScaleToZero` | bool | no | `$true` |  |
+| `-BrainCommit` | string | no | `''` |  |
+| `-BuddyCallerObjectId` | string | no | `''` |  |

@@ -191,7 +191,9 @@ def run_pr(base: str, root: Path = ROOT) -> int:
     if event_path and Path(event_path).exists():
         pr = json.loads(Path(event_path).read_text()).get("pull_request", {})
     files = git("diff", "--name-only", f"{base}...HEAD", root=root)
-    ok, msg = pr_verdict(files, [lb["name"] for lb in pr.get("labels", [])], pr.get("body") or "",
+    commits = git("log", "--format=%B", f"{base}..HEAD", root=root)
+    body = "\n".join([pr.get("body") or "", *commits])
+    ok, msg = pr_verdict(files, [lb["name"] for lb in pr.get("labels", [])], body,
                          (pr.get("user") or {}).get("login", ""), load_config(root))
     print(msg if ok else f"::error::{msg}")
     return 0 if ok else 1

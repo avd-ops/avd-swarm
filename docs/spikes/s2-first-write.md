@@ -45,14 +45,24 @@ Region: **North Central US** (`northcentralus`), reusing the S1a sandbox estate 
 
 ---
 
-## 3. Drill & First Approved Write Sequence (After Owner's `go batch s2-drill-01 $1.50`)
+## 3. Drill & First Approved Write Sequence (via `$AVD_PRIVATE_REPO` & Batch Runner)
 
-1. **Open the spend run (`spend/spend_guard.py open`):**
-   ```bash
-   python3 spend/spend_guard.py --sandbox lab open \
-     --estimate 1.50 --run-cap 20.00 --monthly-cap 150.00 \
-     --month-to-date 0.00 --max-hours 2 --resource-group rg-avd-swarm-lab
+Per [spec.md §5b](../spec.md#5b-where-the-write-path-runs-the-project-and-its-adopters) and [`.claude/skills/sandbox/SKILL.md`](../../.claude/skills/sandbox/SKILL.md), neither the write-path workflow (`templates/workflows/approve.yml`) nor the sandbox batch runs in this public repository:
+- The write-path workflow (`gate` -> `approve` GitHub Environment -> `apply`) runs only inside the owner's private companion repository (`$AVD_PRIVATE_REPO`, verified `PRIVATE` via `gh repo view "$AVD_PRIVATE_REPO" --json visibility`), synced from a pinned commit/release tag of `avd-ops/avd-swarm`.
+- Because `s2-drill-01` targets a sandbox session host in an AVD host pool, the run is queued as a `sandbox-run/v1` item (in `$AVD_PRIVATE_REPO` or `~/clouddrive/queue`) and executed through the `avd-landing-zone` batch runner (`New-AvdSandboxBatch.ps1` -> `Approve-AvdSandboxBatch.ps1` with `go batch s2-drill-01 $1.50` -> `Invoke-AvdSandboxBatch.ps1`), with `spend/spend_guard.py` and the gate's budget rule (`governance/policy.yml` Rule 3) enforcing the swarm's own spend ledger.
+
+1. **Verify `$AVD_PRIVATE_REPO` is `PRIVATE` and stage the `sandbox-run/v1` batch item (in Cloud Shell):**
+   ```powershell
+   pwsh -NoLogo -Command '
+     if ((gh repo view "$env:AVD_PRIVATE_REPO" --json visibility --jq .visibility) -ne "PRIVATE") {
+       throw "Refusing: AVD_PRIVATE_REPO must be a PRIVATE repository (spec section 5b)."
+     }
+     if (-not (Test-Path ~/avd-landing-zone)) { git clone https://github.com/avd-ops/avd-landing-zone.git $HOME/avd-landing-zone }
+     Set-Location ~/avd-landing-zone; git pull -q --ff-only
+     ./scripts/ops/New-AvdSandboxBatch.ps1 -ItemsPath ~/clouddrive/queue -MonthlyCap 150 -RunCap 20
+   '
    ```
+   After `New-AvdSandboxBatch.ps1` prints `batch.md`, the owner approves the batch with `Approve-AvdSandboxBatch.ps1` (`go batch s2-drill-01 $1.50`) and starts the run (or opens the swarm ledger via `python3 spend/spend_guard.py --sandbox lab open --estimate 1.50 --run-cap 20.00 --monthly-cap 150.00 --month-to-date 0.00 --max-hours 2 --resource-group rg-avd-swarm-lab`).
 2. **Deploy `templates/kill-switch/main.bicep` and run the 4-position kill-switch drill:**
    - **Position 1 (`run`)**: Verify `avd_runner flag --refuse-at halt-actions halt-agents halt-all` exits `0` (`switch: run`) and `POST /mcp` (`tools/list`) allows `hosts-agent` and `check-runner`.
    - **Position 2 (`halt-actions`)**: Trip the switch to `halt-actions`. Verify:
@@ -64,11 +74,15 @@ Region: **North Central US** (`northcentralus`), reusing the S1a sandbox estate 
      - `POST /mcp` refuses every non-human caller (`hosts-agent`, `check-runner`, `sre-agent-adapter`) (`V1-3`) while allowing only the human operator (`claude-code-operator`) for read-only inspection.
    - **Position 4 (`halt-all`)**: Trip the switch to `halt-all`. Verify all non-stop-spend callers and writes are refused.
    - **Reset (`run`)**: Reset the `avd-swarm-switch` tag to `run` from Cloud Shell as the human owner (verifying no automation or observer identity holds `Tag Contributor`).
-3. **Execute the first approved write through the governance gate (`host.drain` -> `host.restart-agent`):**
-   - Start an operator thread (`threadStartedBy: "avd-buddy"`) against the sandbox session host and record a plan for `host.drain` (and/or `host.restart-agent`).
-   - Run Stage 1 (`gate` job: `python3 -m avd_gate check`), confirming all 4 gate rule groups (including `governance/policy.yml` Rules 1–3) pass and emit the canonical `planHash`.
-   - Approve the deployment in the private repo's `approve` GitHub Environment.
-   - Run Stage 2 (`apply` job: `python3 -m avd_gate apply`), re-reading the kill switch (`run`), re-reading live session host state (`allowNewSession`, `activeSessions == 0`, `powerLocked == false`, `scalingExcluded == false`, `serviceHealthClear == true`), verifying the live SHA-256 `planHash` matches `approvedHash`, applying the reversible change, and recording positive post-action verification (`applied-and-verified`).
-4. **Teardown & close the spend run (`spend/spend_guard.py close`):**
-   - Restore host drain state / deallocate or remove sandbox resources via `Stop-Spike.ps1`.
-   - Verify zero billable leftovers and close the run record with `spend_guard.py close`.
+3. **Execute the first approved write through the governance gate in `$AVD_PRIVATE_REPO` (`host.drain` -> `host.restart-agent`):**
+   - Start an operator thread (`threadStartedBy: "avd-buddy"`) against the sandbox session host and record a plan for `host.drain` (and/or `host.restart-agent`) in the plan store.
+   - Dispatch `.github/workflows/approve.yml` (copied from `templates/workflows/approve.yml`) in `$AVD_PRIVATE_REPO`:
+     - **Stage 1 (`gate` job: `python3 -m avd_gate check`)**: confirms the repository is `PRIVATE`, verifies the kill switch is at `run`, evaluates all 4 gate rule groups (including `governance/policy.yml` Rules 1–3), and outputs the canonical `planHash`.
+     - **Human approval**: the owner approves the deployment in `$AVD_PRIVATE_REPO`'s `approve` GitHub Environment.
+     - **Stage 2 (`apply` job: `python3 -m avd_gate apply`)**: re-reads the kill switch (`run`), re-reads live session host state (`allowNewSession`, `activeSessions == 0`, `powerLocked == false`, `scalingExcluded == false`, `serviceHealthClear == true`), verifies the live SHA-256 `planHash` matches `approvedHash`, applies the reversible change, and records positive post-action verification (`applied-and-verified`).
+   - Run the rollback (`undrain`) action through the same gate to restore `allowNewSession: true`.
+4. **Archive to `$AVD_PRIVATE_REPO`, tear down, and close the spend run:**
+   - Save the unredacted run journal, teardown evidence, and settled cost record to `$AVD_PRIVATE_REPO` (`never delete the last copy`, decision 0016).
+   - Deallocate/remove sandbox resources (`Stop-AvdSpendRun.ps1` / `Remove-Spike.ps1` / `spend_guard.py close`) and verify zero billable leftovers (**$0.00/day**).
+   - Record only the redacted evidence summary (plan hash, gate counts, 4-position drill exit codes, and $0.00/day teardown verification — zero tenant/subscription/resource IDs or real repo names) in this document to close `avd-swarm#43`.
+

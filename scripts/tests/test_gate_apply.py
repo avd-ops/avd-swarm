@@ -327,7 +327,7 @@ class GateApplyTests(unittest.TestCase):
         good_rc["action"] = "host.restart-agent"
         good_rc["runCommand"] = {
             "script": "catalog/actions/scripts/Restart-AvdAgent.ps1",
-            "sha256": "a1fe2c42e8aa6b589455e108ca6935be63382ad0b5f232128d29b504713996c8",
+            "sha256": "e87b3b199e6fdedecd73bc4992b15ec436d9c91cecc2daa1e92c8aa5fc5b45d4",
             "identity": "approve-restart-agent",
             "deleteRunCommandAfter": True,
         }

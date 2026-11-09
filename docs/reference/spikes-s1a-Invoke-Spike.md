@@ -19,4 +19,9 @@ Runs the whole S1a spike in one command: price, open the spend run, deploy, Q1-Q
 | `-NoPause` | switch | no |  | Don't wait before teardown (skips the Q5 portal steps). |
 | `-KeepOnFailure` | switch | no |  | Leave the resources up when a step fails, to look at them. Run -TeardownOnly after. |
 | `-TeardownOnly` | switch | no |  |  |
-| `-Provider` | string | no | `'Foundry'` | Foundry: Claude in Foundry with hosted agents. Anthropic: the fallback (see the third example). |
+| `-Provider` | string | no | `'Foundry'` | Foundry: Claude in Foundry with hosted agents. AzureOpenAI: keyless OpenAI ladder in Foundry + Container App. Anthropic: Claude API fallback. |
+| `-PromptShields` | switch | no |  | Anthropic / AzureOpenAI: scan the question and tool results with Prompt Shields on a free-tier resource (red team R26). |
+| `-PromptShieldsMode` | string | no | `'observe'` |  |
+| `-BrainCommit` | string | no | `''` |  |
+| `-ScaleToZero` | bool | no | `$true` |  |
+| `-Unattended` | switch | no |  | Unattended mode for avd-sandbox batch runner (Invoke-AvdSandboxBatch.ps1): skips interactive Read-Host prompts when -MonthlyCap is given. |
