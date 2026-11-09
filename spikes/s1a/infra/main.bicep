@@ -206,6 +206,9 @@ param blueprintAppId string = ''
 @description('anthropic only: object ID of the person running the spike; the only caller the agent service accepts.')
 param operatorObjectId string = ''
 
+@description('anthropic/azure-openai only: optional object ID (principalId) of avd-buddy\'s user-assigned managed identity allowed to call /ask, /ask/{id}, /stop and /runbook/findings.')
+param buddyCallerObjectId string = ''
+
 @description('anthropic only: the repository (owner/name) the agents app runs from.')
 param repo string = 'avd-ops/avd-swarm'
 
@@ -299,6 +302,7 @@ resource agentsApp 'Microsoft.App/containerApps@2024-03-01' = if (useContainerAp
             { name: 'MCP_APP_ID', value: mcpAppId }
             { name: 'MCP_URL', value: 'https://${mcpServer.properties.configuration.ingress.fqdn}' }
             { name: 'OPERATOR_OID', value: operatorObjectId }
+            { name: 'BUDDY_CALLER_OID', value: buddyCallerObjectId }
             { name: 'HOSTS_ALLOWED_TOOLS', value: '' } // set after Q3
             { name: 'HOSTS_EFFORT', value: 'medium' }
             { name: 'COORDINATOR_EFFORT', value: 'low' }
@@ -358,6 +362,7 @@ resource contentSafetyUser 'Microsoft.Authorization/roleAssignments@2022-04-01' 
 output foundryName string = deployFoundryAccount ? foundry!.name : ''
 output projectEndpoint string = provider == 'foundry' ? 'https://${foundry!.properties.customSubDomainName}.services.ai.azure.com/api/projects/${project!.name}' : ''
 output azureOpenAiEndpoint string = provider == 'azure-openai' ? 'https://${foundry!.properties.customSubDomainName}.openai.azure.com' : ''
+output managedEnvironmentId string = mcpEnvironment.id
 output agentsUrl string = useContainerAppAgents ? 'https://${agentsApp!.properties.configuration.ingress.fqdn}' : ''
 output agentsAppName string = useContainerAppAgents ? agentsApp!.name : ''
 output agentsIdentityPrincipalId string = useContainerAppAgents ? agentsIdentity!.properties.principalId : ''

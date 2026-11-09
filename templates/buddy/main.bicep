@@ -34,6 +34,15 @@ param tenantId string = tenant().tenantId
 @description('Client ID of the custom single-tenant Entra ID sign-in app registration (assignmentRequired = true).')
 param entraSignInClientId string
 
+@description('Client ID of the MCP / agent_api Entra app registration (audience api://<mcpAppId> for managed identity tokens).')
+param mcpAppId string = ''
+
+@description('Client ID of the Entra Agent ID identity passed to agent_api /ask.')
+param agentIdentityAppId string = ''
+
+@description('Default model deployment name passed to agent_api /ask.')
+param agentModel string = 'claude-sonnet-5-5'
+
 @description('Daily metered token spend cap in USD shown on the Status screen.')
 param tokenSpendCapUsd string = '15.00'
 
@@ -101,6 +110,9 @@ resource buddyApp 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'BUDDY_SIM_MODE', value: simMode }
             { name: 'AGENT_API_URL', value: agentApiInternalUrl }
             { name: 'BUDDY_UAMI_CLIENT_ID', value: buddyIdentity.properties.clientId }
+            { name: 'MCP_APP_ID', value: mcpAppId }
+            { name: 'AGENT_IDENTITY_APP_ID', value: agentIdentityAppId }
+            { name: 'AGENT_MODEL', value: agentModel }
             { name: 'TOKEN_SPEND_CAP_USD', value: tokenSpendCapUsd }
           ]
         }
