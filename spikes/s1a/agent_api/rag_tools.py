@@ -13,13 +13,19 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Iterable
 
 import yaml
 
-import runbook_endpoint
+_SCRIPTS_DIR = Path(__file__).resolve().parents[3] / "scripts"
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
+
+import claim_check  # noqa: E402
+import runbook_endpoint  # noqa: E402
 
 LOCAL_RAG_TOOLS = ("kql_catalog_run", "concierge_search", "concierge_facts")
 
@@ -245,7 +251,7 @@ def verify_citations(text: str, observed_refs: Iterable[str]) -> dict[str, Any]:
 
 @dataclass
 class RagRuntime:
-    """Executes the 3 local RAG tools for one specialist turn and records every returned reference."""
+    """Executes the 3 local RAG tools for one specialist turn and records every returned reference and output."""
 
     root: Path
     agent: str = "hosts"
@@ -257,6 +263,7 @@ class RagRuntime:
     catalog_queries: dict[str, str] = field(init=False)
     register: dict[str, dict[str, Any]] = field(init=False)
     observed_refs: set[str] = field(default_factory=set)
+    tool_outputs: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self.allowed_kql = load_agent_kql_allowlist(self.root, self.agent)
@@ -275,6 +282,68 @@ class RagRuntime:
     def _was_withheld(raw_text: str, scanned_text: str) -> bool:
         return scanned_text != raw_text
 
+    def record_mcp_output(self, tool_name: str, call_id: str, scanned_text: str) -> None:
+        """Records a scanned MCP tool output for section 4a deterministic claim checking."""
+        try:
+            parsed = json.loads(scanned_text)
+        except Exception:
+            parsed = scanned_text
+        self.tool_outputs[tool_name] = parsed
+        if call_id:
+            self.tool_outputs[call_id] = parsed
+        self.observed_refs.add(tool_name)
+        if call_id:
+            self.observed_refs.add(call_id)
+
+    def evaluate_claims(
+        self,
+        answer_text: str,
+        explicit_claims: Iterable[claim_check.Claim | dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Runs the section 4a deterministic code claim check over explicit or citation-derived claims."""
+        if explicit_claims is not None:
+            claim_list = list(explicit_claims)
+        else:
+            claim_list = []
+            for token in extract_citations(answer_text):
+                resolved_key = token
+                if resolved_key not in self.tool_outputs:
+                    for k in self.tool_outputs:
+                        if k.startswith(f"{token}@v"):
+                            resolved_key = k
+                            break
+                out = self.tool_outputs.get(resolved_key)
+                if token.startswith(("c11.", "c12.")) and isinstance(out, dict) and "value" in out:
+                    claim_list.append(
+                        claim_check.Claim(
+                            claim=f"Fact {token}",
+                            value=out.get("value"),
+                            citations=(resolved_key,),
+                        )
+                    )
+                else:
+                    claim_list.append(
+                        claim_check.Claim(
+                            claim=f"Citation {token}",
+                            value=None,
+                            citations=(resolved_key,),
+                        )
+                    )
+
+        verdicts = claim_check.check_claims(claim_list, self.tool_outputs, self.register)
+        merge_check = (
+            claim_check.check_merged_answer(answer_text, verdicts)
+            if explicit_claims is not None
+            else {"valid": all(v.status != claim_check.UNSUPPORTED for v in verdicts), "failingSentences": []}
+        )
+        return {
+            "verdicts": [v.to_dict() for v in verdicts],
+            "supported": [v.to_dict() for v in verdicts if v.status == claim_check.SUPPORTED],
+            "unsupported": [v.to_dict() for v in verdicts if v.status == claim_check.UNSUPPORTED],
+            "unchecked": [v.to_dict() for v in verdicts if v.status == claim_check.UNCHECKED],
+            "mergeCheck": merge_check,
+        }
+
     async def call(self, name: str, args: Any) -> tuple[str, bool]:
         """Executes a local RAG tool call and returns (json_text, is_error)."""
         try:
@@ -284,10 +353,12 @@ class RagRuntime:
                     raise RagToolError("LOG_WORKSPACE_ID or RUNBOOK_IDENTITY_APP_ID is not configured for kql_catalog_run")
                 raw = await self.query_logs(kql)
                 rows = runbook_endpoint.rows_from_log_analytics(raw)
-                raw_text = json.dumps({"queryId": query_id, "rowCount": len(rows), "rows": rows})
+                payload_obj = {"queryId": query_id, "rowCount": len(rows), "rows": rows}
+                raw_text = json.dumps(payload_obj)
                 scanned = await self._scan(raw_text, name)
                 if not self._was_withheld(raw_text, scanned) or query_id in scanned:
                     self.observed_refs.add(query_id)
+                    self.tool_outputs[query_id] = payload_obj
                 return scanned, False
 
             if name == "concierge_search":
@@ -302,9 +373,11 @@ class RagRuntime:
                     ref = hit.get("ref")
                     if isinstance(ref, str) and ref and (not withheld or ref in scanned):
                         self.observed_refs.add(ref)
+                        self.tool_outputs[ref] = hit
                     snippet_text = scanned if withheld else f"{hit.get('title', '')} {hit.get('snippet', '')}"
                     for inline in extract_citations(snippet_text):
                         self.observed_refs.add(inline)
+                        self.tool_outputs.setdefault(inline, hit)
                 return scanned, False
 
             if name == "concierge_facts":
@@ -315,9 +388,11 @@ class RagRuntime:
                 raw_text = json.dumps(payload)
                 scanned = await self._scan(raw_text, name)
                 withheld = self._was_withheld(raw_text, scanned)
-                for fid in (payload.get("facts") or {}):
+                gen_utc = payload.get("generatedUtc")
+                for fid, fval in (payload.get("facts") or {}).items():
                     if not withheld or fid in scanned:
                         self.observed_refs.add(fid)
+                        self.tool_outputs[fid] = {"id": fid, "value": fval, "generatedUtc": gen_utc}
                 return scanned, False
 
             raise RagToolError(f"Unknown local RAG tool: {name}")

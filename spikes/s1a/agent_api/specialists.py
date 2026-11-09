@@ -254,6 +254,7 @@ async def run_specialist_loop(
         if stop_reason != "tool_use" or not calls:
             final_text = text_of_response(response)
             evidence["citations"] = rag_tools.verify_citations(final_text, rag.observed_refs)
+            evidence["claimCheck"] = rag.evaluate_claims(final_text, evidence.get("claims"))
             return final_text
         messages.append({"role": "assistant", "content": content})
         results = []
@@ -278,6 +279,8 @@ async def run_specialist_loop(
                 continue
             raw_text, is_error = await call_mcp_tool(call_name, call_input)
             scanned = await guard.scan_result(raw_text, agent, call_name)
+            if not is_error and scanned == raw_text:
+                rag.record_mcp_output(call_name, call_id, scanned)
             results.append({
                 "type": "tool_result",
                 "tool_use_id": call_id,

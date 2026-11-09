@@ -525,13 +525,26 @@ class LiveAgentApiRelayTests(unittest.TestCase):
         self.assertEqual(poll1_data["nextAfter"], 1)
 
         # 4. Complete the job on agent_api with an aside that carries a forbidden number (must be stripped by voice_check)
+        #    and an unsupported claim in evidence.claimCheck (must append "Not confirmed:")
         self.agent_jobs["job-live-01"] = {
             "status": "done",
             "result": {
                 "answer": "Two hosts in hp-contoso-sales had zero sessions over the weekend [fact:idle-01].",
                 "aside": "Those 2 hosts saved $14 in compute.",
                 "evidence": {
-                    "citations": {"cited": ["fact:idle-01"], "uncited": [], "unverified": [], "valid": True},
+                    "citations": {
+                        "cited": ["fact:idle-01", "fact:unverified-99"],
+                        "verified": ["fact:idle-01"],
+                        "unverified": ["fact:unverified-99"],
+                        "allVerified": False,
+                    },
+                    "claimCheck": {
+                        "verdicts": [],
+                        "supported": [{"claim": "Two hosts idle", "citations": ["fact:idle-01"]}],
+                        "unsupported": [{"claim": "Autoscale is disabled", "citations": ["fact:unverified-99"]}],
+                        "unchecked": [],
+                        "mergeCheck": {"valid": False, "failingSentences": []},
+                    },
                     "toolCalls": [{"name": "query_log_analytics"}],
                 },
             },
@@ -542,9 +555,12 @@ class LiveAgentApiRelayTests(unittest.TestCase):
         turn = poll2_data["turn"]
         self.assertEqual(turn["status"], "completed")
         self.assertIn("Two hosts in hp-contoso-sales", turn["answer"])
+        self.assertIn("Not confirmed: Autoscale is disabled.", turn["answer"])
         # Aside had digits/currency so voice_check stripped it
         self.assertIsNone(turn["aside"])
-        self.assertEqual(len(turn["citations"]), 2)
+        # Only verified citation + toolCall are included in citation chips (not unverified-99)
+        self.assertEqual([c["label"] for c in turn["citations"]], ["fact:idle-01", "query_log_analytics"])
+        self.assertIsNotNone(turn["claimCheck"])
 
         # 5. Tripping kill switch to halt-agents relays POST /stop to agent_api
         trip_code, _ = self._request(

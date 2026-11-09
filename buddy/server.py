@@ -464,13 +464,25 @@ class BuddyState:
 
         evidence = result.get("evidence") or {}
         citations: list[dict[str, str]] = []
-        cited_refs = ((evidence.get("citations") or {}).get("cited")) or []
-        for idx, ref in enumerate(cited_refs, start=1):
+        cite_block = evidence.get("citations") or {}
+        verified_refs = cite_block.get("verified") if "verified" in cite_block else cite_block.get("cited")
+        for idx, ref in enumerate(verified_refs or [], start=1):
             citations.append({"id": f"cite-{idx:02d}", "label": str(ref)})
         for idx, tool in enumerate(evidence.get("toolCalls") or [], start=1):
             if isinstance(tool, dict):
                 name = str(tool.get("name", "tool"))
+            else:
+                name = str(tool)
+            if name and not any(c["label"] == name for c in citations):
                 citations.append({"id": f"call-{idx:02d}", "label": name})
+
+        claim_check_info = evidence.get("claimCheck") if isinstance(evidence.get("claimCheck"), dict) else None
+        if claim_check_info:
+            unsupported = claim_check_info.get("unsupported") or []
+            if unsupported and "not confirmed" not in answer.lower():
+                unconfirmed_labels = [str(u.get("claim", "")).strip() for u in unsupported if u.get("claim")]
+                if unconfirmed_labels:
+                    answer = f"{answer}\n\nNot confirmed: {'; '.join(unconfirmed_labels)}."
 
         mode, final_aside = self._apply_voice_check(
             question=question,
@@ -485,6 +497,7 @@ class BuddyState:
                 "events": sorted(events),
                 "answer": answer,
                 "citations": citations,
+                "claimCheck": claim_check_info,
                 "learnLinks": result.get("learnLinks") if isinstance(result.get("learnLinks"), list) else [],
                 "aside": final_aside,
                 "plan": plan,
