@@ -767,6 +767,80 @@
       }
     }
 
+    const estateCard = document.getElementById("status-estate-card");
+    const estateSummary = document.getElementById("status-estate-summary");
+    const estateBadge = document.getElementById("status-estate-badge");
+    const estatePlanes = document.getElementById("status-estate-planes");
+    const estateMeter = document.getElementById("status-estate-meter");
+    const estateFindings = document.getElementById("status-estate-findings");
+    const estate = state.status.estate;
+    if (estateCard && estate && Array.isArray(estate.planes)) {
+      estateCard.hidden = false;
+      if (estateSummary) {
+        estateSummary.textContent =
+          "Estate " + String(estate.estate || "estate") + " · snapshot " + String(estate.collectedAt || "");
+      }
+      if (estateBadge) {
+        const st = String(estate.overallStatus || "pass");
+        estateBadge.className =
+          "estate-score-pill" + (st === "fail" ? " is-fail" : st === "warn" ? " is-warn" : "");
+        estateBadge.textContent = String(estate.overallScorePct || 0) + "% " + st.toUpperCase();
+      }
+      if (estatePlanes) {
+        estatePlanes.textContent = "";
+        for (const p of estate.planes) {
+          const li = document.createElement("li");
+          li.className = "estate-plane-row";
+          const nameSpan = document.createElement("span");
+          nameSpan.className = "estate-plane-name";
+          nameSpan.textContent = String(p.name || p.id);
+          const countSpan = document.createElement("span");
+          countSpan.className = "estate-plane-counts";
+          countSpan.textContent =
+            String(p.scorePct || 0) + "% · " + String(p.pass || 0) + " pass · " + String(p.warn || 0) + " warn · " + String(p.fail || 0) + " fail";
+          li.appendChild(nameSpan);
+          li.appendChild(countSpan);
+          estatePlanes.appendChild(li);
+        }
+      }
+      if (estateMeter && estate.meterAudit) {
+        const m = estate.meterAudit;
+        estateMeter.textContent =
+          "Meter audit: " +
+          String(m.runningSessionHosts || 0) +
+          " running hosts · " +
+          String(m.unattachedDisks || 0) +
+          " unattached disks · " +
+          String(m.orphanedNics || 0) +
+          " orphaned NICs · " +
+          String(m.publicIps || 0) +
+          " public IPs";
+      }
+      if (estateFindings) {
+        estateFindings.textContent = "";
+        const findings = Array.isArray(estate.topFindings) ? estate.topFindings : [];
+        for (const f of findings) {
+          const row = document.createElement("div");
+          row.className = "estate-finding-row";
+          const txt = document.createElement("span");
+          txt.textContent = "[" + String(f.checkId || "") + "] " + String(f.title || "");
+          const askBtn = document.createElement("button");
+          askBtn.type = "button";
+          askBtn.className = "buddy-small-btn";
+          askBtn.textContent = "Ask avd-buddy";
+          askBtn.addEventListener("click", () => {
+            showScreen("chat");
+            submitQuestion(String(f.askPrompt || "Explain finding " + String(f.checkId || "")));
+          });
+          row.appendChild(txt);
+          row.appendChild(askBtn);
+          estateFindings.appendChild(row);
+        }
+      }
+    } else if (estateCard) {
+      estateCard.hidden = true;
+    }
+
     const resetBlock = (window.AVD_BUDDY_FIXTURES && window.AVD_BUDDY_FIXTURES.CLOUD_SHELL_RESET_BLOCK) || "";
     for (const id of ["halt-agents-code", "status-reset-code", "halted-screen-code"]) {
       const el = document.getElementById(id);
