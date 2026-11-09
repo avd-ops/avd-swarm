@@ -1,0 +1,29 @@
+# Personal project, not for production, provided as is; not affiliated with the author's employer, Liquidware or Microsoft.
+id: host.resume
+kind: power
+title: Start a deallocated session host VM (when not power-locked)
+defaultWhyKind: expand
+complianceEffect: none
+preconditions:
+  notDrainedByOthers: true
+  restoreDrainStateFound: true
+  noActiveSessions: false
+  notPowerLocked: true
+  notScalingExcluded: true
+  deallocatedNotUnhealthy: true
+  hostPoolAvailableHostsAbove: demand-plus-one-or-min
+  oneHostPerPoolAtATime: true
+  serviceHealthClear: AVD
+limits:
+  perHour: 2
+  perHostPerDay: 2
+  circuitBreakerFailures24h: 3
+verify:
+  positiveEvidenceRequired: true
+  fields:
+    - vm.powerState == running
+    - sessionHost.status == Available
+rollback:
+  restoreStateFound: true
+  fields:
+    - vm.powerState

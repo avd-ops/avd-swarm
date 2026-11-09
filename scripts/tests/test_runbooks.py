@@ -199,9 +199,20 @@ class Repo(unittest.TestCase):
         self.assertTrue(any("over the daily cap" in e for e in errors), errors)
 
     def test_propose_waits_for_the_action_catalog(self):
-        errors = self.with_copy(lambda r: self.write(r, "runbooks/hosts/sample.md", GOOD.replace(
-            "runMode: read-only", "runMode: propose").replace("budget:", "proposes: restart-avd-agent\nbudget:")))
+        def edit(r):
+            shutil.rmtree(r / "catalog/actions")
+            self.write(r, "runbooks/hosts/sample.md", GOOD.replace(
+                "runMode: read-only", "runMode: propose").replace("budget:", "proposes: restart-avd-agent\nbudget:"))
+        errors = self.with_copy(edit)
         self.assertTrue(any("waits for the action catalog" in e for e in errors), errors)
+
+    def test_propose_checks_the_action_catalog(self):
+        bad = self.with_copy(lambda r: self.write(r, "runbooks/hosts/sample.md", GOOD.replace(
+            "runMode: read-only", "runMode: propose").replace("budget:", "proposes: restart-avd-agent\nbudget:")))
+        self.assertTrue(any("proposes restart-avd-agent isn't in catalog/actions/" in e for e in bad), bad)
+        good = self.with_copy(lambda r: self.write(r, "runbooks/hosts/sample.md", GOOD.replace(
+            "runMode: read-only", "runMode: propose").replace("budget:", "proposes: host.restart-agent\nbudget:")))
+        self.assertEqual(good, [])
 
     def test_tampered_register_fails_its_pin(self):
         errors = self.with_copy(lambda r: (r / "contracts/fact-register.json").write_text("{\"facts\": []}"))

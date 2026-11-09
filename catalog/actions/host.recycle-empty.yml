@@ -1,0 +1,29 @@
+# Personal project, not for production, provided as is; not affiliated with the author's employer, Liquidware or Microsoft.
+id: host.recycle-empty
+kind: host
+title: Recycle an empty session host VM
+defaultWhyKind: fix
+complianceEffect: none
+preconditions:
+  notDrainedByOthers: true
+  restoreDrainStateFound: true
+  noActiveSessions: true
+  notPowerLocked: true
+  notScalingExcluded: true
+  deallocatedNotUnhealthy: true
+  hostPoolAvailableHostsAbove: demand-plus-one-or-min
+  oneHostPerPoolAtATime: true
+  serviceHealthClear: AVD
+limits:
+  perHour: 2
+  perHostPerDay: 1
+  circuitBreakerFailures24h: 3
+verify:
+  positiveEvidenceRequired: true
+  fields:
+    - sessionHost.status == Available
+    - sessionHost.lastHeartBeat > actionStartedUtc
+rollback:
+  restoreStateFound: true
+  fields:
+    - sessionHost.allowNewSession
