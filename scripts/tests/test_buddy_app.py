@@ -195,6 +195,18 @@ class StaticShellAndBudgetTests(unittest.TestCase):
         self.assertIn("speechSynthesis", app_js)
         self.assertIn("msg-speak-btn", app_js)
 
+    def test_dev_mode_controls_and_friendly_contract_names(self) -> None:
+        html_text = (ROOT / "buddy/app/index.html").read_text(encoding="utf-8")
+        app_js = (ROOT / "buddy/app/app.js").read_text(encoding="utf-8")
+        fixtures_js = (ROOT / "buddy/app/fixtures.js").read_text(encoding="utf-8")
+        self.assertIn('id="setting-devmode"', html_text)
+        self.assertIn('id="menu-devmode-btn"', html_text)
+        self.assertIn('"avd-ops-devmode"', app_js)
+        self.assertIn("Estate Facts:", fixtures_js)
+        self.assertIn("Fact Register", fixtures_js)
+        self.assertIn("devLabel", fixtures_js)
+        self.assertIn("devText", fixtures_js)
+
 
 class ServerAndIntegrationTests(unittest.TestCase):
     @classmethod

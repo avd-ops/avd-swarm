@@ -79,7 +79,12 @@ DEFAULT_FIXTURE_PLAN = {
     "why": "sh-pooled-03 missed 4 consecutive heartbeats in WVDAgentHealthStatus over the last 15 minutes while the VM power state is running and 0 sessions are active.",
     "gateResults": [
         {"gate": "Allowlist", "outcome": "pass", "text": "Pass: catalog action hosts.drain-and-restart-agent"},
-        {"gate": "Says why", "outcome": "pass", "text": "Pass: cites WVDAgentHealthStatus heartbeat gap and C15 fact ID"},
+        {
+            "gate": "Says why",
+            "outcome": "pass",
+            "text": "Pass: cites WVDAgentHealthStatus heartbeat gap and Fact Register ID",
+            "devText": "Pass: cites WVDAgentHealthStatus heartbeat gap and Fact Register (C15) ID",
+        },
         {"gate": "Live re-read", "outcome": "pass", "text": "Pass: 0 active sessions verified before proposal"},
         {"gate": "Kill switch", "outcome": "pass", "text": "Pass: switch position is run"},
     ],
