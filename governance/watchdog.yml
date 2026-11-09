@@ -1,0 +1,125 @@
+# Deterministic kill switch layers and watchdog rules (governance.md section 2.3 and 2.4; R5, R6, R13, V1-15).
+# Protected path: an agent-authored PR cannot change it, and loosening a threshold or lowering a target
+# switch position counts as capability-raising under section 2.6.
+switch:
+  tag: avd-swarm-switch
+  positions:
+    - run
+    - halt-actions
+    - halt-agents
+    - halt-all
+  resetBy: person-cloud-shell-only
+  preserveIdentities:
+    - stop-spend
+    - landing-zone-deploy
+    - operator
+  nonHumanMcpCallersRefusedAtHaltAgents:
+    - sre-agent
+    - foundry
+    - claude-code
+
+thresholds:
+  maxPlansProposedPerHour: 6
+  maxConsecutiveRejections: 3
+  maxFailedVerifications24h: 2
+  observerSilenceMinutes: 15
+  maxSuspectedInjectionsPerHour: 3
+  maxDecoyTrips24h: 2
+  maxComplianceRegressions7d: 2
+
+rules:
+  - id: write.unapproved
+    source: activity-log
+    description: A write by the approve identity with no matching approved plan
+    position: halt-all
+    pageOwner: true
+  - id: write.outside-scope
+    source: activity-log
+    description: A write by any swarm identity outside the registered scope
+    position: halt-all
+    pageOwner: true
+  - id: adapter.sre-agent-write
+    source: activity-log
+    description: A role assignment to Azure SRE Agent's identity, or any write by it (spec section 3a)
+    position: halt-all
+    pageOwner: true
+  - id: spend.daily-token-cap
+    source: token-meter
+    description: Daily token spend cap reached from the in-process token meter (spend.md section 3.7)
+    position: halt-agents
+    pageOwner: false
+  - id: model.usage-after-halt
+    source: token-meter-or-provider
+    description: Model usage metered or reported by the provider after halt-agents or above took effect
+    position: halt-all
+    pageOwner: true
+  - id: plans.rate-or-rejections
+    source: plan-store
+    description: More than maxPlansProposedPerHour plans in an hour or maxConsecutiveRejections in a row
+    position: halt-actions
+    pageOwner: false
+  - id: verify.failures-24h
+    source: plan-store
+    description: Two failed verifications or rollbacks within 24 hours
+    position: halt-actions
+    pageOwner: true
+  - id: observer.silent
+    source: observer-heartbeat
+    description: A required observer silent for 15 minutes
+    position: halt-actions
+    pageOwner: false
+  - id: guardrail.bypassed-on-main
+    source: github-audit
+    description: A protected path changed on main other than through a green PR and required solo/team time-lock
+    position: halt-actions
+    pageOwner: true
+  - id: workflow.write-in-public-repo
+    source: github-audit
+    description: A write-path workflow ran in a public repository (spec section 5b)
+    position: halt-all
+    pageOwner: true
+  - id: spend.cap.reached
+    source: spend-ledger
+    description: Month to date reached the monthly cap (except plans that stop spend)
+    position: halt-actions
+    pageOwner: false
+  - id: spend.teardown.failed
+    source: spend-ledger
+    description: A sandbox or recovery run's teardown did not finish within its time box
+    position: halt-actions
+    pageOwner: true
+  - id: operator.read-spike
+    source: buddy-audit
+    description: One operator's reads spike far above their usual rate (R15)
+    position: halt-agents
+    pageOwner: true
+  - id: security.injection-suspected
+    source: prompt-shields
+    description: More than maxSuspectedInjectionsPerHour injection.suspected events in an hour (R26)
+    position: halt-actions
+    pageOwner: true
+  - id: security.decoy-tripped
+    source: tool-layer
+    description: Two decoy.tripped events within 24 hours (R26)
+    position: halt-actions
+    pageOwner: true
+  - id: switch.cleared-incomplete
+    source: switch-audit
+    description: The switch flag cleared while a credential, role, or compute layer is still missing
+    position: halt-actions
+    pageOwner: true
+  - id: compliance.exemption-or-policy-write
+    source: activity-log
+    description: A swarm identity creates or changes a policy exemption, policy assignment, or Defender setting
+    position: halt-all
+    pageOwner: true
+  - id: compliance.regressed-twice
+    source: compliance-gate
+    description: Two compliance.regressed events within 7 days
+    position: halt-actions
+    pageOwner: true
+  - id: recovery.write-outside-scope
+    source: activity-log
+    description: A write by the recovery test identity outside a run resource group in a registered recovery scope
+    position: halt-all
+    pageOwner: true

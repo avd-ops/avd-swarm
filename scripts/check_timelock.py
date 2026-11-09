@@ -241,6 +241,58 @@ def _classify_compliance(
     return "lowers", reasons
 
 
+SWITCH_SEVERITY = {"halt-actions": 1, "halt-agents": 2, "halt-all": 3}
+
+
+def _classify_watchdog(
+    path: str, before: dict[str, Any] | None, after: dict[str, Any] | None
+) -> tuple[str, list[str]]:
+    if not isinstance(before, dict) or not isinstance(after, dict):
+        return "raises", [f"{path}: added, removed, or invalid YAML"]
+    extra_keys = (set(before) | set(after)) - {"switch", "thresholds", "rules"}
+    if extra_keys:
+        return "raises", [f"{path}: unknown key(s) {', '.join(sorted(extra_keys))}"]
+    if before.get("switch") != after.get("switch"):
+        return "raises", [f"{path}:switch: switch configuration changed"]
+    reasons: list[str] = []
+    b_thresh = before.get("thresholds") if isinstance(before.get("thresholds"), dict) else {}
+    a_thresh = after.get("thresholds") if isinstance(after.get("thresholds"), dict) else {}
+    if b_thresh != a_thresh:
+        effect, thresh_reasons = _compare_numeric_caps(f"{path}:thresholds", b_thresh, a_thresh)
+        if effect == "raises":
+            return "raises", thresh_reasons
+        reasons.extend(thresh_reasons)
+
+    b_rules = {r["id"]: r for r in (before.get("rules") or []) if isinstance(r, dict) and "id" in r}
+    a_rules = {r["id"]: r for r in (after.get("rules") or []) if isinstance(r, dict) and "id" in r}
+    removed_rules = sorted(set(b_rules) - set(a_rules))
+    if removed_rules:
+        return "raises", [f"{path}:rules: removed {', '.join(removed_rules)}"]
+    for rid, a_rule in sorted(a_rules.items()):
+        if rid not in b_rules:
+            reasons.append(f"{path}:rules.{rid}: added watchdog rule")
+            continue
+        b_rule = b_rules[rid]
+        if b_rule == a_rule:
+            continue
+        b_pos = SWITCH_SEVERITY.get(str(b_rule.get("position")), 0)
+        a_pos = SWITCH_SEVERITY.get(str(a_rule.get("position")), 0)
+        if a_pos < b_pos:
+            return "raises", [f"{path}:rules.{rid}: position lowered ({b_rule.get('position')} -> {a_rule.get('position')})"]
+        if b_rule.get("pageOwner") is True and a_rule.get("pageOwner") is not True:
+            return "raises", [f"{path}:rules.{rid}: pageOwner disabled"]
+        if a_pos > b_pos:
+            reasons.append(f"{path}:rules.{rid}: position tightened ({b_rule.get('position')} -> {a_rule.get('position')})")
+        elif b_rule.get("pageOwner") is False and a_rule.get("pageOwner") is True:
+            reasons.append(f"{path}:rules.{rid}: pageOwner enabled")
+        else:
+            return "raises", [f"{path}:rules.{rid}: modified ({b_rule!r} -> {a_rule!r})"]
+
+    if not reasons:
+        return "raises", [f"{path}: modified without tightening watchdog thresholds or rules"]
+    return "lowers", reasons
+
+
 def classify_change(
     path: str,
     before_text: str | None,
@@ -271,6 +323,8 @@ def classify_change(
         effect, reasons = _classify_gateway(path, before_data, after_data)
     elif path == "governance/compliance.yml":
         effect, reasons = _classify_compliance(path, before_data, after_data)
+    elif path == "governance/watchdog.yml":
+        effect, reasons = _classify_watchdog(path, before_data, after_data)
     elif path.startswith("governance/allowlists/") and path.endswith(".yml"):
         effect, reasons = _classify_allowlist(path, before_data, after_data)
     elif path == "governance/protected-paths.yml":
