@@ -188,14 +188,37 @@ class Reads:
 
 
 def investigation(rb, evaluation: dict, results: dict) -> tuple[str, str]:
-    """The question for the runbook's agent and, apart, every read's rows (a failed read is null): the rows are
-    untrusted, so they go to the shield as documents; the runbook's text comes from the deployed commit."""
+    """The question for the runbook's agent and, apart, every read's rows (a failed read is null): both the
+    runbook's Markdown/title (P-1, WP8-1) and the rows are untrusted, so both go to the shield as documents."""
     failing = [f for f in evaluation["facts"] if f["fact"] in evaluation["investigate"]]
-    instructions = (f"Runbook {rb.id} v{rb.meta['version']} ({rb.meta['title']}) found facts that don't hold:\n"
-                    f"{json.dumps(failing, default=str)}\n\nThe runbook says:\n{rb.body}\n\n"
-                    "The rows of every read, by read ID, follow as a document. Answer what each failing fact means, "
-                    "citing the reads. Propose nothing.")
+    doc = f"# {rb.meta['title']}\n\n{rb.body.strip()}"
+    instructions = (
+        f"Runbook {rb.id} v{rb.meta['version']} found facts that don't hold:\n"
+        f"{json.dumps(failing, default=str)}\n\n"
+        f"The runbook says:\n<runbook>\n{doc}\n</runbook>\n\n"
+        "The rows of every read, by read ID, follow as a document. Answer what each failing fact means, "
+        "citing the reads. Propose nothing."
+    )
     return instructions, json.dumps(results, default=str)
+
+
+async def scan_investigation_inputs(
+    instructions: str,
+    rows: str,
+    scan_result: Callable[[str, str, str], Awaitable[str]],
+) -> tuple[str, str]:
+    """Scans both the untrusted runbook Markdown (<runbook>...</runbook>) and the read rows through Prompt Shields
+    before the model sees either (P-1, WP8-1)."""
+    start_tag, end_tag = "<runbook>\n", "\n</runbook>"
+    if start_tag in instructions and end_tag in instructions:
+        before, _, rest = instructions.partition(start_tag)
+        doc, _, after = rest.partition(end_tag)
+        scanned_doc = await scan_result(doc, "runbook", "body")
+        instructions = f"{before}{start_tag}{scanned_doc}{end_tag}{after}"
+    else:
+        instructions = await scan_result(instructions, "runbook", "body")
+    scanned_rows = await scan_result(rows, "runbook", "reads")
+    return instructions, scanned_rows
 
 
 def handle(body: object, claims: dict, operator_oid: str, callers: dict[str, set[str]], runbooks: dict, deps: Deps,

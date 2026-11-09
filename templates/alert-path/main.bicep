@@ -27,6 +27,8 @@ param agentApiUrl string
 param agentApiResource string
 
 @description('Commit the job runs: the same public repository and commit the agent API was deployed from, so both read the same runbooks (a runbook only in a private repo needs an image build, not this download).')
+@minLength(40)
+@maxLength(40)
 param repoCommit string
 
 @description('The public repository the job downloads anonymously, as owner/name: the agent API\'s.')
@@ -34,6 +36,13 @@ param repo string = 'avd-ops/avd-swarm'
 
 @description('Resource group holding the kill switch tag (the swarm\'s resource group).')
 param swarmResourceGroup string = resourceGroup().name
+
+@description('Cloud environment profile (C26): commercial or usgov.')
+@allowed([
+  'commercial'
+  'usgov'
+])
+param cloudEnvironment string = 'commercial'
 
 param suffix string = take(uniqueString(resourceGroup().id), 6)
 
@@ -227,6 +236,7 @@ resource job 'Microsoft.App/jobs@2025-01-01' = {
             { name: 'ALERT_QUEUE_NAME', value: queueName }
             { name: 'AGENT_API_URL', value: agentApiUrl }
             { name: 'AGENT_API_RESOURCE', value: agentApiResource }
+            { name: 'CLOUD_ENVIRONMENT', value: cloudEnvironment }
           ]
         }
       ]

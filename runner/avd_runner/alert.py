@@ -133,7 +133,15 @@ def handle(message_text: str, get_json: Callable[[str], dict], runbooks: dict[st
 # --- Azure plumbing: the job's managed identity, Alerts Management and Queue Storage over REST -------------
 
 def http(method: str, url: str, headers: dict, body: bytes | None = None, timeout: int = 60) -> bytes:
+    parsed = urllib.parse.urlsplit(url.strip())
+    if "Authorization" in headers and (parsed.scheme != "https" or not parsed.netloc):
+        raise ValueError("Bearer token requests must use https://")
     request = urllib.request.Request(url, method=method, data=body, headers=headers)
+    if getattr(urllib.request.urlopen, "__module__", "") == "urllib.request":
+        from .cli import _NoRedirectHandler
+        opener = urllib.request.build_opener(_NoRedirectHandler())
+        with opener.open(request, timeout=timeout) as response:
+            return response.read()
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return response.read()
 
@@ -232,7 +240,7 @@ def main(env=os.environ, out=print) -> int:
         try:
             out(f"Asking the agent API to run {rid} (up to {TIMEOUT_SECONDS} seconds)")
             return checked_finding(post_runbook(env["AGENT_API_URL"], env["AGENT_API_RESOURCE"], rid, "alert",
-                                                token=msi_token), rid)
+                                                token=msi_token), rid, "alert")
         except Exception as error:
             return unreachable(rid, "alert", error)
 

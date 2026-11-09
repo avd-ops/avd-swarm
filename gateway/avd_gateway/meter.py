@@ -60,15 +60,19 @@ class Meter:
         return self._next
 
     def book(self, reservation: int, model: str, usage: dict) -> float:
-        self.reserved.pop(reservation, None)
+        if reservation not in self.reserved:
+            raise SpendRefused(f"reservation {reservation!r} is not open; refusing duplicate or unknown settlement")
         cost = self.cost_usd(model, usage)
+        self.reserved.pop(reservation)
         self.spent_usd += cost
         self.calls += 1
         return cost
 
     def release(self, reservation: int) -> None:
         """A call that failed before a response: nothing is booked (Anthropic doesn't bill a failed request)."""
-        self.reserved.pop(reservation, None)
+        if reservation not in self.reserved:
+            raise SpendRefused(f"reservation {reservation!r} is not open; refusing duplicate or unknown release")
+        self.reserved.pop(reservation)
 
     def stop(self, reason: str) -> None:
         self.stopped = reason or "stopped by the operator"

@@ -53,7 +53,33 @@ def parse_name_status(text: str) -> list[tuple[str, str]]:
     return changes
 
 
-def check(policy: dict, pr: dict, changes: list[tuple[str, str]]) -> list[str]:
+def runbook_is_protected(path: str, root: Path | None) -> bool:
+    """A runbook with runMode: propose or a proposes field is a protected path in step 3 (core-and-adapters.md P-1)."""
+    if not (path.startswith("runbooks/") and path.endswith(".md") and path != "runbooks/README.md"):
+        return False
+    if root is None:
+        return False
+    file_path = root / path
+    if not file_path.is_file():
+        return False
+    text = file_path.read_text(encoding="utf-8")
+    if not text.startswith("---\n"):
+        return True
+    _, _, rest = text[4:].partition("\n---\n")
+    if not rest and not text[4:].endswith("\n---"):
+        return True
+    front = text[4:].partition("\n---")[0]
+    try:
+        meta = yaml.safe_load(front)
+    except yaml.YAMLError:
+        return True
+    if not isinstance(meta, dict):
+        return True
+    trigger = meta.get("trigger") if isinstance(meta.get("trigger"), dict) else {}
+    return trigger.get("runMode") == "propose" or "proposes" in meta
+
+
+def check(policy: dict, pr: dict, changes: list[tuple[str, str]], root: Path | None = None) -> list[str]:
     agents = set(policy.get("agents") or [])
     found = authors(pr) & agents
     if not found:
@@ -63,6 +89,8 @@ def check(policy: dict, pr: dict, changes: list[tuple[str, str]]) -> list[str]:
     for status, path in changes:
         if any(matches(path, p) for p in policy.get("protected") or []):
             findings.append(f"{path}: protected path changed by {who}")
+        elif runbook_is_protected(path, root):
+            findings.append(f"{path}: propose-mode runbook changed by {who} (P-1)")
         elif status != "A" and any(matches(path, p) for p in policy.get("append_only") or []):
             findings.append(f"{path}: append-only path changed or deleted by {who} (status {status})")
     return findings
@@ -76,7 +104,7 @@ def main(argv: list[str]) -> int:
     policy = yaml.safe_load((root / "governance/protected-paths.yml").read_text(encoding="utf-8"))
     pr = json.loads(Path(argv[0]).read_text(encoding="utf-8"))
     changes = parse_name_status(Path(argv[1]).read_text(encoding="utf-8"))
-    findings = check(policy, pr, changes)
+    findings = check(policy, pr, changes, root=root)
     for finding in findings:
         print(finding)
     agent = bool(authors(pr) & set(policy.get("agents") or []))

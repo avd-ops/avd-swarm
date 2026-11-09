@@ -199,6 +199,29 @@ class Investigation(unittest.TestCase):
         _, finding, _, _ = call({"runbook": "hosts.agent-unhealthy", "startedBy": "manual"}, fakes=fakes)
         self.assertEqual((finding["outcome"], finding["investigation"]["status"]), ("finding", "refused"))
 
+    def test_runbook_markdown_and_rows_both_go_through_prompt_shields(self):
+        rb = RUNBOOKS["hosts.agent-unhealthy"]
+        instructions, rows = rbe.investigation(
+            rb,
+            {"facts": [{"fact": "unhealthyHosts", "value": 1, "holds": False}], "investigate": ["unhealthyHosts"]},
+            {"health": [{"SessionHostName": "host-a", "Problem": 1}]},
+        )
+        self.assertIn("<runbook>\n", instructions)
+        seen = []
+
+        async def fake_scan(text: str, agent: str, tool: str) -> str:
+            seen.append((agent, tool, text))
+            if tool == "body":
+                return "[Prompt Shields withheld runbook body]"
+            return text
+
+        scanned_inst, scanned_rows = run_now(rbe.scan_investigation_inputs(instructions, rows, fake_scan))
+        self.assertEqual([(a, t) for a, t, _ in seen], [("runbook", "body"), ("runbook", "reads")])
+        self.assertIn(rb.meta["title"], seen[0][2])
+        self.assertIn("[Prompt Shields withheld runbook body]", scanned_inst)
+        self.assertNotIn(rb.meta["title"], scanned_inst)
+        self.assertIn("host-a", scanned_rows)
+
 
 class Memory(unittest.TestCase):
     def test_findings_are_capped(self):

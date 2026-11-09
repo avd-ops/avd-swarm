@@ -322,6 +322,49 @@ class GatewayFlow(unittest.TestCase):
         gw = Gateway.from_files(PRICES, CONFIG, ledger.MemoryStore(), lambda: "run")
         self.assertEqual(gw.refuse_at, ["halt-agents", "halt-all"])
 
+    def test_duplicate_settlement_or_release_cannot_drain_the_ledger(self):
+        gw, _, _ = gateway()
+        run = gw.open_run("agent-api", "r1")
+        ticket = gw.before_call(run, "claude-sonnet-5-5", 1_000, 1_000)
+        cost = gw.after_call(ticket, self.USAGE)
+        booked = gw.ledger.store.rows[("2026-10", "day-2026-10-21")][0]
+        self.assertAlmostEqual(booked, cost)
+        with self.assertRaises(SpendRefused):
+            gw.after_call(ticket, self.USAGE)
+        with self.assertRaises(SpendRefused):
+            gw.failed(ticket)
+        self.assertAlmostEqual(gw.ledger.store.rows[("2026-10", "day-2026-10-21")][0], cost)
+
+    def test_negative_or_boolean_token_counts_are_refused(self):
+        gw, _, _ = gateway()
+        run = gw.open_run("agent-api")
+        for bad_in, bad_max in ((-1, 100), (100, 0), (100, -5), (True, 100), (100, False)):
+            with self.assertRaises(SpendRefused):
+                gw.before_call(run, "claude-haiku-5-5", bad_in, bad_max)
+        ticket = gw.before_call(run, "claude-haiku-5-5", 100, 100)
+        for bad_usage in ({"input_tokens": -10, "output_tokens": 5}, {"input_tokens": True, "output_tokens": 5}, "bad"):
+            with self.assertRaises(SpendRefused):
+                gw.after_call(ticket, bad_usage)
+
+    def test_service_mode_binds_caller_from_verified_entra_app_role_and_refuses_virtual_keys(self):
+        from avd_gateway.gateway import parse_service_callers, resolve_service_caller
+        cfg = config(callers={"agent-api": {"dailyUsd": 5.0}, "judge": {"dailyUsd": 0.5}})
+        gw, _, _ = gateway(cfg=cfg)
+        caller_oids = parse_service_callers("oid-agent=agent-api,oid-judge=judge")
+        valid_claims = {"oid": "oid-judge", "idtyp": "app", "roles": ["gateway.judge"]}
+        self.assertEqual(resolve_service_caller(valid_claims, caller_oids, cfg), "judge")
+        run = gw.open_service_run(valid_claims, caller_oids)
+        self.assertEqual(run.caller, "judge")
+
+        for bad_claims in (
+            {"oid": "oid-judge", "idtyp": "app", "roles": ["gateway.agent-api"]},  # wrong role for OID
+            {"oid": "oid-unknown", "idtyp": "app", "roles": ["gateway.judge"]},    # unknown OID
+            {"oid": "oid-judge", "scp": "Mcp.Tools.ReadWrite", "roles": ["gateway.judge"]},  # delegated user token
+            {"oid": "oid-judge", "idtyp": "app", "roles": ["gateway.judge"], "virtualKey": "vk-123"},  # virtual key
+        ):
+            with self.assertRaises(SpendRefused, msg=repr(bad_claims)):
+                gw.open_service_run(bad_claims, caller_oids)
+
 
 if __name__ == "__main__":
     unittest.main()

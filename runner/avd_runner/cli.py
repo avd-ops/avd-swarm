@@ -32,6 +32,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -112,8 +113,18 @@ def az_scope_token(scope: str) -> str:
     return az("account", "get-access-token", "--scope", scope, "--query", "accessToken", "-o", "tsv").strip()
 
 
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Refuses HTTP redirects on bearer-authenticated requests so tokens are never forwarded across hops (WP8-3)."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise urllib.error.HTTPError(req.full_url, code, f"redirect refused ({msg})", headers, fp)
+
+
 def post_runbook(url: str, resource: str, runbook: str, started_by: str, token=az_token, sleep=time.sleep) -> dict:
     """One retry after a 502 or 503, so a transient blip doesn't open an issue that the next run closes."""
+    parsed = urllib.parse.urlsplit(url.strip())
+    if parsed.scheme != "https" or not parsed.netloc:
+        raise ValueError("AGENT_API_URL must be an https:// URL")
     token = token(resource)
     request = urllib.request.Request(f"{url.rstrip('/')}/runbook", method="POST",
                                      data=json.dumps({"runbook": runbook, "startedBy": started_by}).encode(),
@@ -129,14 +140,22 @@ def post_runbook(url: str, resource: str, runbook: str, started_by: str, token=a
 
 
 def _post(request: urllib.request.Request) -> dict:
+    if getattr(urllib.request.urlopen, "__module__", "") == "urllib.request":
+        opener = urllib.request.build_opener(_NoRedirectHandler())
+        with opener.open(request, timeout=TIMEOUT_SECONDS) as response:
+            return json.loads(response.read())
     with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:
         return json.loads(response.read())
 
 
-def checked_finding(finding: object, runbook: str) -> dict:
-    """The agent API's reply, refused unless it is a finding for this runbook with a known outcome."""
+def checked_finding(finding: object, runbook: str, started_by: str | None = None) -> dict:
+    """The agent API's reply, refused unless it is a finding for this runbook with a known outcome and provenance."""
     if not isinstance(finding, dict) or finding.get("runbook") != runbook or finding.get("outcome") not in report.OUTCOMES:
         raise ValueError("the agent API's reply isn't a finding for this runbook")
+    if started_by is not None or "threadStartedBy" in finding:
+        actual_started = finding.get("threadStartedBy")
+        if actual_started not in STARTED_BY or (started_by is not None and actual_started != started_by):
+            raise ValueError("the agent API's reply has an invalid or mismatched threadStartedBy")
     for key, empty in (("version", 0), ("facts", []), ("failedReads", []), ("readErrors", {}),
                        ("investigation", {"status": "not-available"})):
         finding.setdefault(key, empty)
@@ -167,6 +186,7 @@ def main(argv: list[str] | None = None) -> int:
     f.add_argument("--resource-group", required=True)
     f.add_argument("--tag", default=TAG_DEFAULT)
     f.add_argument("--cloud", default=os.environ.get("CLOUD_ENVIRONMENT", "commercial"))
+    f.add_argument("--refuse-at", nargs="+", choices=flags.POSITIONS, default=None)
     t = sub.add_parser("title")
     t.add_argument("--id", required=True)
     r = sub.add_parser("run")
@@ -188,11 +208,16 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "flag":
         import yaml
         config = yaml.safe_load((ROOT / "governance/gateway.yml").read_text(encoding="utf-8"))
+        refuse_list = (
+            list(flags.refusals({"flag": {"refuseModelCallsAt": list(args.refuse_at)}}))
+            if args.refuse_at
+            else list(flags.refusals(config))
+        )
         code, detail = flag_position(
             args.subscription,
             args.resource_group,
             args.tag,
-            list(flags.refusals(config)),
+            refuse_list,
             cloud=args.cloud,
         )
         print({0: f"switch: {detail}", REFUSED: f"skipped: {detail}"}.get(code, f"::error::{detail}"))
@@ -218,7 +243,11 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Asking the agent API to run {args.id} (up to {TIMEOUT_SECONDS} seconds)", flush=True)
             scope = os.environ.get("AGENT_API_SCOPE", "")  # set for an operator's run: their token for that scope
             token = (lambda _resource: az_scope_token(scope)) if scope else az_token
-            finding = checked_finding(post_runbook(url, resource, args.id, args.started_by, token=token), args.id)
+            finding = checked_finding(
+                post_runbook(url, resource, args.id, args.started_by, token=token),
+                args.id,
+                args.started_by,
+            )
         except Exception as error:
             finding = unreachable(args.id, args.started_by, error)
         Path(args.out).write_text(json.dumps(finding, indent=2), encoding="utf-8")

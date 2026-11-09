@@ -54,6 +54,24 @@ class AgentPr(unittest.TestCase):
                      ".github/workflows/guard.yml", "scripts/tests/test_check_agent_pr.py", "gateway/avd_gateway/meter.py"):
             self.assertTrue(any(check_agent_pr.matches(path, p) for p in POLICY["protected"]), path)
 
+    def test_agent_pr_touching_propose_runbook_fails_while_read_only_runbook_passes(self):
+        import shutil
+        import tempfile
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        shutil.copytree(ROOT / "runbooks", tmp / "runbooks")
+        ro_changes = check_agent_pr.parse_name_status("M\trunbooks/hosts/agent-unhealthy.md\n")
+        self.assertEqual(check_agent_pr.check(POLICY, pr("app/avd-swarm-improve"), ro_changes, root=tmp), [])
+
+        rb_path = tmp / "runbooks/hosts/agent-unhealthy.md"
+        rb_path.write_text(
+            rb_path.read_text(encoding="utf-8").replace("runMode: read-only", "runMode: propose\nproposes: host.restart-agent"),
+            encoding="utf-8",
+        )
+        findings = check_agent_pr.check(POLICY, pr("app/avd-swarm-improve"), ro_changes, root=tmp)
+        self.assertEqual(len(findings), 1, findings)
+        self.assertIn("propose-mode runbook", findings[0])
+
 
 if __name__ == "__main__":
     unittest.main()
