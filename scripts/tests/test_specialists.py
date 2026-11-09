@@ -276,6 +276,12 @@ class SpecialistRuntimeLoopTests(unittest.TestCase):
         self.assertEqual(evidence["citations"]["unverified"], [])
         self.assertIn("wvd-hosts-without-connections-7d", evidence["citations"]["verified"])
         self.assertIn("c11.entra.skuWin365Available", evidence["citations"]["verified"])
+        self.assertIn("claimCheck", evidence)
+        self.assertEqual(evidence["claimCheck"]["unsupported"], [])
+        self.assertTrue(evidence["claimCheck"]["mergeCheck"]["valid"])
+        supported_cites = {c for v in evidence["claimCheck"]["supported"] for c in v["citations"]}
+        self.assertIn("c11.entra.skuWin365Available", supported_cites)
+        self.assertIn("c11.hostPool.startVmOnConnect", supported_cites)
 
     def test_intune_specialist_synthesizes_policy_drift_and_refuses_kql_and_decoy(self):
         allowed = specialists.allowed_tools_for(ROOT, "intune")
