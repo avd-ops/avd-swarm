@@ -19,7 +19,10 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Callable
+from pathlib import Path
+from typing import Any, Callable
+
+import yaml
 
 from .evidence import (
     CLOUD_ENVIRONMENTS,
@@ -30,9 +33,33 @@ from .evidence import (
     resolve_cloud_environment,
 )
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
 WHY_KINDS = ("build", "configure", "expand", "contract", "fix", "recover", "retire")
 KILL_SWITCH_REFUSE_ACTIONS = ("halt-actions", "halt-agents", "halt-all")
 HOST_ACTIONS = ("host.drain", "host.restart-agent", "host.recycle-empty", "host.reregister", "host.stop", "host.resume")
+FORBIDDEN_PLAN_SECRET_KEYS = ("registrationToken", "token", "secret", "password", "keyVaultSecretValue")
+
+
+def load_action_catalog(root: Path | None = None) -> dict[str, dict[str, Any]]:
+    """Loads all action manifests from catalog/actions/*.yml."""
+    base = (root or REPO_ROOT) / "catalog/actions"
+    if not base.is_dir():
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for path in sorted(base.glob("*.yml")):
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        if isinstance(data, dict) and isinstance(data.get("id"), str):
+            out[data["id"]] = data
+    return out
+
+
+def load_compliance_policy(root: Path | None = None) -> dict[str, Any]:
+    """Loads Defender for Cloud / Azure Policy compliance gate settings from governance/compliance.yml."""
+    path = (root or REPO_ROOT) / "governance/compliance.yml"
+    if not path.is_file():
+        return {"floor": 70.0, "verifyMinutes": 30, "standards": ["microsoft-cloud-security-benchmark"], "allowedMayLowerControls": []}
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    return data if isinstance(data, dict) else {}
 
 
 def why_refusals(plan: object) -> list[str]:
@@ -54,6 +81,123 @@ def why_refusals(plan: object) -> list[str]:
         alternatives = draft.get("alternatives")
         if not isinstance(alternatives, list) or len(alternatives) == 0:
             out.append("C18: why.draft needs at least one alternative")
+    return out
+
+
+def catalog_action_refusals(
+    plan: object,
+    state: object,
+    runner_env: dict | None = None,
+    root: Path | None = None,
+) -> list[str]:
+    """Evaluates catalog membership, section 5a rate limits & 24h circuit breaker, Run Command script hash &
+    dedicated identity, secret-in-plan refusal, and governance section 2.5 compliance gate rules."""
+    if not isinstance(plan, dict):
+        return ["5a: plan must be a mapping"]
+    base_root = root or REPO_ROOT
+    catalog = load_action_catalog(base_root)
+    action = str(plan.get("action") or "")
+    if not catalog or action not in catalog:
+        return [f"5a: action {action!r} is not in catalog/actions/"]
+
+    manifest = catalog[action]
+    out: list[str] = []
+    st = state if isinstance(state, dict) else {}
+
+    # 1. Secrets never enter the plan (host.reregister and all catalog actions)
+    for key in FORBIDDEN_PLAN_SECRET_KEYS:
+        if key in plan or key in st:
+            out.append(f"5a: secretsInActionOnly: plan or state must never carry secret field {key!r}")
+
+    # 2. Rate limits and 24-hour circuit breaker from the action manifest
+    limits = manifest.get("limits") if isinstance(manifest.get("limits"), dict) else {}
+    per_hour_cap = limits.get("perHour", 1)
+    per_host_day_cap = limits.get("perHostPerDay", 1)
+    cb_cap = limits.get("circuitBreakerFailures24h", 3)
+
+    plans_last_hour = st.get("plansInLastHour", 0)
+    if isinstance(plans_last_hour, bool) or not isinstance(plans_last_hour, int) or plans_last_hour < 0:
+        out.append("5a: limits.perHour: plansInLastHour must be a non-negative integer")
+    elif plans_last_hour >= per_hour_cap:
+        out.append(f"5a: limits.perHour: {plans_last_hour} plan(s) in the last hour reaches cap {per_hour_cap} for {action}")
+
+    plans_host_day = st.get("plansForHostInLast24h", 0)
+    if isinstance(plans_host_day, bool) or not isinstance(plans_host_day, int) or plans_host_day < 0:
+        out.append("5a: limits.perHostPerDay: plansForHostInLast24h must be a non-negative integer")
+    elif plans_host_day >= per_host_day_cap:
+        out.append(
+            f"5a: limits.perHostPerDay: {plans_host_day} plan(s) on target host in 24h reaches cap {per_host_day_cap} for {action}"
+        )
+
+    failures_24h = st.get("failuresInLast24h", 0)
+    if isinstance(failures_24h, bool) or not isinstance(failures_24h, int) or failures_24h < 0:
+        out.append("5a: limits.circuitBreakerFailures24h: failuresInLast24h must be a non-negative integer")
+    elif failures_24h >= cb_cap:
+        out.append(
+            f"5a: circuit breaker tripped for {action}: {failures_24h} failed verification(s)/rollback(s) in 24h (cap {cb_cap})"
+        )
+
+    # 3. Run Command fixed script SHA-256, no parameters, and dedicated identity (spec section 5a)
+    cat_rc = manifest.get("runCommand")
+    plan_rc = plan.get("runCommand")
+    if plan_rc is not None and not isinstance(cat_rc, dict):
+        out.append(f"5a: action {action} does not permit Run Command")
+    if isinstance(cat_rc, dict):
+        for forbidden_rc_key in ("inlineScript", "parameters", "args"):
+            if forbidden_rc_key in plan or (isinstance(plan_rc, dict) and forbidden_rc_key in plan_rc):
+                out.append(f"5a: Run Command takes no {forbidden_rc_key} from the agent")
+        script_rel = str(cat_rc.get("script") or "")
+        pinned_sha = str(cat_rc.get("sha256") or "")
+        dedicated_id = str(cat_rc.get("identity") or "")
+        script_path = base_root / script_rel
+        if not script_path.is_file():
+            out.append(f"5a: Run Command script {script_rel!r} is missing")
+        else:
+            actual_sha = hashlib.sha256(script_path.read_bytes()).hexdigest()
+            if actual_sha != pinned_sha:
+                out.append(f"5a: Run Command script {script_rel} sha256 {actual_sha} does not match catalog pin {pinned_sha}")
+        if isinstance(plan_rc, dict):
+            if "script" in plan_rc and plan_rc.get("script") != script_rel:
+                out.append(f"5a: plan runCommand.script {plan_rc.get('script')!r} does not match catalog {script_rel!r}")
+            if "sha256" in plan_rc and plan_rc.get("sha256") != pinned_sha:
+                out.append(f"5a: plan runCommand.sha256 {plan_rc.get('sha256')!r} does not match catalog {pinned_sha!r}")
+            if "identity" in plan_rc and plan_rc.get("identity") != dedicated_id:
+                out.append(
+                    f"5a: plan runCommand.identity {plan_rc.get('identity')!r} does not match dedicated identity {dedicated_id!r}"
+                )
+            if plan_rc.get("deleteRunCommandAfter", True) is not True:
+                out.append("5a: Run Command must set deleteRunCommandAfter: true")
+        if "runCommandSha256" in st and st.get("runCommandSha256") != pinned_sha:
+            out.append("5a: live Run Command script sha256 does not match catalog pin")
+        if isinstance(runner_env, dict) and "approveIdentity" in runner_env:
+            if runner_env.get("approveIdentity") != dedicated_id:
+                out.append(
+                    f"5a: runner approveIdentity {runner_env.get('approveIdentity')!r} does not match dedicated {dedicated_id!r}"
+                )
+
+    # 4. Compliance gate (governance.md section 2.5)
+    compliance_policy = load_compliance_policy(base_root)
+    effect = str(plan.get("complianceEffect") or manifest.get("complianceEffect") or "none").strip()
+    if effect.startswith("may-lower"):
+        raw_controls = effect[len("may-lower") :].strip()
+        controls = [c.strip() for c in raw_controls.split(",") if c.strip()]
+        allowed_controls = set(compliance_policy.get("allowedMayLowerControls") or [])
+        disallowed = [c for c in controls if c not in allowed_controls]
+        if not controls or disallowed:
+            out.append(
+                f"2.5: complianceEffect {effect!r} refused: control(s) {disallowed or ['unspecified']} not allowed in governance/compliance.yml"
+            )
+        if st.get("observerVerdict") != "allow":
+            out.append("2.5: may-lower plan requires an explicit observer verdict 'allow' (governance section 2.2, 2.5)")
+        stop_spend = bool(plan.get("stopSpend") is True or action == "host.stop")
+        floor = float(compliance_policy.get("floor", 70.0))
+        score = st.get("secureScore")
+        if not stop_spend:
+            if isinstance(score, bool) or not isinstance(score, (int, float)):
+                out.append(f"2.5: may-lower plan requires current Defender secureScore (floor {floor})")
+            elif float(score) < floor:
+                out.append(f"2.5: secureScore {score} is below compliance floor {floor} in governance/compliance.yml")
+
     return out
 
 
@@ -150,7 +294,12 @@ def canonical_plan_hash(plan: dict, live_state: dict | None = None) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def check_plan(plan: object, live_state: dict | None = None, runner_env: dict | None = None) -> dict:
+def check_plan(
+    plan: object,
+    live_state: dict | None = None,
+    runner_env: dict | None = None,
+    root: Path | None = None,
+) -> dict:
     """Runs all gate rules on a plan and returns a redacted summary dict (never target names or IDs)."""
     if not isinstance(plan, dict):
         return {
@@ -170,7 +319,10 @@ def check_plan(plan: object, live_state: dict | None = None, runner_env: dict | 
         evidence_refusals(plan),
         data_loss_guard_refusals(plan),
         [*why_refusals(plan), *cloud_refusals(plan, state, runner_env=runner_env)],
-        host_precondition_refusals(action, state, plan_id=plan_id),
+        [
+            *host_precondition_refusals(action, state, plan_id=plan_id),
+            *catalog_action_refusals(plan, state, runner_env=runner_env, root=root),
+        ],
     ]
     reasons = [r for group in rule_groups for r in group]
     passed_count = sum(1 for group in rule_groups if not group)
@@ -195,6 +347,7 @@ def apply_approved_plan(
     apply_action: Callable[[dict, dict], dict],
     verify_action: Callable[[dict, dict, dict], bool],
     runner_env: dict | None = None,
+    root: Path | None = None,
 ) -> dict:
     """Executes an approved plan inside the `approve` environment after re-reading the kill switch and live state
     (spec section 5 step 7, section 5a, section 6d). Fails closed on any drift or missing verification."""
@@ -239,7 +392,7 @@ def apply_approved_plan(
             "reasons": ["live-reread: failed to read live target state"],
         }
 
-    gate_check = check_plan(plan, live_state=live_state, runner_env=runner_env)
+    gate_check = check_plan(plan, live_state=live_state, runner_env=runner_env, root=root)
     if gate_check["failedCount"] > 0:
         return {
             "planId": plan_id,
@@ -262,14 +415,24 @@ def apply_approved_plan(
             "reasons": ["live-reread: live plan hash differs from approved hash; a new approval is required"],
         }
 
-    # 3. Apply action and require positive post-action verification (spec section 5a, brain H5)
+    # 3. Apply action and require positive post-action verification + no compliance regression (spec section 5a, governance 2.5)
     try:
         effect = apply_action(plan, live_state)
-        verified = verify_action(plan, live_state, effect) is True
+        compliance_regressed = bool(
+            (isinstance(effect, dict) and effect.get("complianceRegressed") is True)
+            or (isinstance(live_state, dict) and live_state.get("complianceRegressed") is True)
+        )
+        verified = (not compliance_regressed) and (verify_action(plan, live_state, effect) is True)
     except Exception:
+        compliance_regressed = False
         verified = False
 
     if not verified:
+        reason = (
+            "verify: compliance.regressed on target resource; rolling back"
+            if compliance_regressed
+            else "verify: positive post-action evidence missing or failed"
+        )
         return {
             "planId": plan_id,
             "planHash": approved_hash,
@@ -277,7 +440,7 @@ def apply_approved_plan(
             "passedCount": gate_check["passedCount"],
             "failedCount": 1,
             "status": "verification-failed",
-            "reasons": ["verify: positive post-action evidence missing or failed"],
+            "reasons": [reason],
         }
 
     return {
