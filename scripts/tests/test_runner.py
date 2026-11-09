@@ -174,6 +174,11 @@ class Cli(unittest.TestCase):
     def test_flag_command_exit_code(self):
         with mock.patch.object(cli, "arm_get_json", return_value={"tags": {"avd-swarm-switch": "halt-all"}}):
             self.assertEqual(cli.main(["flag", "--subscription", "s", "--resource-group", "rg"]), cli.REFUSED)
+        with mock.patch.object(cli, "arm_get_json", return_value={"tags": {"avd-swarm-switch": "halt-actions"}}):
+            self.assertEqual(
+                cli.main(["flag", "--subscription", "s", "--resource-group", "rg", "--refuse-at", "halt-actions", "halt-agents", "halt-all"]),
+                cli.REFUSED,
+            )
         with mock.patch.object(cli, "arm_get_json", return_value={}):  # a missing tag fails the job, visibly
             self.assertEqual(cli.main(["flag", "--subscription", "s", "--resource-group", "rg"]), cli.UNREADABLE)
 
@@ -186,11 +191,27 @@ class Cli(unittest.TestCase):
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmp)
         env = {"AGENT_API_URL": "https://api", "AGENT_API_RESOURCE": "api://x"}
-        for reply in ({"error": "boom"}, {"runbook": "hosts.agent-unhealthy", "outcome": "error"},
-                      {"runbook": "cost.idle-hosts", "outcome": "clear"}, ["clear"]):
+        for reply in (
+            {"error": "boom"},
+            {"runbook": "hosts.agent-unhealthy", "outcome": "error"},
+            {"runbook": "cost.idle-hosts", "outcome": "clear", "threadStartedBy": "schedule"},
+            {"runbook": "hosts.agent-unhealthy", "outcome": "clear", "threadStartedBy": "avd-buddy"},
+            {"runbook": "hosts.agent-unhealthy", "outcome": "clear", "threadStartedBy": "alert"},
+            {"runbook": "hosts.agent-unhealthy", "outcome": "clear"},
+            ["clear"],
+        ):
             with mock.patch.dict("os.environ", env), mock.patch.object(cli, "post_runbook", return_value=reply):
                 self.assertEqual(cli.main(["run", "--id", "hosts.agent-unhealthy", "--out", str(tmp / "f.json")]), 0)
             self.assertEqual(json.loads((tmp / "f.json").read_text())["outcome"], "could-not-run", reply)
+
+    def test_non_https_urls_and_redirects_are_refused(self):
+        with self.assertRaises(ValueError):
+            cli.post_runbook("http://api", "api://x", "hosts.agent-unhealthy", "schedule", token=lambda _: "t")
+        handler = cli._NoRedirectHandler()
+        req = urllib.request.Request("https://api/runbook", method="POST")
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            handler.redirect_request(req, None, 302, "Found", {}, "https://evil.example/runbook")
+        self.assertEqual(ctx.exception.code, 302)
 
     def test_http_errors_keep_their_status(self):
         error = urllib.error.HTTPError("https://api/runbook", 403, "Forbidden", {}, None)

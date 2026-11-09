@@ -64,7 +64,7 @@ jobs:
           SUBSCRIPTION: ${{ vars.AZURE_SUBSCRIPTION_ID }}
           RESOURCE_GROUP: ${{ vars.AVD_SWARM_RESOURCE_GROUP }}
         run: |
-          python3 -m avd_runner flag --subscription "$SUBSCRIPTION" --resource-group "$RESOURCE_GROUP"
+          python3 -m avd_runner flag --subscription "$SUBSCRIPTION" --resource-group "$RESOURCE_GROUP" --refuse-at halt-actions halt-agents halt-all
       - name: Evaluate governance gate before approval
         id: check
         env:
@@ -124,7 +124,7 @@ jobs:
           SUBSCRIPTION: ${{ vars.AZURE_SUBSCRIPTION_ID }}
           RESOURCE_GROUP: ${{ vars.AVD_SWARM_RESOURCE_GROUP }}
         run: |
-          python3 -m avd_runner flag --subscription "$SUBSCRIPTION" --resource-group "$RESOURCE_GROUP"
+          python3 -m avd_runner flag --subscription "$SUBSCRIPTION" --resource-group "$RESOURCE_GROUP" --refuse-at halt-actions halt-agents halt-all
           plan_file="$RUNNER_TEMP/$PLAN_ID.json"
           live_file="$RUNNER_TEMP/$PLAN_ID.live.json"
           summary_file="$RUNNER_TEMP/$PLAN_ID.apply.md"

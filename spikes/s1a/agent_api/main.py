@@ -616,12 +616,15 @@ async def runbook_query(kql: str) -> dict:
 
 
 async def runbook_investigate(instructions: str, rows: str, budget_usd: float) -> dict:
-    """The runbook's agent: one metered call within the runbook's own budget. The rows are untrusted: they go to
-    the shield as a document (enforce withholds a flagged one), and the shield's mark goes onto the finding."""
+    """The runbook's agent: one metered call within the runbook's own budget. Both the runbook's Markdown
+    (P-1, WP8-1) and the rows are untrusted: they go to the shield as documents (enforce withholds a flagged
+    one), and the shield's mark goes onto the finding."""
     guard = new_shield()
     totals: dict = {}
     try:
-        rows = await guard.scan_result(rows, "runbook", "reads")
+        instructions, rows = await runbook_endpoint.scan_investigation_inputs(
+            instructions, rows, guard.scan_result
+        )
         budget = Meter(cap_usd=budget_usd, prices=meter.prices, provider=MODEL_PROVIDER)
         response = await ask_claude(
             RUNBOOK_MODEL, HOSTS_EFFORT, RUNBOOK_SYSTEM, [REPORT_TOOL],

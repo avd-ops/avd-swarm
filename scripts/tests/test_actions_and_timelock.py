@@ -169,6 +169,35 @@ class TimelockTests(unittest.TestCase):
         self.assertFalse(unprotected["protected"])
         self.assertEqual(unprotected["effect"], "unprotected")
 
+        rb_text = (ROOT / "runbooks/hosts/agent-unhealthy.md").read_text(encoding="utf-8")
+        rb_prose = check_timelock.classify_change(
+            "runbooks/hosts/agent-unhealthy.md", rb_text, rb_text + "\nMore notes.\n", self.policy
+        )
+        self.assertFalse(rb_prose["protected"])
+        self.assertEqual(rb_prose["effect"], "unprotected")
+
+        rb_propose = rb_text.replace("runMode: read-only", "runMode: propose\nproposes: host.restart-agent")
+        rb_high = check_timelock.classify_change(
+            "runbooks/hosts/agent-unhealthy.md", rb_text, rb_propose, self.policy
+        )
+        self.assertTrue(rb_high["protected"])
+        self.assertEqual(rb_high["effect"], "raises")
+
+        rb_low = check_timelock.classify_change(
+            "runbooks/hosts/agent-unhealthy.md", rb_propose, rb_text, self.policy
+        )
+        self.assertTrue(rb_low["protected"])
+        self.assertEqual(rb_low["effect"], "lowers")
+
+        rb_budget_high = check_timelock.classify_change(
+            "runbooks/hosts/agent-unhealthy.md",
+            rb_text,
+            rb_text.replace("tokensUsd: 0.50", "tokensUsd: 1.50"),
+            self.policy,
+        )
+        self.assertTrue(rb_budget_high["protected"])
+        self.assertEqual(rb_budget_high["effect"], "raises")
+
     def test_solo_mode_timelock_and_clock_reset(self):
         t0 = datetime(2026, 11, 1, 12, 0, tzinfo=timezone.utc)
         low_change = check_timelock.classify_change(

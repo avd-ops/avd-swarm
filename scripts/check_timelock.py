@@ -331,6 +331,125 @@ def _classify_mcp_callers(
     return "lowers", reasons
 
 
+def _parse_runbook_front_matter(text: str | None) -> tuple[dict[str, Any] | None, str | None]:
+    if text is None:
+        return None, None
+    if not text.startswith("---\n"):
+        return None, "missing YAML front matter"
+    front, sep, _ = text[4:].partition("\n---\n")
+    if not sep and not text[4:].endswith("\n---"):
+        return None, "unclosed YAML front matter"
+    if not sep:
+        front = text[4:-4]
+    try:
+        meta = yaml.safe_load(front)
+    except yaml.YAMLError as err:
+        return None, f"invalid YAML front matter ({err})"
+    if not isinstance(meta, dict):
+        return None, "front matter must be a mapping"
+    return meta, None
+
+
+def _classify_runbook(
+    path: str, before_text: str | None, after_text: str | None
+) -> dict[str, Any] | None:
+    """Evaluates whether a runbook change touches protected fields (runMode: propose, proposes, reads, budget.tokensUsd)
+    per core-and-adapters.md section 3.2, section 5, and red team P-1 (WP8-2). Returns None when the change is an
+    unprotected read-only runbook edit."""
+    b_meta, b_err = _parse_runbook_front_matter(before_text)
+    a_meta, a_err = _parse_runbook_front_matter(after_text)
+    if b_err or a_err:
+        return {"path": path, "protected": True, "effect": "raises", "reasons": [f"{path}: {b_err or a_err}"]}
+
+    def _mode(m: dict[str, Any] | None) -> str:
+        if not isinstance(m, dict):
+            return ""
+        trig = m.get("trigger") if isinstance(m.get("trigger"), dict) else {}
+        return str(trig.get("runMode") or "")
+
+    def _proposes(m: dict[str, Any] | None) -> str:
+        return str(m.get("proposes") or "") if isinstance(m, dict) else ""
+
+    def _reads(m: dict[str, Any] | None) -> set[str]:
+        if not isinstance(m, dict) or not isinstance(m.get("reads"), list):
+            return set()
+        return {json.dumps(r, sort_keys=True) for r in m["reads"] if isinstance(r, dict)}
+
+    def _budget(m: dict[str, Any] | None) -> float | None:
+        if not isinstance(m, dict) or not isinstance(m.get("budget"), dict):
+            return None
+        val = m["budget"].get("tokensUsd")
+        if isinstance(val, bool) or not isinstance(val, (int, float)):
+            return None
+        return float(val)
+
+    b_propose = _mode(b_meta) == "propose" or bool(_proposes(b_meta))
+    a_propose = _mode(a_meta) == "propose" or bool(_proposes(a_meta))
+
+    if b_meta is None and a_meta is not None:
+        if a_propose:
+            return {
+                "path": path,
+                "protected": True,
+                "effect": "raises",
+                "reasons": [f"{path}: new propose-mode runbook ({_proposes(a_meta) or 'propose'})"],
+            }
+        return None
+
+    if b_meta is not None and a_meta is None:
+        if b_propose:
+            return {
+                "path": path,
+                "protected": True,
+                "effect": "lowers",
+                "reasons": [f"{path}: propose-mode runbook removed"],
+            }
+        return None
+
+    assert b_meta is not None and a_meta is not None
+    reasons_raise: list[str] = []
+    reasons_lower: list[str] = []
+
+    if not b_propose and a_propose:
+        reasons_raise.append(f"{path}: runMode raised to propose ({_proposes(a_meta) or 'propose'})")
+    elif b_propose and not a_propose:
+        reasons_lower.append(f"{path}: runMode lowered from propose to read-only")
+    elif b_propose and a_propose and _proposes(b_meta) != _proposes(a_meta):
+        reasons_raise.append(f"{path}: proposes changed ({_proposes(b_meta)!r} -> {_proposes(a_meta)!r})")
+
+    if b_meta.get("agent") != a_meta.get("agent"):
+        reasons_raise.append(f"{path}: agent changed ({b_meta.get('agent')!r} -> {a_meta.get('agent')!r})")
+
+    added_reads = _reads(a_meta) - _reads(b_meta)
+    removed_reads = _reads(b_meta) - _reads(a_meta)
+    if added_reads:
+        reasons_raise.append(f"{path}: added {len(added_reads)} read(s)")
+    elif removed_reads and (b_propose or a_propose):
+        reasons_lower.append(f"{path}: removed {len(removed_reads)} read(s)")
+
+    b_bud, a_bud = _budget(b_meta), _budget(a_meta)
+    if b_bud is not None and a_bud is not None:
+        if a_bud > b_bud:
+            reasons_raise.append(f"{path}: budget.tokensUsd raised from {b_bud} to {a_bud}")
+        elif a_bud < b_bud and a_bud > 0 and (b_propose or a_propose):
+            reasons_lower.append(f"{path}: budget.tokensUsd lowered from {b_bud} to {a_bud}")
+        elif a_bud <= 0:
+            reasons_raise.append(f"{path}: invalid non-positive budget.tokensUsd ({a_bud})")
+
+    if reasons_raise:
+        return {"path": path, "protected": True, "effect": "raises", "reasons": reasons_raise}
+    if reasons_lower:
+        return {"path": path, "protected": True, "effect": "lowers", "reasons": reasons_lower}
+    if b_propose or a_propose:
+        return {
+            "path": path,
+            "protected": True,
+            "effect": "raises",
+            "reasons": [f"{path}: propose-mode runbook modified without lowering capability"],
+        }
+    return None
+
+
 def classify_change(
     path: str,
     before_text: str | None,
@@ -338,6 +457,10 @@ def classify_change(
     policy: dict[str, Any],
 ) -> dict[str, Any]:
     """Classifies a single file change as `unprotected`, `lowers`, or `raises`."""
+    if path.startswith("runbooks/") and path.endswith(".md") and path != "runbooks/README.md":
+        rb_result = _classify_runbook(path, before_text, after_text)
+        if rb_result is not None:
+            return rb_result
     if not is_protected_path(path, policy):
         return {"path": path, "protected": False, "effect": "unprotected", "reasons": []}
 

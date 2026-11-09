@@ -93,14 +93,33 @@ class PriceBook:
 
     def cost_usd(self, provider: str, model: str, usage: dict) -> float:
         """What one response cost, from its usage (input_tokens is the uncached remainder)."""
-        fresh = usage.get("input_tokens") or 0
-        read = usage.get("cache_read_input_tokens") or 0
-        write = usage.get("cache_creation_input_tokens") or 0
-        out = usage.get("output_tokens") or 0
+        if not isinstance(usage, dict):
+            raise SpendRefused("usage must be a mapping")
+        counts = {}
+        for key in ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens", "output_tokens"):
+            val = usage.get(key, 0)
+            if val is None:
+                val = 0
+            if isinstance(val, bool) or not isinstance(val, int) or val < 0:
+                raise SpendRefused(f"usage.{key} must be a non-negative integer")
+            counts[key] = val
+        fresh = counts["input_tokens"]
+        read = counts["cache_read_input_tokens"]
+        write = counts["cache_creation_input_tokens"]
+        out = counts["output_tokens"]
         r = self.row(provider, model, fresh + read + write)
         return (fresh * r.input + out * r.output + read * r.cache_read + write * r.cache_write) / 1_000_000
 
     def worst_case_usd(self, provider: str, model: str, input_tokens: int, max_tokens: int) -> float:
         """Priced as if every input token were a cache write, the dearest kind of input."""
+        if (
+            isinstance(input_tokens, bool)
+            or not isinstance(input_tokens, int)
+            or input_tokens < 0
+            or isinstance(max_tokens, bool)
+            or not isinstance(max_tokens, int)
+            or max_tokens <= 0
+        ):
+            raise SpendRefused("input_tokens must be a non-negative integer and max_tokens must be a positive integer")
         r = self.row(provider, model, input_tokens)
         return (input_tokens * max(r.input, r.cache_write) + max_tokens * r.output) / 1_000_000

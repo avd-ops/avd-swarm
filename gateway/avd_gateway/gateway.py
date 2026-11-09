@@ -41,6 +41,47 @@ class Ticket:
     reservation: int
     worst_usd: float
     when: datetime
+    settled: bool = False
+
+
+def parse_service_callers(text: str) -> dict[str, str]:
+    """GATEWAY_CALLERS mapping `<oid>=<caller>,<oid>=<caller>` for service mode (core-and-adapters.md section 3.4, P-4)."""
+    out: dict[str, str] = {}
+    for part in (p.strip() for p in text.split(",") if p.strip()):
+        oid, sep, caller = part.partition("=")
+        oid, caller = oid.strip(), caller.strip()
+        if not sep or not oid or not caller:
+            raise ValueError(f"GATEWAY_CALLERS entry {part!r}: want <object id>=<caller>")
+        if oid in out:
+            raise ValueError(f"GATEWAY_CALLERS entry {part!r}: duplicate object id {oid!r}")
+        out[oid] = caller
+    return out
+
+
+def resolve_service_caller(claims: object, caller_oids: dict[str, str], config: dict) -> str:
+    """Binds a service-mode caller strictly from verified Entra token claims and its `gateway.<caller>` app role,
+    never from a request body, header, or virtual key (core-and-adapters.md section 3.4, red team P-4, WP8-4)."""
+    if not isinstance(claims, dict):
+        raise SpendRefused("gateway service mode requires verified Entra token claims")
+    for forbidden_key in ("apiKey", "virtualKey", "key", "x-api-key"):
+        if forbidden_key in claims:
+            raise SpendRefused("gateway service mode refuses virtual keys or shared secrets")
+    oid = str(claims.get("oid") or "").strip()
+    if not oid or oid not in caller_oids:
+        raise SpendRefused("caller object ID is not in GATEWAY_CALLERS; refusing")
+    caller = caller_oids[oid]
+    idtyp = str(claims.get("idtyp") or "").strip()
+    scp = str(claims.get("scp") or "").strip()
+    if scp and idtyp != "app":
+        raise SpendRefused("gateway service mode requires an Entra application token, not a delegated user token")
+    roles = claims.get("roles")
+    required_role = f"gateway.{caller}"
+    if not isinstance(roles, list) or required_role not in roles:
+        raise SpendRefused(f"caller token lacks required app role {required_role!r}; refusing")
+    callers_cfg = config.get("callers") if isinstance(config, dict) else None
+    if not isinstance(callers_cfg, dict) or caller not in callers_cfg:
+        raise SpendRefused(f"caller {caller!r} has no cap in governance/gateway.yml; refusing")
+    return caller
 
 
 @dataclass
@@ -77,6 +118,18 @@ class Gateway:
         meter = Meter(cap_usd=min(float(cap), caps.daily_usd), prices=self.prices, provider=provider)
         return Run(caller, run_id or f"run-{next(self._ids)}", provider, meter)
 
+    def open_service_run(
+        self,
+        claims: object,
+        caller_oids: dict[str, str],
+        run_id: str | None = None,
+        provider: str = "anthropic",
+        budget_usd: float | None = None,
+    ) -> Run:
+        """Opens a metered run in service mode, binding the caller strictly from verified Entra claims (P-4, WP8-4)."""
+        caller = resolve_service_caller(claims, caller_oids, self.config)
+        return self.open_run(caller, run_id=run_id, provider=provider, budget_usd=budget_usd)
+
     def before_call(self, run: Run, model: str, input_tokens: int, max_tokens: int) -> Ticket:
         try:
             flags.check(self.read_flag, self.refuse_at)
@@ -94,15 +147,21 @@ class Gateway:
         return Ticket(run, model, reservation, worst, when)
 
     def after_call(self, ticket: Ticket, usage: dict) -> float:
+        if ticket.settled:
+            raise SpendRefused("ticket already settled; refusing duplicate settlement")
         run = ticket.run
         cost = run.meter.book(ticket.reservation, ticket.model, usage)
+        ticket.settled = True
         self._settle(ticket, cost)
         self.emit(usage_event(run.caller, run.run_id, run.provider, ticket.model, usage, cost))
         return cost
 
     def failed(self, ticket: Ticket) -> None:
         """The call failed before a response: nothing is booked."""
+        if ticket.settled:
+            raise SpendRefused("ticket already settled; refusing duplicate release")
         ticket.run.meter.release(ticket.reservation)
+        ticket.settled = True
         self._settle(ticket, 0.0)
 
     def _settle(self, ticket: Ticket, actual: float) -> None:
