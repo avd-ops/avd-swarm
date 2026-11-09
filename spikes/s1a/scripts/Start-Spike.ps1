@@ -38,7 +38,8 @@ param(
     [switch] $PromptShields,
     [ValidateSet('observe', 'enforce')][string] $PromptShieldsMode = 'observe',
     [bool] $ScaleToZero = $true,
-    [string] $BrainCommit = ''
+    [string] $BrainCommit = '',
+    [string] $BuddyCallerObjectId = ''
 )
 if ($PromptShields -and $Provider -notin @('Anthropic', 'AzureOpenAI')) {
     throw '-PromptShields applies to -Provider Anthropic or AzureOpenAI only: Foundry runs its own guardrails. Nothing was deployed.'
@@ -214,6 +215,7 @@ if ($Provider -in @('Anthropic', 'AzureOpenAI')) {
         "scaleToZero=$($ScaleToZero.ToString().ToLowerInvariant())"
     )
     if ($BrainCommit) { $bicepParams += "brainCommit=$BrainCommit" }
+    if ($BuddyCallerObjectId) { $bicepParams += "buddyCallerObjectId=$BuddyCallerObjectId" }
     $deployment = Invoke-SpikeDeployment -ResourceGroup $SpikeResourceGroup -Name "avdswarm-spike-$RunId" `
         -TemplateFile (Join-Path $PSScriptRoot '..' 'infra' 'main.bicep') -Parameters $bicepParams
     $out = $deployment.properties.outputs
@@ -304,6 +306,7 @@ if ($Provider -in @('Anthropic', 'AzureOpenAI')) {
         runId                     = $RunId
         resourceGroup             = $SpikeResourceGroup
         foundryName               = $out.foundryName.value
+        managedEnvironmentId      = $out.managedEnvironmentId.value
         mcpUrl                    = $out.mcpUrl.value
         mcpAppId                  = $out.mcpAppId.value
         mcpAppSpId                = $appSp.id

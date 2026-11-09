@@ -363,6 +363,13 @@ class ContainerAppBicepTests(unittest.TestCase):
         self.assertIn("override-use-mi-fic-assertion-clientid", bicep_text)
         self.assertIn("RedirectToLoginPage", bicep_text)
         self.assertIn("tokenStore: {\n        enabled: false\n      }", bicep_text)
+        for env_name in ("BUDDY_UAMI_CLIENT_ID", "MCP_APP_ID", "AGENT_IDENTITY_APP_ID", "AGENT_MODEL"):
+            self.assertIn(f"name: '{env_name}'", bicep_text)
+
+        spike_bicep = (ROOT / "spikes/s1a/infra/main.bicep").read_text(encoding="utf-8")
+        self.assertIn("param buddyCallerObjectId string", spike_bicep)
+        self.assertIn("name: 'BUDDY_CALLER_OID'", spike_bicep)
+        self.assertIn("output managedEnvironmentId string", spike_bicep)
 
 
 class LiveAgentApiRelayTests(unittest.TestCase):
