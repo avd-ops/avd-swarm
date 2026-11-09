@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -24,6 +25,9 @@ def main(argv: list[str] | None = None) -> int:
 
     c = sub.add_parser("check")
     c.add_argument("--plan", required=True)
+    c.add_argument("--cloud", default=os.environ.get("CLOUD_ENVIRONMENT", ""))
+    c.add_argument("--azure-environment", default=os.environ.get("AZURE_ENVIRONMENT", ""))
+    c.add_argument("--graph-environment", default=os.environ.get("GRAPH_ENVIRONMENT", ""))
     c.add_argument("--summary", default="")
 
     a = sub.add_parser("apply")
@@ -31,13 +35,25 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--approved-hash", required=True)
     a.add_argument("--live-state", default="")
     a.add_argument("--flag", default="run")
+    a.add_argument("--cloud", default=os.environ.get("CLOUD_ENVIRONMENT", ""))
+    a.add_argument("--azure-environment", default=os.environ.get("AZURE_ENVIRONMENT", ""))
+    a.add_argument("--graph-environment", default=os.environ.get("GRAPH_ENVIRONMENT", ""))
     a.add_argument("--summary", default="")
 
     args = parser.parse_args(argv)
     plan = json.loads(Path(args.plan).read_text(encoding="utf-8"))
+    runner_env = {
+        k: v
+        for k, v in (
+            ("runnerCloud", args.cloud),
+            ("azureEnvironment", args.azure_environment),
+            ("graphEnvironment", args.graph_environment),
+        )
+        if v
+    }
 
     if args.command == "check":
-        res = check_plan(plan)
+        res = check_plan(plan, runner_env=runner_env or None)
     else:
         live = (
             json.loads(Path(args.live_state).read_text(encoding="utf-8"))
@@ -51,6 +67,7 @@ def main(argv: list[str] | None = None) -> int:
             read_live_state=lambda: live,
             apply_action=lambda _p, _s: {"applied": True},
             verify_action=lambda _p, _s, eff: bool(eff.get("applied") and live.get("verifiedPostState", True)),
+            runner_env=runner_env or None,
         )
 
     if args.summary:

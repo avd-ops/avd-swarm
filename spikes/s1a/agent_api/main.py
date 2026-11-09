@@ -101,7 +101,14 @@ CONTENT_SAFETY_ENDPOINT = os.environ.get("CONTENT_SAFETY_ENDPOINT", "")  # empty
 PROMPT_SHIELDS_MODE = os.environ.get("PROMPT_SHIELDS_MODE", "observe")
 if PROMPT_SHIELDS_MODE not in SHIELD_MODES:  # fail at start, not on every question
     raise SystemExit(f"PROMPT_SHIELDS_MODE must be one of {SHIELD_MODES}, not {PROMPT_SHIELDS_MODE!r}")
-LOGIN = f"https://login.microsoftonline.com/{TENANT}"
+CLOUD_ENVIRONMENT = os.environ.get("CLOUD_ENVIRONMENT", "commercial")
+try:
+    CLOUD_ENDPOINTS = runbook_endpoint.resolve_cloud_endpoints(CLOUD_ENVIRONMENT, TENANT)
+except ValueError as error:
+    raise SystemExit(str(error)) from error
+LOGIN = CLOUD_ENDPOINTS["authority"]
+ARM = CLOUD_ENDPOINTS["resourceManager"]
+GRAPH = CLOUD_ENDPOINTS["graphEndpoint"]
 
 # The runbook endpoint (runbook_endpoint.py). Runbooks and the KQL catalog come from the commit this app runs,
 # never from a request. The agent identity reads; its app ID is set once /setup has created it.
@@ -120,7 +127,7 @@ RUNBOOK_IDENTITY_APP_ID = os.environ.get("RUNBOOK_IDENTITY_APP_ID", "")
 RUNBOOK_MODEL = os.environ.get("RUNBOOK_MODEL", DEFAULT_RUNBOOK_MODEL)
 RUNBOOK_MAX_TOKENS = 4000  # an investigation's worst case has to fit a runbook's budget
 LOG_WORKSPACE_ID = os.environ.get("LOG_WORKSPACE_ID", "")
-LOG_ANALYTICS = "https://api.loganalytics.io"
+LOG_ANALYTICS = CLOUD_ENDPOINTS["logAnalyticsEndpoint"]
 CONCIERGE_URL = os.environ.get("CONCIERGE_URL", "").rstrip("/")
 CONCIERGE_BRAIN_ROOT = os.environ.get("CONCIERGE_BRAIN_ROOT", "")
 CONCIERGE_FACTS_STORE = os.environ.get("CONCIERGE_FACTS_STORE", "")
@@ -241,17 +248,17 @@ async def setup(request: Request) -> JSONResponse:
     """Creates one agent identity under the blueprint. Run once; the operator keeps its IDs."""
     body = await request.json()
     try:
-        graph = await blueprint_token("https://graph.microsoft.com/.default")
+        graph = await blueprint_token(f"{GRAPH}/.default")
     except TokenError as error:
         return JSONResponse({"error": json.loads(str(error))}, status_code=502)
     async with httpx.AsyncClient(timeout=30) as http:
         response = await http.post(
-            "https://graph.microsoft.com/beta/serviceprincipals/Microsoft.Graph.AgentIdentity",
+            f"{GRAPH}/beta/serviceprincipals/Microsoft.Graph.AgentIdentity",
             headers={"Authorization": f"Bearer {graph}", "OData-Version": "4.0"},
             json={
                 "displayName": body["displayName"],
                 "agentIdentityBlueprintId": BLUEPRINT_APP_ID,
-                "sponsors@odata.bind": [f"https://graph.microsoft.com/v1.0/users/{OPERATOR_OID}"],
+                "sponsors@odata.bind": [f"{GRAPH}/v1.0/users/{OPERATOR_OID}"],
             },
         )
     if response.status_code not in (200, 201):
