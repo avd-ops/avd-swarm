@@ -209,6 +209,38 @@ def _classify_protected_paths(
     return "lowers", reasons
 
 
+def _classify_compliance(
+    path: str, before: dict[str, Any] | None, after: dict[str, Any] | None
+) -> tuple[str, list[str]]:
+    if not isinstance(before, dict) or not isinstance(after, dict):
+        return "raises", [f"{path}: added, removed, or invalid YAML"]
+    extra_keys = (set(before) | set(after)) - {"floor", "verifyMinutes", "standards", "allowedMayLowerControls"}
+    if extra_keys:
+        return "raises", [f"{path}: unknown key(s) {', '.join(sorted(extra_keys))}"]
+    if before.get("standards") != after.get("standards") or before.get("verifyMinutes") != after.get("verifyMinutes"):
+        return "raises", [f"{path}: standards or verifyMinutes changed"]
+    old_floor = before.get("floor")
+    new_floor = after.get("floor")
+    if isinstance(old_floor, bool) or isinstance(new_floor, bool) or not isinstance(old_floor, (int, float)) or not isinstance(new_floor, (int, float)):
+        return "raises", [f"{path}:floor: non-numeric floor"]
+    if new_floor < old_floor:
+        return "raises", [f"{path}:floor: lowered from {old_floor} to {new_floor}"]
+    reasons: list[str] = []
+    if new_floor > old_floor:
+        reasons.append(f"{path}:floor: raised from {old_floor} to {new_floor}")
+    b_ctrl = set(before.get("allowedMayLowerControls") or [])
+    a_ctrl = set(after.get("allowedMayLowerControls") or [])
+    added_ctrl = sorted(a_ctrl - b_ctrl)
+    removed_ctrl = sorted(b_ctrl - a_ctrl)
+    if added_ctrl:
+        return "raises", [f"{path}:allowedMayLowerControls: added {', '.join(added_ctrl)}"]
+    if removed_ctrl:
+        reasons.append(f"{path}:allowedMayLowerControls: removed {', '.join(removed_ctrl)}")
+    if not reasons:
+        return "raises", [f"{path}: modified without tightening compliance floor or controls"]
+    return "lowers", reasons
+
+
 def classify_change(
     path: str,
     before_text: str | None,
@@ -237,6 +269,8 @@ def classify_change(
         effect, reasons = _classify_action_manifest(path, before_data, after_data)
     elif path == "governance/gateway.yml":
         effect, reasons = _classify_gateway(path, before_data, after_data)
+    elif path == "governance/compliance.yml":
+        effect, reasons = _classify_compliance(path, before_data, after_data)
     elif path.startswith("governance/allowlists/") and path.endswith(".yml"):
         effect, reasons = _classify_allowlist(path, before_data, after_data)
     elif path == "governance/protected-paths.yml":

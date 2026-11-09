@@ -291,6 +291,125 @@ class GateApplyTests(unittest.TestCase):
         q = runner_alert.Queue("govacct", "alerts", cloud="usgov")
         self.assertEqual(q.base, "https://govacct.queue.core.usgovcloudapi.net/alerts/messages")
 
+    def test_catalog_rate_limits_circuit_breaker_run_command_and_secrets(self):
+        # Unknown action outside catalog/actions/ is refused
+        unknown = valid_plan()
+        unknown["action"] = "host.nonexistent"
+        res_unknown = gate_apply.check_plan(unknown)
+        self.assertEqual(res_unknown["status"], "refused")
+        self.assertTrue(any("not in catalog/actions/" in r for r in res_unknown["reasons"]))
+
+        # Per-hour rate limit (host.drain cap is 4/hour)
+        over_hour = valid_live_state()
+        over_hour["plansInLastHour"] = 4
+        res_hour = gate_apply.check_plan(valid_plan(over_hour))
+        self.assertEqual(res_hour["status"], "refused")
+        self.assertTrue(any("limits.perHour" in r for r in res_hour["reasons"]))
+
+        # Per-host-per-day rate limit (host.restart-agent cap is 1/day)
+        over_day = valid_live_state()
+        over_day["plansForHostInLast24h"] = 1
+        restart_plan = valid_plan(over_day)
+        restart_plan["action"] = "host.restart-agent"
+        res_day = gate_apply.check_plan(restart_plan)
+        self.assertEqual(res_day["status"], "refused")
+        self.assertTrue(any("limits.perHostPerDay" in r for r in res_day["reasons"]))
+
+        # 24-hour circuit breaker trips at 3 failures
+        tripped = valid_live_state()
+        tripped["failuresInLast24h"] = 3
+        res_cb = gate_apply.check_plan(valid_plan(tripped))
+        self.assertEqual(res_cb["status"], "refused")
+        self.assertTrue(any("circuit breaker tripped" in r for r in res_cb["reasons"]))
+
+        # Run Command validation: valid pinned hash & identity pass; tampered hash, wrong identity, or parameters fail
+        good_rc = valid_plan()
+        good_rc["action"] = "host.restart-agent"
+        good_rc["runCommand"] = {
+            "script": "catalog/actions/scripts/Restart-AvdAgent.ps1",
+            "sha256": "a1fe2c42e8aa6b589455e108ca6935be63382ad0b5f232128d29b504713996c8",
+            "identity": "approve-restart-agent",
+            "deleteRunCommandAfter": True,
+        }
+        self.assertEqual(gate_apply.check_plan(good_rc)["status"], "ready")
+
+        bad_rc = json.loads(json.dumps(good_rc))
+        bad_rc["runCommand"]["sha256"] = "0" * 64
+        bad_rc["runCommand"]["identity"] = "approve-group"
+        bad_rc["runCommand"]["parameters"] = ["--force"]
+        res_bad_rc = gate_apply.check_plan(bad_rc)
+        self.assertEqual(res_bad_rc["status"], "refused")
+        self.assertTrue(any("runCommand.sha256" in r for r in res_bad_rc["reasons"]))
+        self.assertTrue(any("runCommand.identity" in r for r in res_bad_rc["reasons"]))
+        self.assertTrue(any("takes no parameters" in r for r in res_bad_rc["reasons"]))
+
+        # Secrets in plan or state are always refused (host.reregister secretsInActionOnly)
+        secret_plan = valid_plan()
+        secret_plan["action"] = "host.reregister"
+        secret_plan["registrationToken"] = "redacted-placeholder"
+        res_secret = gate_apply.check_plan(secret_plan)
+        self.assertEqual(res_secret["status"], "refused")
+        self.assertTrue(any("secretsInActionOnly" in r for r in res_secret["reasons"]))
+
+    def test_compliance_gate_floor_observer_and_regression(self):
+        # may-lower plan refused by default when control is not in governance/compliance.yml
+        may_lower = valid_plan()
+        may_lower["complianceEffect"] = "may-lower NS-1"
+        res_default = gate_apply.check_plan(may_lower)
+        self.assertEqual(res_default["status"], "refused")
+        self.assertTrue(any("not allowed in governance/compliance.yml" in r for r in res_default["reasons"]))
+        self.assertTrue(any("observer verdict" in r for r in res_default["reasons"]))
+
+        # With NS-1 allowed in a temp copy of compliance.yml, check floor and observer verdict
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_root = Path(tmp)
+            (tmp_root / "catalog").mkdir()
+            import shutil
+
+            shutil.copytree(ROOT / "catalog/actions", tmp_root / "catalog/actions")
+            (tmp_root / "governance").mkdir()
+            (tmp_root / "governance/compliance.yml").write_text(
+                "floor: 70.0\nverifyMinutes: 30\nstandards:\n  - microsoft-cloud-security-benchmark\nallowedMayLowerControls:\n  - NS-1\n",
+                encoding="utf-8",
+            )
+
+            low_score_state = valid_live_state()
+            low_score_state["observerVerdict"] = "allow"
+            low_score_state["secureScore"] = 65.0
+            low_score_plan = valid_plan(low_score_state)
+            low_score_plan["complianceEffect"] = "may-lower NS-1"
+            res_low = gate_apply.check_plan(low_score_plan, root=tmp_root)
+            self.assertEqual(res_low["status"], "refused")
+            self.assertTrue(any("below compliance floor 70.0" in r for r in res_low["reasons"]))
+
+            # Stopping spend is never blocked by the score floor (governance.md section 2.3, 2.5)
+            stop_plan = valid_plan(low_score_state)
+            stop_plan["action"] = "host.stop"
+            stop_plan["complianceEffect"] = "may-lower NS-1"
+            self.assertEqual(gate_apply.check_plan(stop_plan, root=tmp_root)["status"], "ready")
+
+            # Above the floor with observer allow passes
+            high_score_state = valid_live_state()
+            high_score_state["observerVerdict"] = "allow"
+            high_score_state["secureScore"] = 82.5
+            high_score_plan = valid_plan(high_score_state)
+            high_score_plan["complianceEffect"] = "may-lower NS-1"
+            self.assertEqual(gate_apply.check_plan(high_score_plan, root=tmp_root)["status"], "ready")
+
+        # Post-action compliance regression rolls back and fails verification
+        plan = valid_plan()
+        approved_hash = gate_apply.check_plan(plan)["planHash"]
+        regressed = gate_apply.apply_approved_plan(
+            plan=plan,
+            approved_hash=approved_hash,
+            read_flag=lambda: "run",
+            read_live_state=valid_live_state,
+            apply_action=lambda _p, _s: {"drained": True, "complianceRegressed": True},
+            verify_action=lambda _p, _s, _e: True,
+        )
+        self.assertEqual(regressed["status"], "verification-failed")
+        self.assertTrue(any("compliance.regressed" in r for r in regressed["reasons"]))
+
 
 if __name__ == "__main__":
     unittest.main()

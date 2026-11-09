@@ -149,6 +149,22 @@ class TimelockTests(unittest.TestCase):
         )
         self.assertEqual(wf_high["effect"], "raises")
 
+        compliance_yaml = (ROOT / "governance/compliance.yml").read_text(encoding="utf-8")
+        comp_low = check_timelock.classify_change(
+            "governance/compliance.yml",
+            compliance_yaml,
+            compliance_yaml.replace("floor: 70.0", "floor: 80.0"),
+            self.policy,
+        )
+        self.assertEqual(comp_low["effect"], "lowers")
+        comp_high = check_timelock.classify_change(
+            "governance/compliance.yml",
+            compliance_yaml,
+            compliance_yaml.replace("floor: 70.0", "floor: 60.0"),
+            self.policy,
+        )
+        self.assertEqual(comp_high["effect"], "raises")
+
         unprotected = check_timelock.classify_change("docs/spec.md", "a", "b", self.policy)
         self.assertFalse(unprotected["protected"])
         self.assertEqual(unprotected["effect"], "unprotected")

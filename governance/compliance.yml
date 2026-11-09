@@ -1,0 +1,9 @@
+# Compliance gate settings (governance.md section 2.5; Defender for Cloud + Azure Policy).
+# Protected path: an agent-authored PR cannot change it, and lowering `floor` or adding
+# `allowedMayLowerControls` or paid `standards` counts as capability-raising under section 2.6.
+floor: 70.0
+verifyMinutes: 30
+standards:
+  # Foundational CSPM (free and on by default in Azure subscriptions).
+  - microsoft-cloud-security-benchmark
+allowedMayLowerControls: []
