@@ -64,6 +64,23 @@ def allowed_started_by(claims: dict, operator_oid: str, callers: dict[str, set[s
     return set()
 
 
+def allowed_buddy_caller(claims: dict, operator_oid: str, buddy_caller_oid: str = "") -> bool:
+    """Whether a verified token may call /ask, /ask/{id} and /stop: either the operator directly
+    (with Mcp.Tools.ReadWrite scope) or avd-buddy's Container App managed identity over internal ingress
+    (spec section 9a, decision 0010, red team V1-16)."""
+    oid = str(claims.get("oid", "")).strip()
+    if not oid:
+        return False
+    if oid == operator_oid and "Mcp.Tools.ReadWrite" in str(claims.get("scp", "")).split():
+        return True
+    if buddy_caller_oid and oid == buddy_caller_oid.strip():
+        idtyp = str(claims.get("idtyp", "")).strip()
+        scp = str(claims.get("scp", "")).strip()
+        if idtyp == "app" or not scp:
+            return True
+    return False
+
+
 def catalog_queries(root: Path) -> dict[str, str]:
     """The KQL catalog's query text by ID."""
     import yaml

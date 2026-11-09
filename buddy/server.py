@@ -23,7 +23,7 @@ import urllib.request
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import yaml
 
@@ -118,6 +118,23 @@ def parse_client_principal(headers: dict[str, str]) -> dict[str, str] | None:
     return None
 
 
+def fetch_managed_identity_token(resource: str, client_id: str = "") -> str:
+    """Fetches a Bearer token from the Container Apps managed identity endpoint when running in Azure."""
+    endpoint = os.environ.get("IDENTITY_ENDPOINT", "").strip()
+    header = os.environ.get("IDENTITY_HEADER", "").strip()
+    if not endpoint or not header or not resource:
+        return ""
+    params = {"api-version": "2019-08-01", "resource": resource}
+    if client_id:
+        params["client_id"] = client_id
+    url = f"{endpoint}?{urllib.parse.urlencode(params)}"
+    req = urllib.request.Request(url, headers={"X-IDENTITY-HEADER": header}, method="GET")
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with opener.open(req, timeout=5) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+        return str(data.get("access_token", ""))
+
+
 def load_static_files(app_dir: Path = APP_DIR) -> dict[str, tuple[str, bytes]]:
     """Pre-indexes static files under buddy/app/ so request paths never touch the filesystem or mimetypes."""
     table: dict[str, tuple[str, bytes]] = {}
@@ -146,6 +163,11 @@ class BuddyState:
         token_spend_usd: float = 1.42,
         token_cap_usd: float = 15.0,
         agent_api_url: str = "",
+        agent_model: str = "claude-sonnet-5-5",
+        agent_identity_app_id: str = "",
+        mcp_app_id: str = "",
+        buddy_uami_client_id: str = "",
+        token_provider: Callable[[], str] | None = None,
     ) -> None:
         self.require_easy_auth = require_easy_auth
         self.sim_mode = sim_mode
@@ -153,6 +175,11 @@ class BuddyState:
         self.token_spend_usd = token_spend_usd
         self.token_cap_usd = token_cap_usd
         self.agent_api_url = agent_api_url.rstrip("/")
+        self.agent_model = agent_model
+        self.agent_identity_app_id = agent_identity_app_id
+        self.mcp_app_id = mcp_app_id
+        self.buddy_uami_client_id = buddy_uami_client_id
+        self.token_provider = token_provider
         self.voice_settings = yaml.safe_load(VOICE_SETTINGS_PATH.read_text(encoding="utf-8"))
         self.static_files = load_static_files(APP_DIR)
         self.turns: dict[str, dict[str, Any]] = {}
@@ -163,6 +190,309 @@ class BuddyState:
             {"id": "thread-deploy-failed", "title": "Subnet overlap on first deployment", "updatedAt": "Yesterday", "presetKey": "deploy-failed"},
             {"id": "thread-max-sessions", "title": "Why maxSessionLimit is 8", "updatedAt": "2 days ago", "presetKey": "max-sessions"},
         ]
+
+    def _get_agent_token(self) -> str:
+        if self.token_provider is not None:
+            return self.token_provider()
+        if self.mcp_app_id:
+            try:
+                return fetch_managed_identity_token(f"api://{self.mcp_app_id}", self.buddy_uami_client_id)
+            except Exception:
+                return ""
+        return ""
+
+    def _agent_api_request(
+        self,
+        path: str,
+        *,
+        method: str = "GET",
+        body: dict[str, Any] | None = None,
+        operator_claim: dict[str, str] | None = None,
+        timeout: float = 5.0,
+    ) -> tuple[int, dict[str, Any]]:
+        url = f"{self.agent_api_url}{path}"
+        headers = {"Accept": "application/json"}
+        token = self._get_agent_token()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        if operator_claim:
+            headers["X-Avd-Operator-Oid"] = operator_claim.get("oid", "")
+            headers["X-Avd-Operator-Name"] = operator_claim.get("name", "")
+        data = None
+        if body is not None:
+            data = json.dumps(body).encode("utf-8")
+            headers["Content-Type"] = "application/json"
+        req = urllib.request.Request(url, data=data, headers=headers, method=method)
+        parsed = urllib.parse.urlsplit(url)
+        if parsed.hostname in ("127.0.0.1", "localhost", "::1"):
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        else:
+            opener = urllib.request.build_opener()
+        try:
+            with opener.open(req, timeout=timeout) as resp:
+                raw = resp.read().decode("utf-8")
+                return resp.status, json.loads(raw) if raw else {}
+        except urllib.error.HTTPError as err:
+            raw = err.read().decode("utf-8", errors="replace")
+            try:
+                payload = json.loads(raw) if raw else {}
+            except json.JSONDecodeError:
+                payload = {"error": raw}
+            return err.code, payload
+
+    def sync_status_from_agent_api(self, operator_claim: dict[str, str]) -> None:
+        if self.sim_mode or not self.agent_api_url:
+            return
+        try:
+            status, payload = self._agent_api_request("/healthz", method="GET", operator_claim=operator_claim, timeout=2.5)
+            if status == 200 and isinstance(payload.get("meter"), dict):
+                meter = payload["meter"]
+                if "spentUsd" in meter:
+                    self.token_spend_usd = float(meter["spentUsd"])
+                if "capUsd" in meter:
+                    self.token_cap_usd = float(meter["capUsd"])
+                if meter.get("stopped") and self.switch_position == "run":
+                    self.switch_position = "halt-agents"
+        except Exception:
+            pass
+
+    def trip_agent_api_stop(self, position: str, operator_claim: dict[str, str]) -> None:
+        if self.sim_mode or not self.agent_api_url or position not in ("halt-agents", "halt-all"):
+            return
+        try:
+            self._agent_api_request(
+                "/stop",
+                method="POST",
+                body={"reason": f"avd-buddy kill switch tripped to {position} by {operator_claim.get('name', 'operator')}"},
+                operator_claim=operator_claim,
+                timeout=3.0,
+            )
+        except Exception:
+            pass
+
+    def _apply_voice_check(
+        self,
+        *,
+        question: str,
+        humor: str,
+        events: set[str],
+        answer: str,
+        raw_aside: str | None,
+    ) -> tuple[str, str | None]:
+        turn_check = voice_check.Turn(
+            events=events,
+            operator_text=question,
+            language="en",
+            humor_setting="off" if humor == "off" else "light",
+            replies_since_aside=self.replies_since_aside,
+        )
+        mode = voice_check.get_mode(turn_check, self.voice_settings)
+        final_aside: str | None = None
+        estate_names = ["contoso", "hp-contoso-prod", "hp-contoso-sales", "sh-pooled-03", "sh-sales-01"]
+        if raw_aside and voice_check.aside_allowed(turn_check, self.voice_settings):
+            findings = voice_check.check_reply(
+                turn_check,
+                raw_aside,
+                self.voice_settings,
+                estate_names=estate_names,
+            )
+            if not findings:
+                final_aside = raw_aside
+                self.replies_since_aside = 0
+            else:
+                self.replies_since_aside += 1
+        else:
+            self.replies_since_aside += 1
+        return mode, final_aside
+
+    def _record_history_item(self, turn_id: str, question: str) -> None:
+        summary = " ".join(question.strip().split())
+        if len(summary) > 52:
+            summary = summary[:49].rstrip() + "..."
+        self.history.insert(
+            0,
+            {
+                "id": f"thread-{turn_id}",
+                "title": summary or "Conversation turn",
+                "updatedAt": "Just now",
+                "presetKey": "",
+            },
+        )
+        del self.history[20:]
+
+    def start_turn(self, question: str, humor: str, operator_claim: dict[str, str]) -> dict[str, Any]:
+        if self.sim_mode or not self.agent_api_url:
+            return self.build_reply(question, humor, operator_claim)
+
+        turn_id = "turn-" + uuid.uuid4().hex[:10]
+        try:
+            status, payload = self._agent_api_request(
+                "/ask",
+                method="POST",
+                body={
+                    "question": question,
+                    "model": self.agent_model,
+                    "identity": self.agent_identity_app_id or "buddy-live",
+                },
+                operator_claim=operator_claim,
+                timeout=5.0,
+            )
+        except Exception:
+            status, payload = 502, {"error": "agent-api-unreachable"}
+
+        if status not in (200, 202) or not payload.get("id"):
+            events = {"run-failed"}
+            if self.switch_position != "run":
+                events.add("kill-switch")
+            answer = (
+                "Nothing has changed in your estate. avd-buddy could not start a turn on the agent API "
+                f"(status {status}). Safe next step: check the Container App logs or run the read-only Cloud Shell check."
+            )
+            mode, _ = self._apply_voice_check(
+                question=question,
+                humor=humor,
+                events=events,
+                answer=answer,
+                raw_aside=None,
+            )
+            turn_obj: dict[str, Any] = {
+                "id": turn_id,
+                "operatorText": question,
+                "requestedBy": operator_claim.get("name", "operator@contoso.com"),
+                "mode": mode,
+                "events": sorted(events),
+                "answer": answer,
+                "citations": [],
+                "learnLinks": [],
+                "aside": None,
+                "plan": None,
+                "status": "completed",
+            }
+            self.turns[turn_id] = turn_obj
+            return turn_obj
+
+        turn_obj = {
+            "id": turn_id,
+            "jobId": str(payload["id"]),
+            "operatorText": question,
+            "humor": humor,
+            "requestedBy": operator_claim.get("name", "operator@contoso.com"),
+            "mode": "light",
+            "events": [],
+            "answer": "",
+            "citations": [],
+            "learnLinks": [],
+            "aside": None,
+            "plan": None,
+            "status": "running",
+        }
+        self.turns[turn_id] = turn_obj
+        return turn_obj
+
+    def poll_turn(self, turn_id: str, operator_claim: dict[str, str]) -> dict[str, Any] | None:
+        turn_obj = self.turns.get(turn_id)
+        if not turn_obj:
+            return None
+        if turn_obj.get("status") != "running" or self.sim_mode or not self.agent_api_url:
+            return turn_obj
+
+        job_id = turn_obj.get("jobId", "")
+        if not job_id:
+            turn_obj["status"] = "completed"
+            return turn_obj
+
+        try:
+            status, payload = self._agent_api_request(
+                f"/ask/{urllib.parse.quote(job_id, safe='')}",
+                method="GET",
+                operator_claim=operator_claim,
+                timeout=4.0,
+            )
+        except Exception:
+            return turn_obj
+
+        if status != 200:
+            return turn_obj
+
+        job_status = payload.get("status")
+        if job_status == "running":
+            return turn_obj
+
+        question = str(turn_obj.get("operatorText", ""))
+        humor = str(turn_obj.get("humor", "light"))
+        events: set[str] = set()
+        if self.switch_position != "run":
+            events.add("kill-switch")
+
+        if job_status == "failed":
+            err = payload.get("error") or {}
+            step = str(err.get("step", "agent"))
+            msg = str(err.get("message", "The agent API reported a failure."))
+            if step == "spend-meter":
+                events.add("spend-cap")
+            else:
+                events.add("run-failed")
+            answer = f"Nothing has changed in your estate. The agent step `{step}` stopped: {msg}"
+            mode, _ = self._apply_voice_check(
+                question=question,
+                humor=humor,
+                events=events,
+                answer=answer,
+                raw_aside=None,
+            )
+            turn_obj.update(
+                {
+                    "mode": mode,
+                    "events": sorted(events),
+                    "answer": answer,
+                    "citations": [],
+                    "learnLinks": [],
+                    "aside": None,
+                    "plan": None,
+                    "status": "completed",
+                }
+            )
+            self._record_history_item(turn_id, question)
+            return turn_obj
+
+        result = payload.get("result") or {}
+        answer = str(result.get("answer", "")).strip() or "No findings returned."
+        raw_aside = result.get("aside") if isinstance(result.get("aside"), str) else None
+        plan = result.get("plan") if isinstance(result.get("plan"), dict) else None
+        if plan is not None:
+            events.update({"plan-shown", "approval-pending"})
+
+        evidence = result.get("evidence") or {}
+        citations: list[dict[str, str]] = []
+        cited_refs = ((evidence.get("citations") or {}).get("cited")) or []
+        for idx, ref in enumerate(cited_refs, start=1):
+            citations.append({"id": f"cite-{idx:02d}", "label": str(ref)})
+        for idx, tool in enumerate(evidence.get("toolCalls") or [], start=1):
+            if isinstance(tool, dict):
+                name = str(tool.get("name", "tool"))
+                citations.append({"id": f"call-{idx:02d}", "label": name})
+
+        mode, final_aside = self._apply_voice_check(
+            question=question,
+            humor=humor,
+            events=events,
+            answer=answer,
+            raw_aside=raw_aside,
+        )
+        turn_obj.update(
+            {
+                "mode": mode,
+                "events": sorted(events),
+                "answer": answer,
+                "citations": citations,
+                "learnLinks": result.get("learnLinks") if isinstance(result.get("learnLinks"), list) else [],
+                "aside": final_aside,
+                "plan": plan,
+                "status": "completed",
+            }
+        )
+        self._record_history_item(turn_id, question)
+        return turn_obj
 
     def build_reply(self, question: str, humor: str, operator_claim: dict[str, str]) -> dict[str, Any]:
         q_lower = question.lower()
@@ -221,29 +551,13 @@ class BuddyState:
                 {"title": "Microsoft Learn: Azure VM states and billing", "url": "https://learn.microsoft.com/azure/virtual-machines/states-billing"},
             ]
 
-        turn_check = voice_check.Turn(
+        mode, final_aside = self._apply_voice_check(
+            question=question,
+            humor=humor,
             events=events,
-            operator_text=question,
-            language="en",
-            humor_setting="off" if humor == "off" else "light",
-            replies_since_aside=self.replies_since_aside,
+            answer=answer,
+            raw_aside=raw_aside,
         )
-        mode = voice_check.get_mode(turn_check, self.voice_settings)
-        final_aside: str | None = None
-        if raw_aside and voice_check.aside_allowed(turn_check, self.voice_settings):
-            findings = voice_check.get_aside_findings(
-                raw_aside,
-                self.voice_settings,
-                estate_names=["contoso", "hp-contoso-prod", "hp-contoso-sales", "sh-pooled-03", "sh-sales-01"],
-            )
-            if not findings:
-                final_aside = raw_aside
-                self.replies_since_aside = 0
-            else:
-                self.replies_since_aside += 1
-        else:
-            self.replies_since_aside += 1
-
         turn_id = "turn-" + uuid.uuid4().hex[:10]
         turn_obj: dict[str, Any] = {
             "id": turn_id,
@@ -306,6 +620,7 @@ def make_handler(state: BuddyState) -> type[BaseHTTPRequestHandler]:
                 principal = self._require_principal()
                 if principal is None:
                     return
+                state.sync_status_from_agent_api(principal)
                 self._send_json(
                     200,
                     {
@@ -345,11 +660,17 @@ def make_handler(state: BuddyState) -> type[BaseHTTPRequestHandler]:
                 if principal is None:
                     return
                 turn_id = path.split("/api/turns/", 1)[1].strip("/")
-                turn_obj = state.turns.get(turn_id)
+                qs = urllib.parse.parse_qs(parsed.query)
+                try:
+                    after = int((qs.get("after") or ["0"])[0])
+                except ValueError:
+                    after = 0
+                turn_obj = state.poll_turn(turn_id, principal)
                 if not turn_obj:
                     self._send_json(404, {"error": "turn-not-found"})
                     return
-                self._send_json(200, {"turnId": turn_id, "done": True, "nextAfter": 1, "turn": turn_obj})
+                done = turn_obj.get("status") == "completed"
+                self._send_json(200, {"turnId": turn_id, "done": done, "nextAfter": after + 1, "turn": turn_obj})
                 return
 
             # Serve static files from the pre-indexed allowlist table only
@@ -398,8 +719,9 @@ def make_handler(state: BuddyState) -> type[BaseHTTPRequestHandler]:
                     self._send_json(400, {"error": "empty-question"})
                     return
                 humor = str(body.get("humor", "light"))
-                turn_obj = state.build_reply(question, humor, principal)
-                self._send_json(200, {"turnId": turn_obj["id"], "status": "completed", "turn": turn_obj})
+                turn_obj = state.start_turn(question, humor, principal)
+                http_code = 202 if turn_obj.get("status") == "running" else 200
+                self._send_json(http_code, {"turnId": turn_obj["id"], "status": turn_obj["status"], "turn": turn_obj})
                 return
 
             if path == "/api/switch/trip":
@@ -413,6 +735,7 @@ def make_handler(state: BuddyState) -> type[BaseHTTPRequestHandler]:
                     self._send_json(400, {"error": "confirmation-mismatch"})
                     return
                 state.switch_position = position
+                state.trip_agent_api_stop(position, principal)
                 self._send_json(
                     200,
                     {
@@ -434,11 +757,17 @@ def main(argv: list[str]) -> int:
     require_auth = os.environ.get("BUDDY_REQUIRE_EASY_AUTH", "false").lower() == "true"
     sim_mode = os.environ.get("BUDDY_SIM_MODE", "true").lower() == "true"
     switch_pos = os.environ.get("KILL_SWITCH_POSITION", "run")
+    cap_usd = float(os.environ.get("TOKEN_SPEND_CAP_USD", "15.0"))
     state = BuddyState(
         require_easy_auth=require_auth,
         sim_mode=sim_mode,
         switch_position=switch_pos,
+        token_cap_usd=cap_usd,
         agent_api_url=os.environ.get("AGENT_API_URL", ""),
+        agent_model=os.environ.get("AGENT_MODEL", "claude-sonnet-5-5"),
+        agent_identity_app_id=os.environ.get("AGENT_IDENTITY_APP_ID", ""),
+        mcp_app_id=os.environ.get("MCP_APP_ID", ""),
+        buddy_uami_client_id=os.environ.get("BUDDY_UAMI_CLIENT_ID", ""),
     )
     server = ThreadingHTTPServer(("0.0.0.0", port), make_handler(state))
     print(f"avd-buddy listening on http://0.0.0.0:{port} (sim_mode={sim_mode}, require_easy_auth={require_auth})")

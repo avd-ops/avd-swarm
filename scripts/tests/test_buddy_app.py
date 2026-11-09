@@ -20,11 +20,12 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-for folder in (ROOT / "scripts", ROOT / "buddy"):
+for folder in (ROOT / "scripts", ROOT / "buddy", ROOT / "runner", ROOT / "spikes/s1a/agent_api"):
     if str(folder) not in sys.path:
         sys.path.insert(0, str(folder))
 
 import build_buddy_icons  # noqa: E402
+import runbook_endpoint  # noqa: E402
 import server as buddy_server  # noqa: E402
 
 
@@ -196,8 +197,12 @@ class StaticShellAndBudgetTests(unittest.TestCase):
 
 
 class ServerAndIntegrationTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        if not (ROOT / "buddy/app/icons/icon-512.png").is_file():
+            build_buddy_icons.build_icons(ROOT)
+
     def setUp(self) -> None:
-        build_buddy_icons.build_icons(ROOT)
         self.state = buddy_server.BuddyState(require_easy_auth=False, sim_mode=True)
         self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), buddy_server.make_handler(self.state))
         self.port = self.httpd.server_address[1]
@@ -358,6 +363,191 @@ class ContainerAppBicepTests(unittest.TestCase):
         self.assertIn("override-use-mi-fic-assertion-clientid", bicep_text)
         self.assertIn("RedirectToLoginPage", bicep_text)
         self.assertIn("tokenStore: {\n        enabled: false\n      }", bicep_text)
+
+
+class LiveAgentApiRelayTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        if not (ROOT / "buddy/app/icons/icon-512.png").is_file():
+            build_buddy_icons.build_icons(ROOT)
+
+    def setUp(self) -> None:
+        self.agent_jobs: dict[str, dict] = {}
+        self.agent_meter = {"spentUsd": 3.75, "capUsd": 15.0, "stopped": False}
+        self.last_auth_header = ""
+        self.last_operator_oid = ""
+        self.stop_reasons: list[str] = []
+        test_case = self
+
+        class MockAgentApiHandler(buddy_server.BaseHTTPRequestHandler):
+            def log_message(self, fmt: str, *args: object) -> None:
+                pass
+
+            def _send(self, code: int, payload: dict) -> None:
+                raw = json.dumps(payload).encode("utf-8")
+                self.send_response(code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+
+            def do_GET(self) -> None:
+                if self.path == "/healthz":
+                    self._send(200, {"ok": True, "meter": test_case.agent_meter})
+                    return
+                if self.path.startswith("/ask/"):
+                    job_id = self.path.split("/ask/", 1)[1]
+                    job = test_case.agent_jobs.get(job_id)
+                    if not job:
+                        self._send(404, {"detail": "job not found"})
+                        return
+                    self._send(200, job)
+                    return
+                self._send(404, {"detail": "not found"})
+
+            def do_POST(self) -> None:
+                length = int(self.headers.get("Content-Length", "0") or "0")
+                body = json.loads(self.rfile.read(length).decode("utf-8")) if length > 0 else {}
+                test_case.last_auth_header = self.headers.get("Authorization", "")
+                test_case.last_operator_oid = self.headers.get("X-Avd-Operator-Oid", "")
+                if self.path == "/ask":
+                    job_id = "job-live-01"
+                    test_case.agent_jobs[job_id] = {
+                        "status": "running",
+                        "question": body.get("question", ""),
+                    }
+                    self._send(202, {"id": job_id})
+                    return
+                if self.path == "/stop":
+                    test_case.agent_meter["stopped"] = True
+                    test_case.stop_reasons.append(str(body.get("reason", "")))
+                    self._send(200, {"stopped": True, "meter": test_case.agent_meter})
+                    return
+                self._send(404, {"detail": "not found"})
+
+        self.agent_httpd = ThreadingHTTPServer(("127.0.0.1", 0), MockAgentApiHandler)
+        agent_port = self.agent_httpd.server_address[1]
+        self.agent_thread = threading.Thread(target=self.agent_httpd.serve_forever, daemon=True)
+        self.agent_thread.start()
+
+        self.state = buddy_server.BuddyState(
+            require_easy_auth=False,
+            sim_mode=False,
+            agent_api_url=f"http://127.0.0.1:{agent_port}",
+            token_provider=lambda: "mock-msi-token",
+        )
+        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), buddy_server.make_handler(self.state))
+        self.base_url = f"http://127.0.0.1:{self.httpd.server_address[1]}"
+        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+        self.thread.start()
+
+    def tearDown(self) -> None:
+        self.httpd.shutdown()
+        self.httpd.server_close()
+        self.agent_httpd.shutdown()
+        self.agent_httpd.server_close()
+
+    def _request(self, path: str, *, method: str = "GET", body: dict | None = None) -> tuple[int, dict]:
+        headers = {}
+        data = None
+        if body is not None:
+            data = json.dumps(body).encode("utf-8")
+            headers["Content-Type"] = "application/json"
+        req = urllib.request.Request(self.base_url + path, data=data, headers=headers, method=method)
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        try:
+            with opener.open(req, timeout=5) as resp:
+                return resp.status, json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as err:
+            return err.code, json.loads(err.read().decode("utf-8"))
+
+    def test_allowed_buddy_caller_accepts_operator_or_buddy_uami_only(self) -> None:
+        agent_api_dir = ROOT / "spikes/s1a/agent_api"
+        if str(agent_api_dir) not in sys.path:
+            sys.path.insert(0, str(agent_api_dir))
+        import runbook_endpoint  # noqa: E402
+
+        # Delegated operator token with Mcp.Tools.ReadWrite passes
+        self.assertTrue(
+            runbook_endpoint.allowed_buddy_caller(
+                {"oid": "op-oid-1", "scp": "Mcp.Tools.ReadWrite"},
+                operator_oid="op-oid-1",
+                buddy_caller_oid="buddy-uami-oid-1",
+            )
+        )
+        # avd-buddy Container App managed identity token (app-only, no scp) passes when buddy_caller_oid matches
+        self.assertTrue(
+            runbook_endpoint.allowed_buddy_caller(
+                {"oid": "buddy-uami-oid-1", "idtyp": "app"},
+                operator_oid="op-oid-1",
+                buddy_caller_oid="buddy-uami-oid-1",
+            )
+        )
+        # Unknown caller OID is rejected
+        self.assertFalse(
+            runbook_endpoint.allowed_buddy_caller(
+                {"oid": "other-oid", "idtyp": "app"},
+                operator_oid="op-oid-1",
+                buddy_caller_oid="buddy-uami-oid-1",
+            )
+        )
+
+    def test_live_relay_polls_running_to_done_and_enforces_voice_check(self) -> None:
+        # 1. Status syncs spend and cap from agent_api /healthz
+        status_code, status_data = self._request("/api/status")
+        self.assertEqual(status_code, 200)
+        self.assertFalse(status_data["simMode"])
+        self.assertAlmostEqual(status_data["tokenSpendUsd"], 3.75)
+
+        # 2. Starting a turn relays POST /ask with Bearer token and operator header, returning 202 running
+        post_code, post_data = self._request(
+            "/api/turns",
+            method="POST",
+            body={"question": "Which hosts were idle all weekend?", "humor": "light"},
+        )
+        self.assertEqual(post_code, 202)
+        self.assertEqual(post_data["status"], "running")
+        self.assertEqual(self.last_auth_header, "Bearer mock-msi-token")
+        self.assertEqual(self.last_operator_oid, "sim-operator")
+        turn_id = post_data["turnId"]
+
+        # 3. First poll while job is still running returns done=False
+        poll1_code, poll1_data = self._request(f"/api/turns/{turn_id}?after=0")
+        self.assertEqual(poll1_code, 200)
+        self.assertFalse(poll1_data["done"])
+        self.assertEqual(poll1_data["nextAfter"], 1)
+
+        # 4. Complete the job on agent_api with an aside that carries a forbidden number (must be stripped by voice_check)
+        self.agent_jobs["job-live-01"] = {
+            "status": "done",
+            "result": {
+                "answer": "Two hosts in hp-contoso-sales had zero sessions over the weekend [fact:idle-01].",
+                "aside": "Those 2 hosts saved $14 in compute.",
+                "evidence": {
+                    "citations": {"cited": ["fact:idle-01"], "uncited": [], "unverified": [], "valid": True},
+                    "toolCalls": [{"name": "query_log_analytics"}],
+                },
+            },
+        }
+        poll2_code, poll2_data = self._request(f"/api/turns/{turn_id}?after=1")
+        self.assertEqual(poll2_code, 200)
+        self.assertTrue(poll2_data["done"])
+        turn = poll2_data["turn"]
+        self.assertEqual(turn["status"], "completed")
+        self.assertIn("Two hosts in hp-contoso-sales", turn["answer"])
+        # Aside had digits/currency so voice_check stripped it
+        self.assertIsNone(turn["aside"])
+        self.assertEqual(len(turn["citations"]), 2)
+
+        # 5. Tripping kill switch to halt-agents relays POST /stop to agent_api
+        trip_code, _ = self._request(
+            "/api/switch/trip",
+            method="POST",
+            body={"position": "halt-agents", "confirm": "halt-agents"},
+        )
+        self.assertEqual(trip_code, 200)
+        self.assertEqual(len(self.stop_reasons), 1)
+        self.assertIn("halt-agents", self.stop_reasons[0])
 
 
 if __name__ == "__main__":
