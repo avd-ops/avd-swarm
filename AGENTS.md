@@ -45,7 +45,7 @@ These hold in every AVD repo. The repo's own rules below and in CLAUDE.md add to
 - **Stay in your lane.** Each repo has one job (below). Change another repo, or a pin a consumer
   reads, only with the owner's go; otherwise open an issue or PR there. The lane rules in CLAUDE.md
   say what does not belong here (most AVD repos take no Terraform, Packer or other HCL).
-  Liquidware is the only partner named; other vendors appear only as prior art or categories.
+  Liquidware and ServiceNow are the named partners (`avd-liquidware`, `avd-servicenow`); other vendors appear only as prior art or categories.
 - **Real runs are the source of truth.** When a run shows something the tests missed, fix it, add
   a guard (a test or a check), and record the lesson.
 - **Write down what you learn** in the knowledge base this repo uses, in the same PR, or say why
@@ -68,6 +68,7 @@ These hold in every AVD repo. The repo's own rules below and in CLAUDE.md add to
 - **avd-linecheck** is the end-user browser network check.
 - **avd-ops** is the front door: the website and docs at avd-ops.dev.
 - **avd-liquidware** is the optional Liquidware tier.
+- **avd-servicenow** is the optional ServiceNow ITSM, CMDB, and Change-Gate tier.
 
 ## This repo
 

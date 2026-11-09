@@ -1,0 +1,33 @@
+# The servicenow adapter: ServiceNow ITSM incident trigger and change co-signer (avd-servicenow spec section 5.3).
+# Compliant with WP5 adapters/schema.json and scripts/check_adapters.py; off by default.
+name: servicenow
+kind: incident
+status: designed
+addsTo: alert-triggered-runs
+replaces: []
+default: off
+meters:
+  - service: Azure Logic Apps Consumption + Azure Storage Queue
+    meter: per-execution webhook receiver and queue operations
+    standing: false
+    monthlyUsdIdle: 0
+    source: https://azure.microsoft.com/pricing/details/logic-apps/
+  - service: ServiceNow ITSM / CMDB (Customer-licensed or free Personal Developer Instance)
+    meter: customer subscription or $0 PDI for research/testing
+    standing: false
+    monthlyUsdIdle: 0
+    source: https://developer.servicenow.com/
+identity:
+  runsAs: "avd-swarm runner's read-only managed identity exchanging Entra/GitHub OIDC token for ServiceNow x_avd_ops.integration OAuth token"
+  mustNotHold: [Contributor, Owner, User Access Administrator, Monitoring Contributor, admin, security_admin]
+  policyDeny: "Azure Policy deny on Microsoft.Authorization/roleAssignments/write for the adapter identity; ServiceNow ACL restricting x_avd_ops.integration to correlation_id prefix avd-ops"
+  watchdog: "any Azure write attempt or non-allowlisted table write trips halt-actions and logs an observer denial"
+switch:
+  run: "inbound ServiceNow incidents may enqueue alert-started runbook investigations (threadStartedBy: alert); propose_change plans may mirror to ServiceNow change_request records"
+  halt-actions: "diagnostic runbooks still post work_notes, but ServiceNow change approvals cannot trigger plan execution"
+  halt-agents: "inbound incident queue consumer exits before calling any model or runbook"
+  halt-all: "webhook receiver Logic App is disabled and queue scaler is stopped"
+  residual: "ServiceNow instance continues its own ticket lifecycle independently with zero Azure write path"
+events: [servicenow.incident.enqueued, servicenow.worknote.posted, servicenow.change.mirrored]
+writes: none
+exitTests: []
