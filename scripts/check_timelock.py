@@ -492,6 +492,12 @@ def classify_change(
         effect, reasons = _classify_allowlist(path, before_data, after_data)
     elif path == "governance/protected-paths.yml":
         effect, reasons = _classify_protected_paths(path, before_data, after_data)
+    elif path == "governance/policy.yml":
+        gate_dir = str(Path(__file__).resolve().parents[1] / "gate")
+        if gate_dir not in sys.path:
+            sys.path.insert(0, gate_dir)
+        from avd_gate.policy import classify_policy_change
+        effect, reasons = classify_policy_change(path, before_data, after_data)
     else:
         effect = "raises"
         reasons = [f"{path}: protected path change counts as capability-raising"]

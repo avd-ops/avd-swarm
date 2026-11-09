@@ -32,6 +32,7 @@ from .evidence import (
     refusals as evidence_refusals,
     resolve_cloud_environment,
 )
+from .policy import policy_refusals
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WHY_KINDS = ("build", "configure", "expand", "contract", "fix", "recover", "retire")
@@ -322,6 +323,7 @@ def check_plan(
         [
             *host_precondition_refusals(action, state, plan_id=plan_id),
             *catalog_action_refusals(plan, state, runner_env=runner_env, root=root),
+            *policy_refusals(plan, state, root=root),
         ],
     ]
     reasons = [r for group in rule_groups for r in group]
