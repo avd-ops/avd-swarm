@@ -678,11 +678,11 @@ app = Starlette(routes=[
     Route("/healthz", health),
     Route("/setup", guarded(setup), methods=["POST"]),
     Route("/claude-check", guarded(claude_check), methods=["POST"]),
-    Route("/ask", guarded(ask), methods=["POST"]),
-    Route("/ask/{job_id}", guarded(ask_status)),
-    Route("/stop", guarded(stop), methods=["POST"]),
+    Route("/ask", guarded(ask, allow_buddy=True), methods=["POST"]),
+    Route("/ask/{job_id}", guarded(ask_status, allow_buddy=True)),
+    Route("/stop", guarded(stop, allow_buddy=True), methods=["POST"]),
     Route("/runbook", runbook, methods=["POST"]),  # its own token check: the operator or a runbook.run caller
-    Route("/runbook/findings", guarded(runbook_findings)),
+    Route("/runbook/findings", guarded(runbook_findings, allow_buddy=True)),
 ])
 
 if __name__ == "__main__":
