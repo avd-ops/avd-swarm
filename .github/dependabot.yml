@@ -1,0 +1,16 @@
+# Automated dependency and GitHub Actions update proposals (avd-assess security-review: dependency-updates).
+# Personal project, not for production, as is; not affiliated with the author's employer, Liquidware, ServiceNow or Microsoft.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "pip"
+    directory: "/spikes/s1a/agent_api"
+    schedule:
+      interval: "weekly"
+  - package-ecosystem: "pip"
+    directory: "/spikes/s1a/tools"
+    schedule:
+      interval: "weekly"
