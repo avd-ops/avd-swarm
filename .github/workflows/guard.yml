@@ -13,13 +13,13 @@ jobs:
     name: No hardcoded IDs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: scripts/check-no-ids.sh
   no-hcl:
     name: No HCL (Terraform, Packer)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # HCL belongs to nerdio-hcl, not the AVD repos (avd-second-brain decision 0012).
       - run: |
           files=$(git ls-files '*.tf' '*.tfvars' '*.tf.json' '*.hcl' '*.pkr.json')
@@ -32,13 +32,13 @@ jobs:
     name: shellcheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: shellcheck scripts/*.sh
   workflows:
     name: Workflow rules
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: python3 -m pip install --quiet pyyaml==6.0.2
       - name: Unit tests (workflow and agent PR checks, gateway, runbooks, adapters)
         run: python3 -m unittest discover -s scripts/tests -v
@@ -64,7 +64,7 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - run: python3 -m pip install --quiet pyyaml==6.0.2
