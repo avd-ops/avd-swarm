@@ -1,6 +1,6 @@
 anthropic==2.6.0
 azure-ai-projects==2.9.0
 azure-identity==1.27.0
-mcp==1.30.0
+mcp==2.3.0
 openai==3.46.0
 pyyaml==6.0.2
