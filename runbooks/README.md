@@ -5,8 +5,11 @@ A runbook is a diagnostic procedure as code: a Markdown page a person reads, und
 | Runbook | Agent | Trigger | Checks |
 |---|---|---|---|
 | [hosts.agent-unhealthy](hosts/agent-unhealthy.md) | Hosts | weekdays 06:00 UTC | agents report, and no session host is unhealthy or silent (a shut-down host is neither) |
+| [hosts.agent-unhealthy-alert](hosts/agent-unhealthy-alert.md) | Hosts | alert `avd-*-agent-health*` | alert-triggered check that agents report and no session host is unhealthy |
+| [hosts.cloudpc-health](hosts/cloudpc-health.md) | Hosts | manual | Windows 365 Cloud PC Azure Network Connection checks and local-admin-disabled posture |
 | [hosts.connection-errors](hosts/connection-errors.md) | Hosts | weekdays 06:15 UTC | fewer than 25 AVD errors in the last day |
 | [cost.idle-hosts](cost/idle-hosts.md) | Cost | Mondays 07:00 UTC | no running host without a connection in seven days |
+| [intune.policy-drift](intune/policy-drift.md) | Intune | manual | Intune platform assignment filters present and zero unfiltered All-Devices policies |
 
 ## The front matter
 

@@ -52,6 +52,8 @@ jobs:
         run: python3 scripts/check_policy.py
       - name: Adapters are off by default, write nothing and nothing depends on them (decision 0009)
         run: python3 scripts/check_adapters.py
+      - name: Eval README, spike questions, and per-agent eval cases (spec section 9a)
+        run: python3 scripts/check_evals.py
       - name: No write path in a public repo, no default-token PRs, no untrusted credentials (spec section 5b)
         env:
           REPO_PRIVATE: ${{ github.event.repository.private }}
