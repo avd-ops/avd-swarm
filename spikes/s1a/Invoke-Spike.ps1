@@ -147,7 +147,7 @@ function Invoke-Teardown {
     $runId = if (Test-Path "$Spike/run-id") { Get-Content "$Spike/run-id" } else { $null }
     if (-not $runId) { Write-Host 'No spend run was opened, so nothing was deployed.'; return }
     $runProvider = if (Test-Path "$Spike/provider") { Get-Content "$Spike/provider" } else { $Provider }
-    $runLocation = if ($Location) { $Location } elseif ($runProvider -in @('Anthropic', 'AzureOpenAI')) { 'northcentralus' } else { 'eastus2' }
+    $runLocation = if ($Location) { $Location } elseif (Test-Path "$Spike/location") { (Get-Content "$Spike/location" -Raw).Trim() } elseif ($runProvider -in @('Anthropic', 'AzureOpenAI')) { 'northcentralus' } else { 'eastus2' }
     & (Join-Path $Kit 'scripts/Remove-Spike.ps1') -RunId $runId -Provider $runProvider -Location $runLocation | Select-Object -Last 1 | Set-Content "$Spike/teardown-$runId.json"
     $removeExit = $LASTEXITCODE
     # Token spend billed outside Azure (the Anthropic fallback): what the agent service metered, from the eval records.
@@ -164,7 +164,7 @@ function Invoke-Teardown {
     Write-Host "`nRun $runId closed. Delete the report-only Conditional Access policy if you made one."
     Write-Host "Three days from now, settle the actual cost: python3 $Guard --ledger $LedgerPath --sandbox $Sandbox settle --run-id $runId"
     Move-Item $ProgressFile "$Spike/progress-$runId.json" -Force
-    Remove-Item "$Spike/run-id", "$Spike/provider" -Force -ErrorAction SilentlyContinue
+    Remove-Item "$Spike/run-id", "$Spike/provider", "$Spike/location" -Force -ErrorAction SilentlyContinue
 }
 
 Start-Transcript -Path (Join-Path $Spike "transcript-$([datetime]::UtcNow.ToString('yyyyMMdd-HHmmss')).txt") | Out-Null
@@ -291,6 +291,7 @@ try {
         if ($run.status -ne 'open') { throw "The spend run was refused: $($run.runId) is $($run.status). Nothing is deployed." }
         $run.runId | Set-Content "$Spike/run-id"
         $Provider | Set-Content "$Spike/provider"
+        $targetLocation | Set-Content "$Spike/location"
         Write-Host "Run $($run.runId) is open."
     }
     $RunId = Get-Content "$Spike/run-id"

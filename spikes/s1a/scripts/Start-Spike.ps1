@@ -282,7 +282,13 @@ if ($Provider -in @('Anthropic', 'AzureOpenAI')) {
             Start-Sleep -Seconds 10
         }
     }
-    if (-not $healthy) { throw "The agents app didn't answer $agentsUrl/healthz in 10 minutes. Its logs: az containerapp logs show -g $SpikeResourceGroup -n $($out.agentsAppName.value) --tail 100" }
+    if (-not $healthy) {
+        $agentsAppName = $out.agentsAppName.value
+        Write-Warning "The agents app didn't answer $agentsUrl/healthz in 10 minutes. Dumping recent container logs:"
+        try { & az containerapp logs show -g $SpikeResourceGroup -n $agentsAppName --tail 80 --only-show-errors }
+        catch { Write-Warning "Could not read containerapp logs: $_" }
+        throw "The agents app didn't answer $agentsUrl/healthz in 10 minutes. Its logs: az containerapp logs show -g $SpikeResourceGroup -n $agentsAppName --tail 100"
+    }
 
     # The blueprint creates the agent identity itself (its own token, from the managed identity); a new FIC can take a minute to work.
     $identityName = "avdswarm-spike-hosts-$RunId"
