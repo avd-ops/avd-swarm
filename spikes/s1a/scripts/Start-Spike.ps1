@@ -66,8 +66,8 @@ if ($PSCmdlet.ShouldProcess($SpikeResourceGroup, 'create resource group')) {
 Write-SpikeStep "Looking for the landing zone's location policy ($ExemptedAssignment)"
 $assignment = Invoke-SpikeAz -Step 'get-assignment' -AllowNotFound -Arguments @('rest', '--method', 'get', '--url',
     "https://management.azure.com/subscriptions/$($context.SubscriptionId)/providers/Microsoft.Authorization/policyAssignments/$($ExemptedAssignment)?api-version=2023-04-01")
-if ($assignment -and $Location -eq $ResourceGroupLocation) {
-    Write-Host "Everything deploys in $Location, which the policy allows; no exemption needed."
+if ($assignment -and (Test-SpikeLocationAllowed -Assignment $assignment -Location $Location)) {
+    Write-Host "Everything deploys in $Location, which $ExemptedAssignment allows; no exemption needed."
 }
 elseif ($assignment) {
     $expires = [datetime]::UtcNow.Date.AddDays(1).ToString('yyyy-MM-ddTHH:mm:ssZ')

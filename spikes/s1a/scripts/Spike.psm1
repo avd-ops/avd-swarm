@@ -8,6 +8,24 @@ function Write-SpikeStep {
     Write-Host "==> $Message"
 }
 
+function Test-SpikeLocationAllowed {
+    <#
+    .SYNOPSIS
+    Returns $true if the policy assignment's listOfAllowedLocations parameter includes $Location.
+    #>
+    param(
+        [Parameter(Mandatory)][object] $Assignment,
+        [Parameter(Mandatory)][string] $Location
+    )
+    $allowed = @(
+        $Assignment.properties.parameters.listOfAllowedLocations.value |
+            Where-Object { $_ } |
+            ForEach-Object { ([string]$_).Trim().ToLowerInvariant() -replace '\s+', '' }
+    )
+    $normalized = $Location.Trim().ToLowerInvariant() -replace '\s+', ''
+    return $allowed -contains $normalized
+}
+
 function Invoke-SpikeAz {
     <#
     .SYNOPSIS
@@ -218,4 +236,4 @@ function Remove-SpikeResourceGroup {
     }
 }
 
-Export-ModuleMember -Function Write-SpikeStep, Invoke-SpikeAz, Get-SpikeContext, Get-SpikeRoleId, Invoke-SpikeGraph, Connect-SpikeAgentGraph, Invoke-SpikeAgentGraph, Get-SpikeOperatorToken, Invoke-SpikeDeployment, Remove-SpikeResourceGroup -Variable SpikeResourceGroup, ExemptedAssignment
+Export-ModuleMember -Function Write-SpikeStep, Test-SpikeLocationAllowed, Invoke-SpikeAz, Get-SpikeContext, Get-SpikeRoleId, Invoke-SpikeGraph, Connect-SpikeAgentGraph, Invoke-SpikeAgentGraph, Get-SpikeOperatorToken, Invoke-SpikeDeployment, Remove-SpikeResourceGroup -Variable SpikeResourceGroup, ExemptedAssignment
