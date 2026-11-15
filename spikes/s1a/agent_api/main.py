@@ -73,6 +73,7 @@ UAMI_CLIENT_ID = os.environ["UAMI_CLIENT_ID"]
 MCP_APP_ID = os.environ["MCP_APP_ID"]
 MCP_URL = os.environ["MCP_URL"]
 OPERATOR_OID = os.environ["OPERATOR_OID"]
+BUDDY_CALLER_OID = os.environ.get("BUDDY_CALLER_OID", "").strip()
 MODEL_PROVIDER = os.environ.get("MODEL_PROVIDER", "anthropic")
 if MODEL_PROVIDER not in ("anthropic", "azure-openai"):
     raise SystemExit(f"MODEL_PROVIDER must be 'anthropic' or 'azure-openai', not {MODEL_PROVIDER!r}")
@@ -234,10 +235,15 @@ def operator_claims(request: Request) -> dict:
     return claims
 
 
-def guarded(handler):
+def guarded(handler, *, allow_buddy: bool = False):
     async def wrapper(request: Request):
         try:
-            operator_claims(request)
+            if allow_buddy:
+                claims = verified_claims(request)
+                if not runbook_endpoint.allowed_buddy_caller(claims, OPERATOR_OID, BUDDY_CALLER_OID):
+                    raise PermissionError("not the operator or allowed avd-buddy caller")
+            else:
+                operator_claims(request)
         except (PermissionError, jwt.PyJWTError) as error:
             return JSONResponse({"error": f"unauthorized: {error}"}, status_code=401)
         return await handler(request)
