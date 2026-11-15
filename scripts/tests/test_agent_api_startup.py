@@ -7,10 +7,12 @@ and verifies buddy vs operator caller auth on guarded() routes with zero cloud/t
 
 from __future__ import annotations
 
+import ast
 import asyncio
 import importlib
 import json
 import os
+import re
 import sys
 import types
 import unittest
@@ -168,6 +170,49 @@ class AgentApiStartupTests(unittest.TestCase):
         with mock.patch.object(self.main, "verified_claims", return_value=stranger_claims):
             self.assertEqual(asyncio.run(operator_only(object())).status_code, 401)
             self.assertEqual(asyncio.run(buddy_allowed(object())).status_code, 401)
+
+    def test_agent_api_third_party_imports_are_in_requirements(self):
+        agent_api_dir = ROOT / "spikes" / "s1a" / "agent_api"
+        req_text = (agent_api_dir / "requirements.txt").read_text(encoding="utf-8")
+        pinned = {
+            re.split(r"[=<>!\[]", line.strip(), maxsplit=1)[0].lower()
+            for line in req_text.splitlines()
+            if line.strip() and not line.strip().startswith("#")
+        }
+        import_to_pkg = {
+            "anthropic": "anthropic",
+            "azure": "azure-identity",
+            "httpx": "httpx",
+            "jwt": "pyjwt",
+            "mcp": "mcp",
+            "yaml": "pyyaml",
+            # Provided transitively by mcp[cli]/mcp in the container runtime:
+            "starlette": "mcp",
+            "uvicorn": "mcp",
+        }
+        local_modules = (
+            {p.stem for p in agent_api_dir.glob("*.py")}
+            | {p.stem for p in (ROOT / "scripts").glob("*.py")}
+            | {"avd_concierge", "avd_gateway", "avd_runner", "avd_gate"}
+        )
+        for py_file in sorted(agent_api_dir.glob("*.py")):
+            tree = ast.parse(py_file.read_text(encoding="utf-8"), filename=str(py_file))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    roots = [alias.name.split(".")[0] for alias in node.names]
+                elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+                    roots = [node.module.split(".")[0]]
+                else:
+                    continue
+                for mod in roots:
+                    if mod in sys.stdlib_module_names or mod in local_modules:
+                        continue
+                    pkg = import_to_pkg.get(mod, mod.lower())
+                    self.assertIn(
+                        pkg,
+                        pinned,
+                        f"{py_file.name} imports {mod!r}, which must be pinned in spikes/s1a/agent_api/requirements.txt",
+                    )
 
 
 if __name__ == "__main__":
