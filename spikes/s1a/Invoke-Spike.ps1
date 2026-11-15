@@ -55,6 +55,8 @@ param(
     [ValidateSet('observe', 'enforce')][string] $PromptShieldsMode = 'observe',
     [string] $BrainCommit = '',
     [bool] $ScaleToZero = $true,
+    [string] $Location = '',
+    [string] $ResourceGroupLocation = '',
     # Unattended mode for avd-sandbox batch runner (Invoke-AvdSandboxBatch.ps1): skips interactive Read-Host prompts when -MonthlyCap is given.
     [switch] $Unattended
 )
@@ -145,7 +147,7 @@ function Invoke-Teardown {
     $runId = if (Test-Path "$Spike/run-id") { Get-Content "$Spike/run-id" } else { $null }
     if (-not $runId) { Write-Host 'No spend run was opened, so nothing was deployed.'; return }
     $runProvider = if (Test-Path "$Spike/provider") { Get-Content "$Spike/provider" } else { $Provider }
-    $runLocation = if ($runProvider -in @('Anthropic', 'AzureOpenAI')) { 'northcentralus' } else { 'eastus2' }
+    $runLocation = if ($Location) { $Location } elseif ($runProvider -in @('Anthropic', 'AzureOpenAI')) { 'northcentralus' } else { 'eastus2' }
     & (Join-Path $Kit 'scripts/Remove-Spike.ps1') -RunId $runId -Provider $runProvider -Location $runLocation | Select-Object -Last 1 | Set-Content "$Spike/teardown-$runId.json"
     $removeExit = $LASTEXITCODE
     # Token spend billed outside Azure (the Anthropic fallback): what the agent service metered, from the eval records.
@@ -262,9 +264,12 @@ try {
     & (Join-Path $Venv 'bin/pip') install -q -r (Join-Path $Kit 'tools/requirements.txt')
     if ($LASTEXITCODE) { throw 'pip install failed (output above).' }
 
+    $targetLocation = if ($Location) { $Location } elseif ($Provider -in @('Anthropic', 'AzureOpenAI')) { 'northcentralus' } else { 'eastus2' }
+    $targetRgLocation = if ($ResourceGroupLocation) { $ResourceGroupLocation } else { $targetLocation }
+
     # ---------- Price it and open the spend run ----------
     Invoke-Step 'price-and-open-run' {
-        $estimateArgs = if ($Provider -in @('Anthropic', 'AzureOpenAI')) { @{ Provider = $Provider; Region = 'northcentralus'; PromptShields = $PromptShields } } else { @{} }
+        $estimateArgs = if ($Provider -in @('Anthropic', 'AzureOpenAI')) { @{ Provider = $Provider; Region = $targetLocation; PromptShields = $PromptShields } } else { @{} }
         $estimate = & (Join-Path $Kit 'scripts/Get-SpikeEstimate.ps1') @estimateArgs | Select-Object -Last 1 | ConvertFrom-Json
         Write-Host "`nAzure lines: $($estimate.manualAmount) ($($estimate.unpricedLines) unpriced)`n$($estimate.manualNote)"
         if ($estimate.unpricedLines -gt 0 -and -not $AllowUnpriced) {
@@ -294,13 +299,16 @@ try {
     Invoke-Step 'deploy' {
         if ($Provider -in @('Anthropic', 'AzureOpenAI')) {
             Write-Host "Deploying the resource group, the MCP server, the agents app ($Provider) and the host pool, and creating the Agent ID blueprint; 5 to 15 minutes."
-            & (Join-Path $Kit 'scripts/Start-Spike.ps1') -RunId $RunId -Provider $Provider -Location northcentralus `
+            & (Join-Path $Kit 'scripts/Start-Spike.ps1') -RunId $RunId -Provider $Provider -Location $targetLocation `
+                -ResourceGroupLocation $targetRgLocation `
                 -PromptShields:$PromptShields -PromptShieldsMode $PromptShieldsMode -ScaleToZero $ScaleToZero -BrainCommit $BrainCommit |
                 Select-Object -Last 1 | Set-Content "$Spike/state.json"
         }
         else {
             Write-Host 'Deploying the resource group, Foundry, the MCP server and the host pool; this takes 5 to 10 minutes.'
-            & (Join-Path $Kit 'scripts/Start-Spike.ps1') -RunId $RunId | Select-Object -Last 1 | Set-Content "$Spike/state.json"
+            $startArgs = @{ RunId = $RunId; Location = $targetLocation }
+            if ($ResourceGroupLocation) { $startArgs['ResourceGroupLocation'] = $ResourceGroupLocation }
+            & (Join-Path $Kit 'scripts/Start-Spike.ps1') @startArgs | Select-Object -Last 1 | Set-Content "$Spike/state.json"
         }
     }
     $s = Get-Content "$Spike/state.json" | ConvertFrom-Json
