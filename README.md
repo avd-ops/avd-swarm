@@ -3,7 +3,7 @@
 Part of [avd-ops](https://avd-ops.dev/), the open toolkit for Azure Virtual Desktop.
 
 > [!WARNING]
-> **Personal project. Research and learning only. Not for production. No warranty.**
+> **Community research project. Use at your own risk. No warranty.**
 >
 > - This is my own personal project, built on my own time **for research and learning**. It is **not affiliated with, endorsed by or supported by my employer**, and it does not represent my employer's views, products or guidance. It is not affiliated with or endorsed by Liquidware or Microsoft.
 > - It's a design and a spike so far. **Do not run it in production** or against a tenant that matters; nothing here is ready for a real tenant. Test anything you try in a dedicated lab tenant and subscription.
@@ -14,9 +14,9 @@ An agent-based Desktop DevOps platform for managing Azure Virtual Desktop (`avd`
 
 It covers AVD, Windows 365 Cloud PCs, endpoint management in Intune, and the users, groups and licenses they need. Unrelated tenant-wide administration (Exchange, Teams, SharePoint) is out of scope here.
 
-**Build order** ([spec §9a](docs/spec.md#9a-build-order-proposed-2026-10-19-after-the-second-red-team)): 1. the S1a spike on Anthropic's API with its own token cap; 2. read-only Hosts and Cost agents beside the brain's Tier 1, with runbooks on a schedule; 3. the first two write actions from a private adopter repo, to ten verified changes. **Everything after step 3 (brain proposals through C9, Improve, the judge machinery, the compliance gate, standing exceptions) is designed, not scheduled.** Don't build it from the spec until step 3 is done and the owner says so.
+**Build order** ([spec Â§9a](docs/spec.md#9a-build-order-proposed-2026-10-19-after-the-second-red-team)): 1. the S1a spike on Anthropic's API with its own token cap; 2. read-only Hosts and Cost agents beside the brain's Tier 1, with runbooks on a schedule; 3. the first two write actions from a private adopter repo, to ten verified changes. **Everything after step 3 (brain proposals through C9, Improve, the judge machinery, the compliance gate, standing exceptions) is designed, not scheduled.** Don't build it from the spec until step 3 is done and the owner says so.
 
-The write path never runs in this public repo: adopters run it from a private repo synced from a release tag ([spec §5b](docs/spec.md#5b-where-the-write-path-runs-the-project-and-its-adopters)).
+The write path never runs in this public repo: adopters run it from a private repo synced from a release tag ([spec Â§5b](docs/spec.md#5b-where-the-write-path-runs-the-project-and-its-adopters)).
 
 - Spec: [docs/spec.md](docs/spec.md)
 - avd-buddy app & public demo: [docs/buddy-app.md](docs/buddy-app.md) ([buddy.avd-ops.dev](https://buddy.avd-ops.dev/))
