@@ -58,6 +58,17 @@ jobs:
         env:
           REPO_PRIVATE: ${{ github.event.repository.private }}
         run: python3 scripts/check_workflows.py
+  agent-api-startup:
+    name: S1a agent API startup against pinned requirements
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.13"
+      - run: python3 -m pip install --quiet -r spikes/s1a/agent_api/requirements.txt
+      - name: Verify S1a agent_api imports, routes, and /healthz against real pinned packages
+        run: python3 -m unittest scripts/tests/test_agent_api_startup.py -v
   agent-pr:
     name: Agent PRs stay out of protected paths
     if: github.event_name == 'pull_request'
