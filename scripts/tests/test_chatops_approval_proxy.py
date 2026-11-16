@@ -15,6 +15,8 @@ for p in (ROOT, ROOT / "gate"):
 
 from avd_gate import apply as gate_apply  # noqa: E402
 from notifications.chatops import ChatOpsApprovalProxy, ChatOpsApprovalRequest  # noqa: E402
+from notifications.function_app import handle_chatops_http  # noqa: E402
+from notifications.router import load_notifications_policy, validate_notifications_policy  # noqa: E402
 
 
 class FakeGitHubTransport:
@@ -157,6 +159,39 @@ class ChatOpsApprovalProxyTests(unittest.TestCase):
             root=ROOT,
         )
         self.assertEqual(apply_res["status"], "refused")
+
+    def test_handle_chatops_http_and_policy_validation(self) -> None:
+        self.assertEqual(validate_notifications_policy(load_notifications_policy(ROOT)), [])
+        status_401, _ = handle_chatops_http(
+            {},
+            {"planId": "plan-http"},
+            read_switch_position=lambda: "run",
+            read_current_plan_hash=lambda _p: self.full_hash,
+            transport=self.transport,
+        )
+        self.assertEqual(status_401, 401)
+
+        status_200, res = handle_chatops_http(
+            {
+                "X-MS-CLIENT-PRINCIPAL-ID": "oid-operator-1",
+                "X-GitHub-User-Token": "ghu_per_user_oauth_token_123",
+                "X-GitHub-User-Login": "operator-gh",
+            },
+            {
+                "platform": "teams",
+                "planId": "plan-http",
+                "fullPlanHash": self.full_hash,
+                "owner": "avd-ops",
+                "repo": "avd-swarm",
+                "runId": 42,
+                "environmentId": 7,
+            },
+            read_switch_position=lambda: "run",
+            read_current_plan_hash=lambda _p: self.full_hash,
+            transport=self.transport,
+        )
+        self.assertEqual(status_200, 200)
+        self.assertEqual(res["status"], "approved")
 
 
 if __name__ == "__main__":
