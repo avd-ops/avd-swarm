@@ -21,3 +21,7 @@ acdd72a7-3385-48ef-bd42-f606fba81ae7
 19e7f393-937e-4f77-808e-94535e297925
 # 5e0bd9bd-7b93-4f28-af87-19fc36ad61bd  built-in role: Cognitive Services OpenAI User
 5e0bd9bd-7b93-4f28-af87-19fc36ad61bd
+# 0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3  built-in role: Storage Table Data Contributor
+0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3
+# 4633458b-17de-408a-b874-0445c86b69e6  built-in role: Key Vault Secrets User
+4633458b-17de-408a-b874-0445c86b69e6
