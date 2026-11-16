@@ -440,7 +440,7 @@ async def run_specialist(agent: str, question: str, model: str, identity_app_id:
         shield=guard,
     )
     async with httpx.AsyncClient(headers={"Authorization": f"Bearer {token}"}) as http_client:
-        async with streamable_http_client(MCP_URL, http_client=http_client) as (read, write, _):
+        async with streamable_http_client(MCP_URL, http_client=http_client) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 offered, cursor = [], None
@@ -602,7 +602,7 @@ async def runbook_tool(name: str, args: dict) -> str:
     """One MCP tool call as the agent identity: the result's text, or an error carrying no names."""
     token = await agent_identity_token(RUNBOOK_IDENTITY_APP_ID, f"api://{MCP_APP_ID}/.default")
     async with httpx.AsyncClient(headers={"Authorization": f"Bearer {token}"}) as http_client:
-        async with streamable_http_client(MCP_URL, http_client=http_client) as (read, write, _):
+        async with streamable_http_client(MCP_URL, http_client=http_client) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 result = await session.call_tool(name, args)
