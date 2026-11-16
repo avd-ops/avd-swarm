@@ -3,9 +3,11 @@
 
 from __future__ import annotations
 
+import json
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT / "scripts") not in sys.path:
@@ -22,7 +24,7 @@ class TestS2DrillRunner(unittest.TestCase):
 
     def test_accepts_exact_approval_and_passes_5_steps(self) -> None:
         ev = run_s2_drill.run_drill(approval_phrase="go batch s2-drill-01 $1.50", mode="harness")
-        self.assertEqual(ev["status"], "passed")
+        self.assertEqual(ev["status"], "passed", json.dumps(ev))
         self.assertEqual(ev["batchId"], "s2-drill-01")
         self.assertEqual(ev["approvedTotalUsd"], 1.50)
 
@@ -72,6 +74,49 @@ class TestS2DrillRunner(unittest.TestCase):
     def test_azure_mode_requires_subscription(self) -> None:
         with self.assertRaises(ValueError):
             run_s2_drill.run_drill(approval_phrase="go batch s2-drill-01 $1.50", mode="azure", subscription="")
+
+    def test_azure_mode_uses_real_subscription_and_resource_group_for_flag_checks(self) -> None:
+        sub = "11111111-1111-1111-1111-111111111111"
+        rg = "rg-custom-avd"
+        state = {"flag": "run", "allowNewSession": True}
+        seen_urls: list[str] = []
+
+        def fake_az_json(self_backend, *args: str):
+            url = args[args.index("--url") + 1]
+            method = args[args.index("--method") + 1].lower()
+            seen_urls.append(url)
+            self.assertNotIn("sub-redacted", url)
+            self.assertNotIn("rg-avd-swarm-lab", url)
+            if "/sessionHosts/" in url:
+                if method == "patch":
+                    body = json.loads(args[args.index("--body") + 1])
+                    state["allowNewSession"] = body["properties"]["allowNewSession"]
+                return {"properties": {"allowNewSession": state["allowNewSession"], "sessions": 0, "status": "Available"}}
+            if f"/subscriptions/{sub}/resourcegroups/{rg}" in url.lower():
+                if method == "patch":
+                    body = json.loads(args[args.index("--body") + 1])
+                    state["flag"] = body["properties"]["tags"]["avd-swarm-switch"]
+                return {
+                    "tags": {"avd-swarm-switch": state["flag"]},
+                    "properties": {"tags": {"avd-swarm-switch": state["flag"]}},
+                }
+            raise AssertionError(f"Unexpected URL: {url}")
+
+        with mock.patch.object(run_s2_drill._AzureBackend, "_az_json", fake_az_json):
+            ev = run_s2_drill.run_drill(
+                approval_phrase="go batch s2-drill-01 $1.50",
+                mode="azure",
+                subscription=sub,
+                resource_group=rg,
+                host_pool="vdpool-test",
+                session_host="sh-0",
+            )
+
+        self.assertEqual(ev["status"], "passed", json.dumps(ev))
+        self.assertTrue(ev["step1KillSwitchDrill"]["passed"])
+        self.assertEqual(ev["step1KillSwitchDrill"]["resetPosition"], "run")
+        self.assertTrue(any(f"/subscriptions/{sub}/resourcegroups/{rg}" in u.lower() for u in seen_urls))
+        self.assertNotIn(sub, json.dumps(ev))
 
 
 if __name__ == "__main__":
