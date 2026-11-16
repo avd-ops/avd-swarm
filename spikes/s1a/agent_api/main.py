@@ -447,14 +447,19 @@ async def run_specialist(agent: str, question: str, model: str, identity_app_id:
                 while True:  # page until no cursor or an empty page (lesson 0008)
                     page = await session.list_tools(cursor=cursor) if cursor else await session.list_tools()
                     offered += page.tools
-                    cursor = page.nextCursor
+                    cursor = getattr(page, "next_cursor", None)
+                    if cursor is None:
+                        cursor = getattr(page, "nextCursor", None)
                     if not cursor or not page.tools:
                         break
 
                 async def call_mcp_tool(name: str, input_args: dict) -> tuple[str, bool]:
                     result = await session.call_tool(name, input_args)
                     content = "\n".join(c.text for c in result.content if getattr(c, "type", "") == "text")
-                    return content, bool(result.isError)
+                    is_error = getattr(result, "is_error", None)
+                    if is_error is None:
+                        is_error = getattr(result, "isError", False)
+                    return content, bool(is_error)
 
                 return await specialists.run_specialist_loop(
                     agent=agent,
@@ -606,7 +611,10 @@ async def runbook_tool(name: str, args: dict) -> str:
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 result = await session.call_tool(name, args)
-    if result.isError:
+    is_error = getattr(result, "is_error", None)
+    if is_error is None:
+        is_error = getattr(result, "isError", False)
+    if is_error:
         raise RuntimeError("the tool returned an error")
     return "\n".join(c.text for c in result.content if getattr(c, "type", "") == "text")
 
