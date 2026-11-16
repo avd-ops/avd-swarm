@@ -51,8 +51,9 @@ class NotificationRouter:
         vapid_ref = (ch_cfg.get("web_push") or {}).get("vapidKeySecretRef", "kv://vapid-private-key")
         sms_cap = float((ch_cfg.get("sms_voice") or {}).get("monthlySpendCapUsd", 25.00))
 
+        chatops_enabled = bool((policy.get("chatopsApproval") or {}).get("enabled", False))
         self.web_push = WebPushChannel(transport, secrets, vapid_ref=vapid_ref)
-        self.teams = TeamsAdaptiveCardChannel(transport, secrets)
+        self.teams = TeamsAdaptiveCardChannel(transport, secrets, chatops_enabled=chatops_enabled)
         self.email = EmailChannel(transport, secrets)
         self.sms_voice = SmsVoiceChannel(transport, secrets, store, monthly_spend_cap_usd=sms_cap)
 
