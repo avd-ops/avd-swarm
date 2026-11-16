@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -69,7 +70,8 @@ def agent_api_answer(args, token: str, question: dict) -> dict:
 
 
 def cli_token(scope: str) -> str:
-    result = subprocess.run(["az", "account", "get-access-token", "--scope", scope, "--query", "accessToken", "-o", "tsv"],
+    az = shutil.which("az") or "az"
+    result = subprocess.run([az, "account", "get-access-token", "--scope", scope, "--query", "accessToken", "-o", "tsv"],
                             capture_output=True, text=True, check=False)
     if result.returncode != 0:
         sys.exit(f"az account get-access-token failed ({result.returncode}): {result.stderr.strip()}")
