@@ -183,6 +183,20 @@ def check(root: Path = ROOT) -> list[str]:
 
     catalog = gate_apply.load_action_catalog(root)
     errors.extend(gate_policy.validate_policy_schema(policy, catalog_actions=set(catalog)))
+
+    notif_path = root / "governance/notifications.yml"
+    if notif_path.is_file():
+        if str(root) not in sys.path:
+            sys.path.insert(0, str(root))
+        from notifications.router import load_notifications_policy, validate_notifications_policy
+
+        if protected_path.is_file():
+            protected_cfg = yaml.safe_load(protected_path.read_text(encoding="utf-8")) or {}
+            patterns = protected_cfg.get("protected") or []
+            if not any(matches("governance/notifications.yml", p) for p in patterns):
+                errors.append("governance/notifications.yml: not covered by governance/protected-paths.yml")
+        errors.extend(validate_notifications_policy(load_notifications_policy(root)))
+
     if not errors:
         errors.extend(run_three_rule_spike(root))
     return errors

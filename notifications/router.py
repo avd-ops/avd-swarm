@@ -30,6 +30,44 @@ def load_notifications_policy(root: Path | None = None) -> dict[str, Any]:
     return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
 
+def validate_notifications_policy(policy: object) -> list[str]:
+    """Validates governance/notifications.yml invariants (R17, reserved emergency quota, tiers)."""
+    if not isinstance(policy, dict):
+        return ["governance/notifications.yml: must be a YAML mapping"]
+    errors: list[str] = []
+    if policy.get("version") != "avd-swarm-notifications/v1":
+        errors.append("governance/notifications.yml: version must be 'avd-swarm-notifications/v1'")
+    if policy.get("protected") is not True:
+        errors.append("governance/notifications.yml: protected must be true")
+
+    tiers = policy.get("urgencyTiers")
+    if not isinstance(tiers, dict) or not {"critical", "actionable", "info"}.issubset(tiers.keys()):
+        errors.append("governance/notifications.yml: urgencyTiers must define critical, actionable, and info")
+    else:
+        crit = tiers.get("critical") or {}
+        if crit.get("bypassQuietHours") is not True:
+            errors.append("governance/notifications.yml: critical tier must bypass quiet hours")
+        if crit.get("rateLimitBucket") != "emergency":
+            errors.append("governance/notifications.yml: critical tier must use 'emergency' rateLimitBucket")
+
+    limits = policy.get("rateLimits")
+    if not isinstance(limits, dict):
+        errors.append("governance/notifications.yml: rateLimits must be a mapping")
+    else:
+        emerg = limits.get("emergency") or {}
+        std = limits.get("standard") or {}
+        if emerg.get("reserved") is not True:
+            errors.append("governance/notifications.yml: rateLimits.emergency.reserved must be true")
+        if std.get("reserved") is not False:
+            errors.append("governance/notifications.yml: rateLimits.standard.reserved must be false")
+
+    redaction = policy.get("redaction") or {}
+    if redaction.get("rule") != "R17" or redaction.get("requireEasyAuthBeforeUnfurl") is not True:
+        errors.append("governance/notifications.yml: redaction must enforce R17 and requireEasyAuthBeforeUnfurl")
+
+    return errors
+
+
 class NotificationRouter:
     """Routes swarm Event Grid events with urgency tiers, deduplication, quotas, failover, and escalation."""
 

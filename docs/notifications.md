@@ -2,7 +2,7 @@
 
 > Personal project, not for production, provided as is; not affiliated with the author's employer, Liquidware or Microsoft.
 
-**Status:** Proposed ([decision 0011](decisions/0011-notifications-and-multi-platform-approvals.md)).
+**Status:** Accepted ([decision 0011](decisions/0011-notifications-and-multi-platform-approvals.md)). Implemented in [governance/notifications.yml](../governance/notifications.yml), [notifications/](../notifications/), [gate/avd_gate/cosign.py](../gate/avd_gate/cosign.py), and [buddy/server.py](../buddy/server.py).
 
 This specification defines a built-in, PagerDuty-style notification, escalation, and multi-platform approval router for `avd-swarm`. It delivers actionable alerts across mobile push, Microsoft Teams, email, and SMS/voice while preserving every invariant in [governance.md](governance.md) and [spec.md](spec.md) §5: no standing write credentials, no estate names or parameters on external channels (R17), and no bypass of `avd_gate` or the GitHub Environment `approve` gate.
 

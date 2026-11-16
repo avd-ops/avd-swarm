@@ -3,11 +3,13 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import os
-from typing import Any
+from typing import Any, Callable
 
-from .channels import KeyVaultSecretProvider, UrllibHttpTransport
+from .channels import HttpTransport, KeyVaultSecretProvider, UrllibHttpTransport
+from .chatops import ChatOpsApprovalProxy, ChatOpsApprovalRequest
 from .models import NotificationEvent
 from .router import NotificationRouter, load_notifications_policy
 from .store import InMemoryStateStore, TableStorageStateStore
@@ -51,6 +53,63 @@ def handle_event_grid_payload(payload: dict[str, Any]) -> dict[str, Any]:
     )
     switch_pos = str(data.get("currentSwitchPosition") or os.environ.get("SWITCH_POSITION", "run"))
     return router.route_event(event, switch_position=switch_pos)
+
+
+def _extract_entra_oid(headers: dict[str, str]) -> str:
+    lowered = {k.lower(): v for k, v in headers.items()}
+    encoded = lowered.get("x-ms-client-principal", "").strip()
+    if encoded:
+        try:
+            decoded = json.loads(base64.b64decode(encoded).decode("utf-8"))
+            if isinstance(decoded, dict):
+                oid = str(decoded.get("userId") or decoded.get("oid") or "").strip()
+                if oid:
+                    return oid
+        except Exception:
+            pass
+    return lowered.get("x-ms-client-principal-id", "").strip()
+
+
+def handle_chatops_http(
+    headers: dict[str, str],
+    body: dict[str, Any],
+    *,
+    read_switch_position: Callable[[], str],
+    read_current_plan_hash: Callable[[str], str],
+    transport: HttpTransport | None = None,
+) -> tuple[int, dict[str, Any]]:
+    """Handles an authenticated ChatOps approval/rejection HTTP request."""
+    entra_oid = _extract_entra_oid(headers)
+    if not entra_oid:
+        return 401, {"status": "refused", "reasons": ["chatops: missing Entra Easy Auth principal"]}
+
+    lowered = {k.lower(): v for k, v in headers.items()}
+    github_token = lowered.get("x-github-user-token", "").strip()
+    github_actor = lowered.get("x-github-user-login", "").strip() or str(body.get("githubActor") or "").strip()
+
+    proxy = ChatOpsApprovalProxy(
+        transport=transport or UrllibHttpTransport(),
+        read_switch_position=read_switch_position,
+        read_current_plan_hash=read_current_plan_hash,
+    )
+    req = ChatOpsApprovalRequest(
+        platform=str(body.get("platform") or "teams"),
+        entra_oid=entra_oid,
+        github_user_token=github_token,
+        github_actor=github_actor,
+        plan_id=str(body.get("planId") or ""),
+        full_plan_hash=str(body.get("fullPlanHash") or ""),
+        owner=str(body.get("owner") or ""),
+        repo=str(body.get("repo") or ""),
+        run_id=int(body.get("runId") or 0),
+        environment_id=int(body.get("environmentId") or 0),
+        comment=str(body.get("comment") or ""),
+        stop_spend=bool(body.get("stopSpend", False)),
+    )
+    decision = str(body.get("decision") or "approved").strip().lower()
+    result = proxy.submit_decision(req, state=decision)
+    status_code = 200 if result.get("status") in ("approved", "rejected") else 400
+    return status_code, result
 
 
 try:

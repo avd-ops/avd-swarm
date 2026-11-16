@@ -1,6 +1,6 @@
 # 0011. Smart notification router and two-phase multi-platform approvals
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-16
 - **Updates:** [0002](0002-governance-and-kill-switch.md), [0010](0010-avd-buddy-container-app-hosting.md), [governance.md](../governance.md) §2.2, [buddy-app.md](../buddy-app.md) §7.
 
