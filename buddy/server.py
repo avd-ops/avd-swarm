@@ -734,6 +734,39 @@ def make_handler(state: BuddyState) -> type[BaseHTTPRequestHandler]:
                 self._send_json(200, {"turnId": turn_id, "done": done, "nextAfter": after + 1, "turn": turn_obj})
                 return
 
+            if path in ("/api/switch/trip", "/trip", "/switch/trip"):
+                body = json.dumps({"error": "method-not-allowed", "allowed": ["POST"]}).encode("utf-8")
+                self.send_response(405)
+                self._send_security_headers()
+                self.send_header("Allow", "POST")
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            if path == "/plans" or path.startswith("/plans/"):
+                if state.switch_position == "halt-all":
+                    self._send_json(503, {"error": "halt-all", "message": "avd-buddy can't reach its service."})
+                    return
+                principal = self._require_principal()
+                if principal is None:
+                    return
+                entry = state.static_files.get("/index.html")
+                if entry is None:
+                    self._send_json(404, {"error": "not-found"})
+                    return
+                content_type, data = entry
+                self.send_response(200)
+                self._send_security_headers()
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(data)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(data)
+                return
+
             # Serve static files from the pre-indexed allowlist table only
             entry = state.static_files.get(path)
             if entry is None:

@@ -1,0 +1,163 @@
+# avd-swarm smart notification, escalation, and multi-platform approval policy (docs/notifications.md; decision 0011).
+# Personal project, not for production, provided as is; not affiliated with the author's employer, Liquidware or Microsoft.
+#
+# Protected path: agent-authored PRs cannot touch this file (governance/protected-paths.yml).
+# Phase 1 (Option 1): Deep-link approvals, one-tap POST kill switch, and optional signed co-signature.
+
+version: avd-swarm-notifications/v1
+phase: 1
+protected: true
+
+redaction:
+  rule: R17
+  allowedFields:
+    - planId
+    - planHashPrefix
+    - action
+    - urgency
+    - expiresAt
+    - deepLinks
+  planHashPrefixLength: 8
+  forbiddenFields:
+    - targets
+    - hostNames
+    - resourceIds
+    - hostPoolNames
+    - userUpns
+    - parameters
+    - why
+    - conversationHistory
+  deepLinkPattern: "https://{buddyHost}/plans/{planId}"
+  requireEasyAuthBeforeUnfurl: true
+
+contacts:
+  primary:
+    id: operator-primary
+    channels:
+      web_push: "kv://vapid-primary-sub"
+      teams: "kv://teams-webhook-primary"
+      email: "kv://email-primary"
+      sms_voice: "kv://sms-primary"
+  fallback:
+    - id: operator-fallback-1
+      channels:
+        teams: "kv://teams-webhook-fallback-1"
+        email: "kv://email-fallback-1"
+        sms_voice: "kv://sms-fallback-1"
+
+urgencyTiers:
+  critical:
+    events:
+      - switch.changed.halt
+      - decoy.tripped
+      - injection.suspected
+      - budget.alert
+      - stop-spend.pending
+    channels:
+      - web_push
+      - teams
+      - email
+      - sms_voice
+    bypassQuietHours: true
+    ackTimeoutMinutes: 5
+    escalateToFallback: true
+    rateLimitBucket: emergency
+  actionable:
+    events:
+      - plan.gated
+    channels:
+      - web_push
+      - teams
+    bypassQuietHours: false
+    urgentBypassQuietHours: true
+    escalateAfterMinutes: 15
+    escalationChain:
+      - email
+      - sms_voice
+    rateLimitBucket: standard
+  info:
+    events:
+      - action.verified
+      - plan.rejected
+      - plan.expired
+      - router.heartbeat
+    channels:
+      - teams
+      - email
+    bypassQuietHours: false
+    escalateAfterMinutes: null
+    rateLimitBucket: standard
+
+deduplication:
+  planEvents:
+    keyFields:
+      - eventType
+      - planId
+    windowMinutes: 15
+  securityNoise:
+    events:
+      - injection.suspected
+      - decoy.tripped
+    keyFields:
+      - eventType
+      - agentId
+    cooldownMinutes: 15
+
+quietHours:
+  enabled: true
+  timezone: UTC
+  startHour: 22
+  endHour: 7
+  criticalBypasses: true
+
+rateLimits:
+  emergency:
+    maxPerHour: 30
+    reserved: true
+  standard:
+    maxPerHour: 20
+    reserved: false
+
+channels:
+  web_push:
+    fixedPayload: "avd-buddy needs you"
+    vapidKeySecretRef: "kv://vapid-private-key"
+    disabledWhenBuddyStopped: true
+  teams:
+    type: adaptive_card
+    actions:
+      - review_in_buddy
+      - approve_in_github
+      - trip_kill_switch
+      - cosign_optional
+    tripMethod: POST
+  email:
+    provider: acs_or_logic_app
+    tripMethod: POST
+  sms_voice:
+    provider: acs_or_twilio
+    allowedTiers:
+      - critical
+      - escalated_actionable
+    monthlySpendCapUsd: 25.00
+
+resilience:
+  immediateFailoverOnHttpError: true
+  autoCancelOnEvents:
+    - plan.approved
+    - plan.rejected
+    - plan.expired
+  deadLetterAlerting: true
+  heartbeatEvent: router.heartbeat
+  heartbeatIntervalMinutes: 15
+
+cosign:
+  enabled: true
+  requireFullPlanHash: true
+  rejectPrefixHash: true
+  rejectStaticWebhooks: true
+  maxTtlMinutes: 60
+  allowedChannels:
+    - teams
+    - servicenow
+  authorizedSignerOids: []

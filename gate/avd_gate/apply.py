@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 import hashlib
 import json
 from pathlib import Path
@@ -24,6 +25,7 @@ from typing import Any, Callable
 
 import yaml
 
+from .cosign import verify_cosignature
 from .evidence import (
     CLOUD_ENVIRONMENTS,
     CLOUDS,
@@ -350,6 +352,9 @@ def apply_approved_plan(
     verify_action: Callable[[dict, dict, dict], bool],
     runner_env: dict | None = None,
     root: Path | None = None,
+    cosignature: dict | None = None,
+    cosign_config: dict[str, Any] | None = None,
+    now_utc: datetime | None = None,
 ) -> dict:
     """Executes an approved plan inside the `approve` environment after re-reading the kill switch and live state
     (spec section 5 step 7, section 5a, section 6d). Fails closed on any drift or missing verification."""
@@ -416,6 +421,31 @@ def apply_approved_plan(
             "status": "refused",
             "reasons": ["live-reread: live plan hash differs from approved hash; a new approval is required"],
         }
+
+    # 2b. Optional / policy-required signed co-signature verification (docs/notifications.md section 5)
+    cfg = cosign_config or {}
+    cosign_required = bool(plan.get("requireCosign") is True or cfg.get("required") is True)
+    if cosign_required or cosignature is not None:
+        cosign_reasons = verify_cosignature(
+            cosignature,
+            expected_plan_id=plan_id,
+            expected_full_plan_hash=approved_hash,
+            authorized_signer_oids=cfg.get("authorizedSignerOids") or (),
+            allowed_channels=cfg.get("allowedChannels") or ("teams", "servicenow"),
+            channel_keys=cfg.get("channelKeys") or {},
+            now_utc=now_utc,
+            max_ttl_minutes=int(cfg.get("maxTtlMinutes", 60)),
+        )
+        if cosign_reasons:
+            return {
+                "planId": plan_id,
+                "planHash": approved_hash,
+                "action": action,
+                "passedCount": gate_check["passedCount"],
+                "failedCount": len(cosign_reasons),
+                "status": "refused",
+                "reasons": cosign_reasons,
+            }
 
     # 3. Apply action and require positive post-action verification + no compliance regression (spec section 5a, governance 2.5)
     try:

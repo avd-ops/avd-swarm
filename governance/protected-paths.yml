@@ -8,6 +8,8 @@ agents:
   - avd-swarm-scribe[bot]
 protected:
   - governance/**
+  - governance/notifications.yml
+  - notifications/**
   - .github/**
   - templates/**
   - .claude/**
