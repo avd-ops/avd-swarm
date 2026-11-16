@@ -280,7 +280,7 @@ class Cli(unittest.TestCase):
 
 class Template(unittest.TestCase):
     def test_template_crons_match_runbooks(self):
-        self.assertEqual(check_runbooks.template_crons(ROOT), {"0 6 * * 1-5", "15 6 * * 1-5", "0 7 * * 1"})
+        self.assertEqual(check_runbooks.template_crons(ROOT), {"0 6 * * 1-5", "15 6 * * 1-5", "45 6 * * 1-5", "0 7 * * 1"})
 
     def test_a_runbook_with_no_cron_fails(self):
         tmp = Path(tempfile.mkdtemp())
