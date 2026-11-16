@@ -3,7 +3,7 @@ id: hosts.cua-cross-lane
 version: 1
 title: Cross-lane CUA and AVD sign-in posture
 trigger:
-  schedule: "15 6 * * 1-5"  # 06:15 UTC on weekdays
+  schedule: "45 6 * * 1-5"  # 06:45 UTC on weekdays
   runMode: read-only
 agent: hosts
 reads:
