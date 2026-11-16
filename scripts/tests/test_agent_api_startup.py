@@ -10,6 +10,7 @@ from __future__ import annotations
 import ast
 import asyncio
 import importlib
+import inspect
 import json
 import os
 import re
@@ -65,6 +66,15 @@ def _install_stubs() -> dict[str, types.ModuleType | None]:
         def __init__(self, *args, **kwargs):
             pass
 
+    def _fake_streamable_http_client(
+        url: str,
+        *,
+        http_client=None,
+        terminate_on_close: bool = True,
+        max_sse_event_size: int | None = 1048576,
+    ):
+        raise NotImplementedError
+
     needed = {
         "anthropic": {"AsyncAnthropicFoundry": _FakeAnthropic, "AsyncAnthropic": _FakeAnthropic},
         "httpx": {"AsyncClient": object},
@@ -75,7 +85,7 @@ def _install_stubs() -> dict[str, types.ModuleType | None]:
         "azure.identity.aio": {"ManagedIdentityCredential": _FakeCredential},
         "mcp": {"ClientSession": object},
         "mcp.client": {},
-        "mcp.client.streamable_http": {"streamablehttp_client": object},
+        "mcp.client.streamable_http": {"streamable_http_client": _fake_streamable_http_client},
         "starlette": {},
         "starlette.applications": {"Starlette": _FakeStarlette},
         "starlette.requests": {"Request": object},
@@ -213,6 +223,33 @@ class AgentApiStartupTests(unittest.TestCase):
                         pinned,
                         f"{py_file.name} imports {mod!r}, which must be pinned in spikes/s1a/agent_api/requirements.txt",
                     )
+
+    def test_streamable_http_client_calls_use_http_client_not_headers(self):
+        sig = inspect.signature(
+            importlib.import_module("mcp.client.streamable_http").streamable_http_client
+        )
+        self.assertIn("http_client", sig.parameters)
+        self.assertNotIn("headers", sig.parameters)
+
+        for path in (
+            ROOT / "spikes" / "s1a" / "agent_api" / "main.py",
+            ROOT / "spikes" / "s1a" / "tools" / "list_mcp_tools.py",
+        ):
+            src = path.read_text(encoding="utf-8")
+            self.assertNotIn("streamablehttp_client", src, path.name)
+            tree = ast.parse(src, filename=str(path))
+            calls = [
+                node
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "streamable_http_client"
+            ]
+            self.assertGreater(len(calls), 0, f"expected streamable_http_client call in {path.name}")
+            for call in calls:
+                kw_names = {kw.arg for kw in call.keywords}
+                self.assertIn("http_client", kw_names, f"{path.name} must pass http_client=")
+                self.assertNotIn("headers", kw_names, f"{path.name} must not pass headers=")
 
 
 if __name__ == "__main__":

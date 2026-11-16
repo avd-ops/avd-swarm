@@ -15,8 +15,9 @@ import json
 import subprocess
 import sys
 
+import httpx
 from mcp import ClientSession
-from mcp.client.streamable_http import streamablehttp_client
+from mcp.client.streamable_http import streamable_http_client
 
 
 def cli_token(scope: str) -> str:
@@ -32,23 +33,24 @@ def cli_token(scope: str) -> str:
 
 async def list_tools(url: str, token: str) -> list[dict]:
     print(f"Listing tools at {url}...", flush=True)
-    async with streamablehttp_client(url, headers={"Authorization": f"Bearer {token}"}) as (read, write, _):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            tools = []
-            cursor = None
-            while True:  # page until the server stops returning a cursor (lesson 0008)
-                page = await session.list_tools(cursor=cursor) if cursor else await session.list_tools()
-                for tool in page.tools:
-                    hints = tool.annotations
-                    tools.append({
-                        "name": tool.name,
-                        "readOnly": getattr(hints, "readOnlyHint", None),
-                        "destructive": getattr(hints, "destructiveHint", None),
-                    })
-                cursor = page.nextCursor
-                if not cursor or not page.tools:
-                    return tools
+    async with httpx.AsyncClient(headers={"Authorization": f"Bearer {token}"}) as http_client:
+        async with streamable_http_client(url, http_client=http_client) as (read, write, _):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                tools = []
+                cursor = None
+                while True:  # page until the server stops returning a cursor (lesson 0008)
+                    page = await session.list_tools(cursor=cursor) if cursor else await session.list_tools()
+                    for tool in page.tools:
+                        hints = tool.annotations
+                        tools.append({
+                            "name": tool.name,
+                            "readOnly": getattr(hints, "readOnlyHint", None),
+                            "destructive": getattr(hints, "destructiveHint", None),
+                        })
+                    cursor = page.nextCursor
+                    if not cursor or not page.tools:
+                        return tools
 
 
 def main() -> None:

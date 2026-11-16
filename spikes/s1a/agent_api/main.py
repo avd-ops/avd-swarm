@@ -47,7 +47,7 @@ import uvicorn
 from azure.identity import ManagedIdentityCredential as SyncManagedIdentityCredential
 from azure.identity.aio import ManagedIdentityCredential
 from mcp import ClientSession
-from mcp.client.streamable_http import streamablehttp_client
+from mcp.client.streamable_http import streamable_http_client
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -439,35 +439,36 @@ async def run_specialist(agent: str, question: str, model: str, identity_app_id:
         concierge_facts=concierge_facts_call if (CONCIERGE_URL or CONCIERGE_FACTS_SNAPSHOT or CONCIERGE_FACTS_STORE) else None,
         shield=guard,
     )
-    async with streamablehttp_client(MCP_URL, headers={"Authorization": f"Bearer {token}"}) as (read, write, _):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            offered, cursor = [], None
-            while True:  # page until no cursor or an empty page (lesson 0008)
-                page = await session.list_tools(cursor=cursor) if cursor else await session.list_tools()
-                offered += page.tools
-                cursor = page.nextCursor
-                if not cursor or not page.tools:
-                    break
+    async with httpx.AsyncClient(headers={"Authorization": f"Bearer {token}"}) as http_client:
+        async with streamable_http_client(MCP_URL, http_client=http_client) as (read, write, _):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                offered, cursor = [], None
+                while True:  # page until no cursor or an empty page (lesson 0008)
+                    page = await session.list_tools(cursor=cursor) if cursor else await session.list_tools()
+                    offered += page.tools
+                    cursor = page.nextCursor
+                    if not cursor or not page.tools:
+                        break
 
-            async def call_mcp_tool(name: str, input_args: dict) -> tuple[str, bool]:
-                result = await session.call_tool(name, input_args)
-                content = "\n".join(c.text for c in result.content if getattr(c, "type", "") == "text")
-                return content, bool(result.isError)
+                async def call_mcp_tool(name: str, input_args: dict) -> tuple[str, bool]:
+                    result = await session.call_tool(name, input_args)
+                    content = "\n".join(c.text for c in result.content if getattr(c, "type", "") == "text")
+                    return content, bool(result.isError)
 
-            return await specialists.run_specialist_loop(
-                agent=agent,
-                question=question,
-                allowed_tools=allowed_tools,
-                offered_mcp_tools=offered,
-                rag=rag,
-                guard=guard,
-                ask_fn=lambda system, tools, messages: ask_claude(model, HOSTS_EFFORT, system, tools, messages, totals),
-                call_mcp_tool=call_mcp_tool,
-                evidence=evidence,
-                default_scope=SCOPE,
-                max_steps=MAX_STEPS,
-            )
+                return await specialists.run_specialist_loop(
+                    agent=agent,
+                    question=question,
+                    allowed_tools=allowed_tools,
+                    offered_mcp_tools=offered,
+                    rag=rag,
+                    guard=guard,
+                    ask_fn=lambda system, tools, messages: ask_claude(model, HOSTS_EFFORT, system, tools, messages, totals),
+                    call_mcp_tool=call_mcp_tool,
+                    evidence=evidence,
+                    default_scope=SCOPE,
+                    max_steps=MAX_STEPS,
+                )
 
 
 async def run_hosts(question: str, model: str, identity_app_id: str, totals: dict, evidence: dict,
@@ -600,10 +601,11 @@ REPORT_TOOL = {
 async def runbook_tool(name: str, args: dict) -> str:
     """One MCP tool call as the agent identity: the result's text, or an error carrying no names."""
     token = await agent_identity_token(RUNBOOK_IDENTITY_APP_ID, f"api://{MCP_APP_ID}/.default")
-    async with streamablehttp_client(MCP_URL, headers={"Authorization": f"Bearer {token}"}) as (read, write, _):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            result = await session.call_tool(name, args)
+    async with httpx.AsyncClient(headers={"Authorization": f"Bearer {token}"}) as http_client:
+        async with streamable_http_client(MCP_URL, http_client=http_client) as (read, write, _):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                result = await session.call_tool(name, args)
     if result.isError:
         raise RuntimeError("the tool returned an error")
     return "\n".join(c.text for c in result.content if getattr(c, "type", "") == "text")
