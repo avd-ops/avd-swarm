@@ -252,6 +252,15 @@ This repository is public, so its Actions logs, job summaries, artifacts and run
 
 **Until the adopter repo exists** (build order step 2) nothing in the write path runs anywhere. The templates written in step 2 follow rule 3 from their first commit, and step 1 adds the check in rule 1, so a write-path workflow can't land here by mistake.
 
+### 5c. External CUA executor hook (`avd-ops` ADR 0022)
+
+When a Desktop DevOps task has no API path (ARM, Graph, Intune policy-as-code, or `avd-landing-zone` Bicep/PowerShell), `avd-swarm` may propose an `external-executor` (`cua`) plan through the same `C9` -> `gate/` -> GitHub Environment `approve` path rather than embedding a CUA broker or host-input agent here:
+
+- **Dual-backend placement:** Targets **Windows 365 for Agents (PAYGO)** with Entra Agent ID by default, or an `avd-landing-zone` **isolated host pool** (`avd-isolated` Intune filter) when custom VNet, image, or sovereign-cloud control is required.
+- **Layered kill switch:** Any external CUA executor reading `avd-swarm` contracts honors `halt-actions`, `halt-agents`, and `halt-all`.
+- **Redacted `executorEvidence` (`C10`):** Completed CUA runs emit only redacted, hashed outcomes (`executorKind`, `backendSurface`, `status`, `stepCount`, `artifactHashes`) back to the brain—never raw screenshots, keystrokes, or PII.
+- **Cross-lane detection:** `catalog/kql/wvd-cua-cross-lane-signins-24h.kql` correlates `SigninLogs` agent/user signals with `WVDConnections` host pools to flag cross-lane or unpaired sessions.
+
 ## 6. Identity and data
 
 Every identity, what it runs and its exact rights: [identities.md](identities.md).
