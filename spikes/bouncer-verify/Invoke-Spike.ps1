@@ -39,7 +39,7 @@ if ($TeardownOnly) {
     $runIdPath = Join-Path $StateDir 'run-id'
     if (Test-Path $runIdPath) {
         $rid = (Get-Content $runIdPath -Raw).Trim()
-        python3 (Join-Path $RepoRoot 'spend/spend_guard.py') --ledger $LedgerPath --sandbox $Sandbox close --run-id $rid --teardown-json $teardown
+        python3 (Join-Path $RepoRoot 'spend/spend_guard.py') --ledger $LedgerPath --sandbox $Sandbox close --run-id $rid --teardown $teardown
     }
     return
 }
@@ -87,6 +87,7 @@ function Invoke-GraphJson {
         ($Body | ConvertTo-Json -Depth 10 -Compress) | Set-Content -Path $tmp -Encoding utf8
         try {
             $raw = az rest --method $Method --uri $uri --headers 'Content-Type=application/json' --body "@$($tmp.FullName)" --only-show-errors
+            if ($LASTEXITCODE) { throw "Graph $Method $Path failed (exit $LASTEXITCODE)." }
         }
         finally {
             Remove-Item -Force $tmp -ErrorAction SilentlyContinue
@@ -94,6 +95,7 @@ function Invoke-GraphJson {
     }
     else {
         $raw = az rest --method $Method --uri $uri --only-show-errors
+        if ($LASTEXITCODE) { throw "Graph $Method $Path failed (exit $LASTEXITCODE)." }
     }
     if ($raw) { return ($raw | ConvertFrom-Json) }
     return $null
@@ -108,12 +110,15 @@ $failed = $false
 try {
     # 2. Deploy disposable Azure resources
     az group create --name $ResourceGroup --location $Region --tags "avd-swarm-run=$runId" --only-show-errors | Out-Null
+    if ($LASTEXITCODE) { throw "az group create failed (exit $LASTEXITCODE)." }
     $deployStart = Get-Date
-    $dep = az deployment group create `
+    $depRaw = az deployment group create `
         --resource-group $ResourceGroup `
         --template-file (Join-Path $SpikeRoot 'infra/main.bicep') `
         --parameters runId=$runId `
-        --query 'properties.outputs' -o json --only-show-errors | ConvertFrom-Json
+        --query 'properties.outputs' -o json --only-show-errors
+    if ($LASTEXITCODE) { throw "az deployment group create failed (exit $LASTEXITCODE)." }
+    $dep = $depRaw | ConvertFrom-Json
 
     $qPrincipal = $dep.quarantinePrincipalId.value
     $qClient = $dep.quarantineClientId.value
@@ -318,7 +323,7 @@ finally {
     if (-not ($failed -and $KeepOnFailure)) {
         $teardown = & (Join-Path $SpikeRoot 'Remove-Spike.ps1') -ResourceGroup $ResourceGroup -StateDir $StateDir
         Write-Host $teardown
-        python3 (Join-Path $RepoRoot 'spend/spend_guard.py') --ledger $LedgerPath --sandbox $Sandbox close --run-id $runId --teardown-json $teardown
+        python3 (Join-Path $RepoRoot 'spend/spend_guard.py') --ledger $LedgerPath --sandbox $Sandbox close --run-id $runId --teardown $teardown
     }
     else {
         Write-Warning "Keeping resources (-KeepOnFailure). Run -TeardownOnly before the 2-hour spend window expires."
