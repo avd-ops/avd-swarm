@@ -31,6 +31,7 @@ from __future__ import annotations
 import argparse
 import json
 import secrets
+import shutil
 import subprocess
 import sys
 from datetime import date, datetime, timedelta, timezone
@@ -247,7 +248,11 @@ def find_run(ledger: Path, sandbox: str, run_id: str) -> dict:
 # ---------- Azure reads (az only; nothing here writes to Azure) ----------
 
 def az(*args: str) -> str:
-    result = subprocess.run(["az", *args, "--only-show-errors", "-o", "json"], capture_output=True, text=True)
+    az_bin = shutil.which("az") or "az"
+    try:
+        result = subprocess.run([az_bin, *args, "--only-show-errors", "-o", "json"], capture_output=True, text=True)
+    except FileNotFoundError as exc:
+        raise RuntimeError("Azure CLI ('az') not found on PATH") from exc
     if result.returncode:
         raise RuntimeError(f"az {' '.join(args[:2])} failed: {result.stderr.strip()}")
     return result.stdout

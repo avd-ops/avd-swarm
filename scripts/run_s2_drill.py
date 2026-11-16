@@ -25,6 +25,7 @@ import argparse
 import asyncio
 import json
 import re
+import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -184,7 +185,11 @@ class _AzureBackend:
         self.drained_by_plan: str | None = None
 
     def _az_json(self, *args: str) -> dict[str, Any]:
-        proc = subprocess.run(["az", *args], capture_output=True, text=True, check=False)
+        az_bin = shutil.which("az") or "az"
+        try:
+            proc = subprocess.run([az_bin, *args], capture_output=True, text=True, check=False)
+        except FileNotFoundError as exc:
+            raise RuntimeError("Azure CLI ('az') not found on PATH") from exc
         if proc.returncode != 0:
             raise RuntimeError(f"az {args[0]} failed ({proc.returncode}): {proc.stderr.strip()[:240]}")
         return json.loads(proc.stdout or "{}")

@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -62,7 +63,11 @@ def select(root: Path, cron: str) -> list[str]:
 
 
 def az(*args: str) -> str:
-    done = subprocess.run(["az", *args], capture_output=True, text=True, check=False)
+    az_bin = shutil.which("az") or "az"
+    try:
+        done = subprocess.run([az_bin, *args], capture_output=True, text=True, check=False)
+    except FileNotFoundError as exc:
+        raise RuntimeError("Azure CLI ('az') not found on PATH") from exc
     if done.returncode != 0:
         # The CLI's own error, cut short; it carries the status and code, not the token.
         raise RuntimeError(f"az {args[0]} failed ({done.returncode}): {done.stderr.strip()[:300]}")
