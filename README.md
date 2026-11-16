@@ -26,6 +26,17 @@ The write path never runs in this public repo: adopters run it from a private re
 - Rules: [CLAUDE.md](CLAUDE.md)
 - Changes: [CHANGELOG.md](CHANGELOG.md)
 
+## How it connects
+
+| Direction | Repo | Relationship |
+|---|---|---|
+| Front door | [avd-ops](https://github.com/avd-ops/avd-ops#readme) | Overview, [repo page](https://avd-ops.dev/docs/repos/avd-swarm.html), and [buddy demo](https://buddy.avd-ops.dev/) |
+| Intelligence | [avd-second-brain](https://github.com/avd-ops/avd-second-brain#readme) | Memory layer: pinned KB (`C6`), proposals (`C9`), insights (`C8`), outcomes (`C10`) |
+| Target | [avd-landing-zone](https://github.com/avd-ops/avd-landing-zone#readme) | Orchestrates AVD estate changes through approved plans |
+| Target | [avd-intune](https://github.com/avd-ops/avd-intune#readme) | Policy-as-code pull requests for Intune and Windows 365 |
+| Upstream | [avd-remediate](https://github.com/avd-ops/avd-remediate#readme) | Supplies `C24`/Path C plan handoffs and shares `catalog/actions/*.yml` |
+| Optional ITSM | [avd-servicenow](https://github.com/avd-ops/avd-servicenow#readme) | Optional inbound incident triggers and Change-Gate co-signing |
+
 ## Try it in a lab
 
 The S1a spike runs from this repo alone, in Azure Cloud Shell (PowerShell), in a lab tenant and a sandbox subscription. It prices itself first and refuses to deploy anything if the estimate is over the run cap ($20 by default) or would take the month past your monthly cap ([spend/](spend/README.md)); then it deploys, asks its questions, tears down, checks nothing is left and records the run.
