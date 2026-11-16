@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ast
 import asyncio
+from contextlib import asynccontextmanager
 import importlib
 import inspect
 import json
@@ -66,14 +67,15 @@ def _install_stubs() -> dict[str, types.ModuleType | None]:
         def __init__(self, *args, **kwargs):
             pass
 
-    def _fake_streamable_http_client(
+    @asynccontextmanager
+    async def _fake_streamable_http_client(
         url: str,
         *,
         http_client=None,
         terminate_on_close: bool = True,
         max_sse_event_size: int | None = 1048576,
     ):
-        raise NotImplementedError
+        yield (None, None)
 
     needed = {
         "anthropic": {"AsyncAnthropicFoundry": _FakeAnthropic, "AsyncAnthropic": _FakeAnthropic},
@@ -250,6 +252,23 @@ class AgentApiStartupTests(unittest.TestCase):
                 kw_names = {kw.arg for kw in call.keywords}
                 self.assertIn("http_client", kw_names, f"{path.name} must pass http_client=")
                 self.assertNotIn("headers", kw_names, f"{path.name} must not pass headers=")
+            with_items = [
+                item
+                for node in ast.walk(tree)
+                if isinstance(node, ast.AsyncWith)
+                for item in node.items
+                if isinstance(item.context_expr, ast.Call)
+                and isinstance(item.context_expr.func, ast.Name)
+                and item.context_expr.func.id == "streamable_http_client"
+            ]
+            self.assertEqual(len(with_items), len(calls), f"{path.name} must use async with streamable_http_client(...)")
+            for item in with_items:
+                self.assertIsInstance(item.optional_vars, ast.Tuple, f"{path.name} must unpack (read, write)")
+                self.assertEqual(
+                    len(item.optional_vars.elts),
+                    2,
+                    f"{path.name} must unpack 2 values from mcp==2.3.0 streamable_http_client",
+                )
 
 
 if __name__ == "__main__":

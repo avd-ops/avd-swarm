@@ -36,7 +36,7 @@ def cli_token(scope: str) -> str:
 async def list_tools(url: str, token: str) -> list[dict]:
     print(f"Listing tools at {url}...", flush=True)
     async with httpx.AsyncClient(headers={"Authorization": f"Bearer {token}"}) as http_client:
-        async with streamable_http_client(url, http_client=http_client) as (read, write, _):
+        async with streamable_http_client(url, http_client=http_client) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 tools = []
