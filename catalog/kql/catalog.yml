@@ -52,4 +52,8 @@ queries:
     file: wvd-fslogix-external-access-24h.kql
     tables: [StorageFileLogs]
     returns: Azure Files operation counts by account, authentication type, and caller network class for non-private or key/SAS/failed access over 24 hours, no raw IP addresses
+  - id: wvd-cua-cross-lane-signins-24h
+    file: wvd-cua-cross-lane-signins-24h.kql
+    tables: [WVDConnections, SigninLogs]
+    returns: connected session and distinct host counts by host pool, client type, and Entra Agent ID signal over 24 hours, no user names or IP addresses
 

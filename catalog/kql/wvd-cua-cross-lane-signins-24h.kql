@@ -1,0 +1,21 @@
+// Summarizes AVD connections alongside Entra sign-in agent signals (AgentIdentity / AgentUser) and
+// isolated vs. standard host pools over the last 24 hours; no user names or IP addresses leave the workspace.
+// Columns: learn.microsoft.com/azure/azure-monitor/reference/tables/wvdconnections
+let AgentSignIns = SigninLogs
+| where TimeGenerated > ago(24h)
+| extend AgentDetail = parse_json(tostring(column_ifexists("Agent", "{}")))
+| extend AgentType = tostring(AgentDetail.agentType)
+| extend IsAgent = isnotempty(AgentType)
+| project CorrelationId, AppDisplayName, AgentType, IsAgent;
+WVDConnections
+| where TimeGenerated > ago(24h)
+| where State == "Connected"
+| extend HostPoolName = tostring(split(_ResourceId, "/")[-1]),
+         ClientType = tostring(column_ifexists("ClientType", ""))
+| join kind=leftouter AgentSignIns on CorrelationId
+| summarize Connections = count(),
+            DistinctHosts = dcount(SessionHostName),
+            FirstSeen = min(TimeGenerated),
+            LastSeen = max(TimeGenerated)
+    by HostPoolName, ClientType, IsAgent = coalesce(IsAgent, false), AgentType = coalesce(AgentType, "")
+| order by Connections desc
