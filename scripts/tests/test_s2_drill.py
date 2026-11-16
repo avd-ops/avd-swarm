@@ -76,7 +76,7 @@ class TestS2DrillRunner(unittest.TestCase):
             run_s2_drill.run_drill(approval_phrase="go batch s2-drill-01 $1.50", mode="azure", subscription="")
 
     def test_azure_mode_uses_real_subscription_and_resource_group_for_flag_checks(self) -> None:
-        sub = "11111111-1111-1111-1111-111111111111"
+        sub = "test-sub-azure"
         rg = "rg-custom-avd"
         state = {"flag": "run", "allowNewSession": True}
         seen_urls: list[str] = []
