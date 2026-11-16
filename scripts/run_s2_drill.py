@@ -132,6 +132,8 @@ class _HarnessBackend:
     """In-memory ARM tag and session-host state store exercising the exact gate, runner, and MCP code paths."""
 
     def __init__(self, target_digest: str) -> None:
+        self.subscription = "sub-redacted"
+        self.resource_group = "rg-avd-swarm-lab"
         self.flag = "run"
         self.target_digest = target_digest
         self.allow_new_session = True
@@ -256,10 +258,10 @@ def _run_kill_switch_drill(backend: _HarnessBackend | _AzureBackend, drain_plan:
     for pos in ("run", "halt-actions", "halt-agents", "halt-all"):
         backend.set_flag(pos)
         runner_write_code, _ = runner_cli.flag_position_with(
-            backend.arm_get_json, "sub-redacted", "rg-avd-swarm-lab", "avd-swarm-switch", REFUSE_WRITE_POSITIONS
+            backend.arm_get_json, backend.subscription, backend.resource_group, "avd-swarm-switch", REFUSE_WRITE_POSITIONS
         )
         runner_agent_code, _ = runner_cli.flag_position_with(
-            backend.arm_get_json, "sub-redacted", "rg-avd-swarm-lab", "avd-swarm-switch", REFUSE_AGENT_POSITIONS
+            backend.arm_get_json, backend.subscription, backend.resource_group, "avd-swarm-switch", REFUSE_AGENT_POSITIONS
         )
 
         try:
@@ -316,7 +318,7 @@ def _run_kill_switch_drill(backend: _HarnessBackend | _AzureBackend, drain_plan:
     # Reset to `run` and verify template/watchdog drill invariants
     backend.set_flag("run")
     reset_code, reset_pos = runner_cli.flag_position_with(
-        backend.arm_get_json, "sub-redacted", "rg-avd-swarm-lab", "avd-swarm-switch", REFUSE_WRITE_POSITIONS
+        backend.arm_get_json, backend.subscription, backend.resource_group, "avd-swarm-switch", REFUSE_WRITE_POSITIONS
     )
     sim = check_kill_switch.simulate_drill(ROOT)
 
