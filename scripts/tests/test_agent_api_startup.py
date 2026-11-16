@@ -270,6 +270,41 @@ class AgentApiStartupTests(unittest.TestCase):
                     f"{path.name} must unpack 2 values from mcp==2.3.0 streamable_http_client",
                 )
 
+    def test_mcp_types_snake_case_fields_and_specialist_tool_entry(self):
+        import specialists
+
+        for path in (
+            ROOT / "spikes" / "s1a" / "agent_api" / "main.py",
+            ROOT / "spikes" / "s1a" / "tools" / "list_mcp_tools.py",
+        ):
+            src = path.read_text(encoding="utf-8")
+            for legacy_attr in (".nextCursor", ".isError", ".readOnlyHint", ".destructiveHint"):
+                self.assertNotIn(legacy_attr, src, f"{path.name} must not access {legacy_attr} directly")
+
+        try:
+            mcp_types = importlib.import_module("mcp.types")
+        except ImportError:
+            return
+
+        ann = mcp_types.ToolAnnotations(read_only_hint=True, destructive_hint=False)
+        tool = mcp_types.Tool(
+            name="virtualdesktop_hostpool_list",
+            description="List host pools",
+            input_schema={"type": "object", "properties": {"subscription": {"type": "string"}}, "required": ["subscription"]},
+            annotations=ann,
+        )
+        page = mcp_types.ListToolsResult(tools=[tool], next_cursor="cursor-2")
+        call_res = mcp_types.CallToolResult(content=[], is_error=True)
+
+        self.assertEqual(page.next_cursor, "cursor-2")
+        self.assertTrue(tool.annotations.read_only_hint)
+        self.assertFalse(tool.annotations.destructive_hint)
+        self.assertTrue(call_res.is_error)
+
+        entry = specialists._mcp_tool_entry(tool, default_scope={"subscription": "sub-1"})
+        self.assertEqual(entry["name"], "virtualdesktop_hostpool_list")
+        self.assertEqual(entry["input_schema"]["required"], [])
+
 
 if __name__ == "__main__":
     unittest.main()

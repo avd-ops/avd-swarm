@@ -189,7 +189,7 @@ def _mcp_tool_entry(tool: Any, default_scope: dict[str, str] | None = None) -> d
         name = tool["name"]
         desc = tool.get("description") or ""
     else:
-        raw_schema = getattr(tool, "inputSchema", None) or {"type": "object", "properties": {}}
+        raw_schema = getattr(tool, "input_schema", None) or getattr(tool, "inputSchema", None) or {"type": "object", "properties": {}}
         name = tool.name
         desc = getattr(tool, "description", "") or ""
     schema = dict(raw_schema) if isinstance(raw_schema, dict) else {"type": "object", "properties": {}}

@@ -45,12 +45,20 @@ async def list_tools(url: str, token: str) -> list[dict]:
                     page = await session.list_tools(cursor=cursor) if cursor else await session.list_tools()
                     for tool in page.tools:
                         hints = tool.annotations
+                        read_only = getattr(hints, "read_only_hint", None)
+                        if read_only is None:
+                            read_only = getattr(hints, "readOnlyHint", None)
+                        destructive = getattr(hints, "destructive_hint", None)
+                        if destructive is None:
+                            destructive = getattr(hints, "destructiveHint", None)
                         tools.append({
                             "name": tool.name,
-                            "readOnly": getattr(hints, "readOnlyHint", None),
-                            "destructive": getattr(hints, "destructiveHint", None),
+                            "readOnly": read_only,
+                            "destructive": destructive,
                         })
-                    cursor = page.nextCursor
+                    cursor = getattr(page, "next_cursor", None)
+                    if cursor is None:
+                        cursor = getattr(page, "nextCursor", None)
                     if not cursor or not page.tools:
                         return tools
 
