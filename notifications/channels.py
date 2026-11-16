@@ -135,9 +135,10 @@ class WebPushChannel:
 class TeamsAdaptiveCardChannel:
     """Microsoft Teams Adaptive Card with redacted fields, deep links, POST trip, and optional co-sign."""
 
-    def __init__(self, transport: HttpTransport, secrets: SecretProvider) -> None:
+    def __init__(self, transport: HttpTransport, secrets: SecretProvider, *, chatops_enabled: bool = False) -> None:
         self._transport = transport
         self._secrets = secrets
+        self._chatops_enabled = chatops_enabled
 
     def build_card(self, notification: RedactedNotification) -> dict[str, Any]:
         facts = [
@@ -173,6 +174,19 @@ class TeamsAdaptiveCardChannel:
                 },
             }
         )
+        if self._chatops_enabled:
+            actions.append(
+                {
+                    "type": "Action.Submit",
+                    "title": "Approve via ChatOps",
+                    "data": {
+                        "kind": "chatops_approve",
+                        "planId": notification.plan_id,
+                        "planHashPrefix": notification.plan_hash_prefix,
+                        "channel": "teams",
+                    },
+                }
+            )
 
         card = {
             "type": "message",

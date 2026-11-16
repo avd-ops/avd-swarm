@@ -2,10 +2,10 @@
 # Personal project, not for production, provided as is; not affiliated with the author's employer, Liquidware or Microsoft.
 #
 # Protected path: agent-authored PRs cannot touch this file (governance/protected-paths.yml).
-# Phase 1 (Option 1): Deep-link approvals, one-tap POST kill switch, and optional signed co-signature.
+# Phase 2 (Option 2): Deep-link + one-tap POST kill switch + signed co-sign + per-user ChatOps approval proxy.
 
 version: avd-swarm-notifications/v1
-phase: 1
+phase: 2
 protected: true
 
 redaction:
@@ -161,3 +161,16 @@ cosign:
     - teams
     - servicenow
   authorizedSignerOids: []
+
+chatopsApproval:
+  enabled: true
+  authMode: per_user_github_oauth
+  forbidSharedBotToken: true
+  requireEntraUserAuth: true
+  requirePerUserGitHubOAuth: true
+  requireFullPlanHashMatch: true
+  allowedPlatforms:
+    - teams
+    - slack
+  approveEnvironmentName: approve
+  deploymentReviewApi: "https://api.github.com/repos/{owner}/{repo}/actions/runs/{run_id}/pending_deployments"
