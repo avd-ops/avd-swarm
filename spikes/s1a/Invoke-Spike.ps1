@@ -68,9 +68,20 @@ $Guard = Join-Path $Repo 'spend/spend_guard.py'
 $Kit = $PSScriptRoot
 $Spike = Join-Path $HOME 'clouddrive/avdswarm-spike'
 $Venv = Join-Path $HOME 'avdswarm-spike-venv'
-$Py = Join-Path $Venv 'bin/python'
+$Py = if ($IsWindows) { Join-Path $Venv 'Scripts/python.exe' } else { Join-Path $Venv 'bin/python' }
+$Pip = if ($IsWindows) { Join-Path $Venv 'Scripts/pip.exe' } else { Join-Path $Venv 'bin/pip' }
 $ProgressFile = Join-Path $Spike 'progress.json'
 New-Item -ItemType Directory -Force $Spike | Out-Null
+
+function Invoke-HostPython {
+    param([Parameter(ValueFromRemainingArguments)][string[]] $Arguments)
+    if (Test-Path $Py) { & $Py @Arguments; return }
+    if ($IsWindows) {
+        if (Get-Command py -ErrorAction SilentlyContinue) { & py -3 @Arguments; return }
+        if (Get-Command python -ErrorAction SilentlyContinue) { & python @Arguments; return }
+    }
+    & python3 @Arguments
+}
 
 function Write-Phase([string] $Message) { Write-Host "`n======== $Message ========" -ForegroundColor Cyan }
 
@@ -158,7 +169,7 @@ function Invoke-Teardown {
                 Get-Content | Where-Object { $_.Trim() } | ForEach-Object { ($_ | ConvertFrom-Json).costUsd } | Measure-Object -Sum).Sum
         $closeArgs += @('--token-cost', [string][double]$tokenCost, '--token-source', 'metered from the eval records; check the Claude Console usage page')
     }
-    & python3 @closeArgs
+    Invoke-HostPython @closeArgs
     if ($removeExit -or $LASTEXITCODE) { throw 'Teardown left something behind (listed above). Clean it up and run -TeardownOnly again.' }
     Save-SpikeResult 'teardown' 'clean'
     Write-Host "`nRun $runId closed. Delete the report-only Conditional Access policy if you made one."
@@ -179,7 +190,7 @@ try {
 
     # The stop rule: a run past its planned hours goes straight to teardown.
     if (Test-Path "$Spike/run-id") {
-        & python3 $Guard --ledger $LedgerPath --sandbox $Sandbox status | Out-Host
+        Invoke-HostPython $Guard --ledger $LedgerPath --sandbox $Sandbox status | Out-Host
         if ($LASTEXITCODE -eq 1) {
             Write-Host 'STOP: the open run is past its planned hours (above). Tearing down.' -ForegroundColor Red
             Invoke-Teardown; return
@@ -259,9 +270,9 @@ try {
 
     if (-not (Test-Path $Py)) {
         Write-Host 'Creating the Python environment (a minute or two)...'
-        python3 -m venv $Venv
+        Invoke-HostPython -m venv $Venv
     }
-    & (Join-Path $Venv 'bin/pip') install -q -r (Join-Path $Kit 'tools/requirements.txt')
+    & $Pip install -q -r (Join-Path $Kit 'tools/requirements.txt')
     if ($LASTEXITCODE) { throw 'pip install failed (output above).' }
 
     $targetLocation = if ($Location) { $Location } elseif ($Provider -in @('Anthropic', 'AzureOpenAI')) { 'northcentralus' } else { 'eastus2' }
@@ -286,7 +297,7 @@ try {
             '--run-cap', [string]$RunCap, '--monthly-cap', [string]$MonthlyCap)
         if ($AllowUnpriced) { $openArgs += '--allow-unpriced' }
         if ($null -ne $MonthToDate) { $openArgs += @('--month-to-date', [string]$MonthToDate) }
-        $lines = @(& python3 @openArgs | ForEach-Object { Write-Host $_; "$_" })
+        $lines = @(Invoke-HostPython @openArgs | ForEach-Object { Write-Host $_; "$_" })
         $run = Get-LastJson $lines 'spend-open'
         if ($run.status -ne 'open') { throw "The spend run was refused: $($run.runId) is $($run.status). Nothing is deployed." }
         $run.runId | Set-Content "$Spike/run-id"

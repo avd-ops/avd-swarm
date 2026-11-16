@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import shutil
 import subprocess
 import sys
 
@@ -22,8 +23,9 @@ from mcp.client.streamable_http import streamable_http_client
 
 def cli_token(scope: str) -> str:
     print(f"Getting a token for {scope} from the Azure CLI...", flush=True)
+    az = shutil.which("az") or "az"
     result = subprocess.run(
-        ["az", "account", "get-access-token", "--scope", scope, "--query", "accessToken", "-o", "tsv"],
+        [az, "account", "get-access-token", "--scope", scope, "--query", "accessToken", "-o", "tsv"],
         capture_output=True, text=True, check=False,
     )
     if result.returncode != 0:
