@@ -1141,6 +1141,63 @@ body.buddy-body {
   font: 600 0.85rem var(--body);
   border-radius: var(--pill);
 }
+
+.header-notice,
+.header-install-pill {
+  position: relative;
+}
+
+.header-notice summary,
+.header-pill-btn {
+  list-style: none;
+  min-height: 2.25rem;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--pill);
+  background: var(--sunken);
+  color: var(--muted);
+  font: 600 0.75rem var(--mono);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.header-notice summary .short {
+  display: inline;
+}
+.header-notice summary .long {
+  display: none;
+}
+@media (min-width: 700px) {
+  .header-notice summary .short {
+    display: none;
+  }
+  .header-notice summary .long {
+    display: inline;
+  }
+}
+
+.header-notice-full,
+.header-install-pop {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  width: min(22rem, 88vw);
+  padding: var(--space-3);
+  background: var(--surface);
+  color: var(--fg);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  z-index: 60;
+}
+
+.install-hint-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
   border-radius: var(--radius-sm);
   font: 500 0.82rem var(--mono);
   color: var(--fg);
