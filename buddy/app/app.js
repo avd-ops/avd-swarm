@@ -902,11 +902,11 @@
       installBtn.hidden = true;
     } else if (state.deferredInstallPrompt) {
       bodyEl.textContent =
-        "Install avd-buddy on your home screen for full-screen access. Only the app shell is cached; on a shared device, sign out when done.";
+        "Install avd-assistant on your home screen for full-screen access. Only the app shell is cached; on a shared device, sign out when done.";
       installBtn.hidden = false;
     } else {
       bodyEl.textContent =
-        "Install avd-buddy from your browser menu (Install app / Add to Home screen). Only the app shell is cached; on a shared device, sign out when done.";
+        "Install avd-assistant from your browser menu (Install app / Add to Home screen). Only the app shell is cached; on a shared device, sign out when done.";
       installBtn.hidden = true;
     }
   }

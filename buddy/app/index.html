@@ -37,6 +37,28 @@
       <span class="switch-label">Switch: <strong id="switch-pill-text">run</strong></span>
     </button>
 
+    <details class="header-notice" role="note">
+      <summary><span class="long">Not for production</span><span class="short">Notice</span></summary>
+      <div class="header-notice-full">
+        <strong>Personal research project — not for production.</strong>
+        Provided as is, without warranty; not affiliated with the author's employer, Liquidware or Microsoft.
+        avd-assistant reads and proposes plans only; every change is approved in GitHub.
+      </div>
+    </details>
+
+    <details id="install-hint" class="header-install-pill" hidden>
+      <summary class="header-pill-btn">Install</summary>
+      <div class="header-install-pop">
+        <p id="install-hint-body" class="install-hint-body">
+          Install avd-assistant as a full-screen app. Only the app shell is cached; conversations stay on the server.
+        </p>
+        <div class="install-hint-actions">
+          <button type="button" id="install-pwa-btn" class="cta" hidden>Install app</button>
+          <button type="button" id="dismiss-install-btn" class="buddy-small-btn" aria-label="Dismiss install hint">Dismiss</button>
+        </div>
+      </div>
+    </details>
+
     <div class="buddy-menu-wrap">
       <button type="button" id="menu-btn" class="buddy-icon-btn" aria-expanded="false" aria-controls="top-menu" aria-label="Open menu">
         Menu
@@ -116,13 +138,8 @@
       <!-- SCREEN 1: Chat (home) -->
       <section id="screen-chat" class="buddy-screen" aria-label="Conversation">
         <div id="chat-scroll" class="chat-scroll">
-          <!-- Research-only notice at the top of an empty conversation (section 3) -->
+          <!-- Empty chat welcome state -->
           <div id="empty-state" class="empty-state">
-            <details class="warn warn-compact" role="note">
-              <summary><strong>Personal research project — not for production.</strong> Reads &amp; proposes only; approve in GitHub.</summary>
-              <p>Provided as is, without warranty; not affiliated with the author's employer, Liquidware or Microsoft.</p>
-            </details>
-
             <div class="welcome-card card">
               <div class="welcome-head">
                 <img src="icons/avatar.svg" alt="" class="welcome-avatar" width="40" height="40">
@@ -147,20 +164,6 @@
 
           <!-- Conversation turn stream -->
           <div id="messages-list" class="messages-list" role="log" aria-live="off"></div>
-
-          <!-- Install hint: shown ONLY after the first finished answer, never before, dismissed with one tap (section 3 & section 5) -->
-          <section id="install-hint" class="install-hint card" aria-label="Install avd-buddy" hidden>
-            <div class="install-hint-head">
-              <strong>Add avd-buddy to your home screen</strong>
-              <button type="button" id="dismiss-install-btn" class="buddy-small-btn" aria-label="Dismiss install hint">Dismiss</button>
-            </div>
-            <p id="install-hint-body" class="install-hint-body">
-              Install avd-buddy as a full-screen app. Only the app shell is cached; conversations stay on the server. On a shared device, sign out when finished.
-            </p>
-            <div class="install-hint-actions">
-              <button type="button" id="install-pwa-btn" class="cta" hidden>Install app</button>
-            </div>
-          </section>
 
           <!-- Halted agents inline notice inside chat when switch == halt-agents -->
           <section id="halt-agents-card" class="card halt-card" aria-label="Agents halted" hidden>
