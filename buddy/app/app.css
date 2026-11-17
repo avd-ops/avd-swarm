@@ -1103,6 +1103,44 @@ body.buddy-body {
   color: var(--muted);
   text-align: center;
 }
+
+.warn-compact,
+.sim-details,
+.msg-details {
+  font-size: 0.85rem;
+}
+
+.warn-compact summary,
+.sim-summary,
+.msg-details summary {
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.msg-details {
+  margin-top: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-top: 1px solid var(--line);
+}
+
+.msg-details summary {
+  color: var(--muted);
+  font: 600 0.78rem var(--mono);
+}
+
+.mode-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+}
+
+.mode-tile {
+  min-height: var(--tap);
+  padding: var(--space-1) var(--space-3);
+  font: 600 0.85rem var(--body);
+  border-radius: var(--pill);
+}
   border-radius: var(--radius-sm);
   font: 500 0.82rem var(--mono);
   color: var(--fg);

@@ -75,25 +75,26 @@
     <button type="button" id="idle-resume-btn" class="banner-link">Tap to refresh</button>
   </div>
 
-  <!-- Simulation / Demo controls bar: shown only in public demo / fixture mode (?sim=1 or static host without /api) -->
+  <!-- Simulation / Demo controls bar: collapsed by default so chat stays front and center -->
   <section id="sim-bar" class="sim-bar" aria-label="Public demo simulation controls" hidden>
-    <div class="sim-bar-row">
-      <span class="sim-badge">Public Demo Sim</span>
-      <span class="sim-hint">Try scenarios &amp; switch states (offline fixtures, zero Azure spend):</span>
-      <div class="sim-actions" role="group" aria-label="Demo scenario presets">
-        <button type="button" class="sim-chip" data-preset="idle-hosts">Idle hosts (light + aside)</button>
-        <button type="button" class="sim-chip" data-preset="drain-host">Plan card (hard-steady)</button>
-        <button type="button" class="sim-chip" data-preset="deploy-failed">Failed deploy (soft-steady)</button>
-        <button type="button" class="sim-chip" data-preset="security-finding">Defender alert (hard-steady)</button>
+    <details class="sim-details">
+      <summary class="sim-summary"><span class="sim-badge">Demo Sim</span> Scenarios &amp; switch states</summary>
+      <div class="sim-bar-row">
+        <div class="sim-actions" role="group" aria-label="Demo scenario presets">
+          <button type="button" class="sim-chip" data-preset="idle-hosts">Idle hosts</button>
+          <button type="button" class="sim-chip" data-preset="drain-host">Plan card</button>
+          <button type="button" class="sim-chip" data-preset="deploy-failed">Failed deploy</button>
+          <button type="button" class="sim-chip" data-preset="security-finding">Defender alert</button>
+        </div>
+        <div class="sim-actions" role="group" aria-label="Demo switch and network states">
+          <button type="button" class="sim-chip" data-sim-switch="run">run</button>
+          <button type="button" class="sim-chip" data-sim-switch="halt-actions">halt-actions</button>
+          <button type="button" class="sim-chip" data-sim-switch="halt-agents">halt-agents</button>
+          <button type="button" class="sim-chip" data-sim-switch="halt-all">halt-all</button>
+          <button type="button" class="sim-chip" id="sim-offline-toggle" aria-pressed="false">Offline</button>
+        </div>
       </div>
-      <div class="sim-actions" role="group" aria-label="Demo switch and network states">
-        <button type="button" class="sim-chip" data-sim-switch="run">Switch: run</button>
-        <button type="button" class="sim-chip" data-sim-switch="halt-actions">halt-actions</button>
-        <button type="button" class="sim-chip" data-sim-switch="halt-agents">halt-agents</button>
-        <button type="button" class="sim-chip" data-sim-switch="halt-all">halt-all</button>
-        <button type="button" class="sim-chip" id="sim-offline-toggle" aria-pressed="false">Simulate offline</button>
-      </div>
-    </div>
+    </details>
   </section>
 
   <div class="buddy-workspace">
@@ -117,45 +118,29 @@
         <div id="chat-scroll" class="chat-scroll">
           <!-- Research-only notice at the top of an empty conversation (section 3) -->
           <div id="empty-state" class="empty-state">
-            <div class="warn" role="note">
-              <strong>Personal research project — not for production.</strong>
-              Provided as is, without warranty; not affiliated with the author's employer, Liquidware or Microsoft.
-              avd-buddy reads and proposes plans only; every change is approved in GitHub on the exact plan ID and hash.
-            </div>
+            <details class="warn warn-compact" role="note">
+              <summary><strong>Personal research project — not for production.</strong> Reads &amp; proposes only; approve in GitHub.</summary>
+              <p>Provided as is, without warranty; not affiliated with the author's employer, Liquidware or Microsoft.</p>
+            </details>
 
             <div class="welcome-card card">
               <div class="welcome-head">
-                <img src="icons/avatar.svg" alt="" class="welcome-avatar" width="48" height="48">
+                <img src="icons/avatar.svg" alt="" class="welcome-avatar" width="40" height="40">
                 <div>
-                  <h1 id="welcome-title" class="welcome-title">Chief of Staff — ready when you are</h1>
-                  <p id="welcome-sub" class="welcome-sub">I'm on Chief of Staff duty. Want the priority triage, pending approvals, or today's spend status?</p>
+                  <h1 id="welcome-title" class="welcome-title">Chief of Staff</h1>
+                  <p id="welcome-sub" class="welcome-sub">Ready for triage, approvals, or spend.</p>
                 </div>
               </div>
-              <p class="eyebrow">Switch who you're talking to</p>
               <div id="welcome-mode-picker" class="mode-picker" role="group" aria-label="Choose assistant mode">
-                <button type="button" class="mode-tile" data-mode="chief_of_staff" aria-pressed="true">
-                  <strong>Chief of Staff</strong>
-                  <span>Triage, priorities &amp; next steps</span>
-                </button>
-                <button type="button" class="mode-tile" data-mode="red_team" aria-pressed="false">
-                  <strong>Red Team</strong>
-                  <span>Challenge plans &amp; surface risks</span>
-                </button>
-                <button type="button" class="mode-tile" data-mode="guru" aria-pressed="false">
-                  <strong>Guru</strong>
-                  <span>Pinned second brain &amp; Learn</span>
-                </button>
-                <button type="button" class="mode-tile" data-mode="buddy" aria-pressed="false">
-                  <strong>Buddy</strong>
-                  <span>Warm, dry-wit walkthroughs</span>
-                </button>
+                <button type="button" class="mode-tile" data-mode="chief_of_staff" aria-pressed="true">Chief of Staff</button>
+                <button type="button" class="mode-tile" data-mode="red_team" aria-pressed="false">Red Team</button>
+                <button type="button" class="mode-tile" data-mode="guru" aria-pressed="false">Guru</button>
+                <button type="button" class="mode-tile" data-mode="buddy" aria-pressed="false">Buddy</button>
               </div>
-              <p class="eyebrow">Suggested questions</p>
               <div id="starter-prompts" class="follow-ups">
-                <button type="button" class="follow-up-btn" data-prompt="Which hosts were idle all weekend?">Which hosts were idle all weekend?</button>
-                <button type="button" class="follow-up-btn" data-prompt="Drain host 3 and restart its agent">Drain host 3 and restart its agent</button>
-                <button type="button" class="follow-up-btn" data-prompt="The deploy failed and I don't know why">The deploy failed and I don't know why</button>
-                <button type="button" class="follow-up-btn" data-prompt="Why is max sessions set to 8?">Why is max sessions set to 8?</button>
+                <button type="button" class="follow-up-btn" data-prompt="What needs my attention?">What needs attention?</button>
+                <button type="button" class="follow-up-btn" data-prompt="Any pending approvals?">Pending approvals?</button>
+                <button type="button" class="follow-up-btn" data-prompt="Where are we on spend?">Spend status?</button>
               </div>
             </div>
           </div>
