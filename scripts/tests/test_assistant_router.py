@@ -4,6 +4,7 @@
 import hashlib
 import json
 import sys
+import tempfile
 import threading
 import unittest
 import urllib.error
@@ -305,6 +306,50 @@ class AssistantServerHardeningTests(unittest.TestCase):
             finally:
                 srv.shutdown()
                 srv.server_close()
+
+    def test_remediate_playbooks_summary_only_in_guru_index(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rem = Path(tmp) / "avd-remediate"
+            (rem / "playbooks").mkdir(parents=True)
+            (rem / "playbooks" / "catalog.json").write_text(
+                json.dumps(
+                    {
+                        "playbooks": [
+                            {
+                                "id": "pb-conn-shortpath-blocked",
+                                "domain": "connectivity",
+                                "plane": "intune",
+                                "title": "RDP Shortpath UDP transport disabled or falling back to TCP relay",
+                                "bottomLine": "Sessions are riding TCP reverse-connect instead of UDP Shortpath.",
+                                "keywords": ["shortpath", "udp", "3390"],
+                                "c21Checks": ["asm-net-shortpath"],
+                                "probeId": "probe-conn-shortpath-transport",
+                                "citations": [
+                                    {"id": "ref:avd-prerequisites#rtt-under-150", "source": "avd-assess:methods/remote-protocols.md"}
+                                ],
+                                "remediation": {"script": "Set-ItemProperty -Path HKLM:\\..."},
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            docs = ar.load_docs_from_sources(remediate_dir=rem)
+            self.assertEqual(len(docs), 1)
+            self.assertEqual(docs[0]["doc_id"], "remediate/playbooks/pb-conn-shortpath-blocked")
+            self.assertEqual(docs[0]["source"], "avd-remediate")
+            self.assertEqual(docs[0]["snippets"], [])
+            self.assertIn("avd-remediate Step 4", docs[0]["summary"])
+            self.assertNotIn("Set-ItemProperty", docs[0]["summary"])
+
+            idx = ar.BrainIndex(docs=docs)
+            hits = idx.search("RDP Shortpath UDP")
+            self.assertEqual(len(hits), 1)
+            self.assertEqual(hits[0]["docId"], "remediate/playbooks/pb-conn-shortpath-blocked")
+
+        index_cfg = ar.load_yaml_safe(ROOT / "governance" / "assistant-index.yml")
+        rem_pin = (index_cfg.get("sources") or {}).get("avd-remediate") or {}
+        self.assertRegex(str(rem_pin.get("pinned_sha", "")), r"^[0-9a-f]{40}$")
 
 
 if __name__ == "__main__":

@@ -141,13 +141,31 @@ def format_code_blocks(blocks: list[str], allowlist: set[str]) -> list[dict[str,
 class BrainIndex:
     """Read-only SQLite FTS5 index over pinned avd-second-brain and avd-assess docs (F1)."""
 
-    def __init__(self, docs: list[dict[str, Any]] | None = None, pinned_sha: str = "0000000") -> None:
+    def __init__(
+        self,
+        docs: list[dict[str, Any]] | None = None,
+        pinned_sha: str = "0000000",
+        db_path: Path | None = None,
+    ) -> None:
         self.pinned_sha = pinned_sha[:7]
+        if docs is None and db_path is not None and db_path.is_file():
+            self.conn = sqlite3.connect(
+                f"file:{db_path.resolve().as_posix()}?mode=ro",
+                uri=True,
+                check_same_thread=False,
+            )
+            try:
+                row = self.conn.execute("SELECT value FROM meta WHERE key = 'pinned_sha'").fetchone()
+                if row and row[0]:
+                    self.pinned_sha = str(row[0])[:7]
+            except sqlite3.Error:
+                pass
+            return
+
         self.conn = sqlite3.connect(":memory:", check_same_thread=False)
         self.conn.execute(
             "CREATE VIRTUAL TABLE docs_fts USING fts5(doc_id, title, source, tags, summary, learn_url, snippets_json)"
         )
-        import json
 
         for doc in docs or _DEFAULT_BRAIN_DOCS:
             self.conn.execute(
@@ -336,8 +354,9 @@ def redact_query_for_learn(query: str) -> str:
 def load_docs_from_sources(
     second_brain_dir: Path | None = None,
     assess_dir: Path | None = None,
+    remediate_dir: Path | None = None,
 ) -> list[dict[str, Any]]:
-    """Mechanically index avd-second-brain and avd-assess files into BrainIndex docs (0 tokens)."""
+    """Mechanically index avd-second-brain, avd-assess, and avd-remediate playbook summaries into BrainIndex docs (0 tokens)."""
     docs: list[dict[str, Any]] = []
 
     if second_brain_dir and second_brain_dir.is_dir():
@@ -450,6 +469,42 @@ def load_docs_from_sources(
                     )
                 except Exception:
                     continue
+
+    if remediate_dir and remediate_dir.is_dir():
+        catalog_path = remediate_dir / "playbooks" / "catalog.json"
+        if catalog_path.is_file():
+            try:
+                catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+                for pb in catalog.get("playbooks") or []:
+                    if not isinstance(pb, dict) or not pb.get("id"):
+                        continue
+                    pb_id = str(pb["id"])
+                    keywords = " ".join(str(k) for k in (pb.get("keywords") or []))
+                    c21_checks = " ".join(str(c) for c in (pb.get("c21Checks") or []))
+                    citations = "; ".join(
+                        f"{c.get('id', '')} ({c.get('source', '')})"
+                        for c in (pb.get("citations") or [])
+                        if isinstance(c, dict) and c.get("id")
+                    )
+                    summary_parts = [str(pb.get("bottomLine") or "").strip()]
+                    if pb.get("probeId"):
+                        summary_parts.append(f"Diagnostic probe: {pb['probeId']}.")
+                    if citations:
+                        summary_parts.append(f"Citations: {citations}.")
+                    summary_parts.append("Open avd-remediate Step 4 for human-approved remediation.")
+                    docs.append(
+                        {
+                            "doc_id": f"remediate/playbooks/{pb_id}",
+                            "title": str(pb.get("title") or pb_id),
+                            "source": "avd-remediate",
+                            "tags": f"{pb_id} {pb.get('domain', '')} {pb.get('plane', '')} {keywords} {c21_checks}".strip(),
+                            "summary": " ".join(p for p in summary_parts if p)[:500],
+                            "learn_url": "https://github.com/avd-ops/avd-remediate/blob/main/playbooks/catalog.json",
+                            "snippets": [],
+                        }
+                    )
+            except Exception:
+                pass
 
     return docs
 
