@@ -351,6 +351,40 @@ class AssistantServerHardeningTests(unittest.TestCase):
         rem_pin = (index_cfg.get("sources") or {}).get("avd-remediate") or {}
         self.assertRegex(str(rem_pin.get("pinned_sha", "")), r"^[0-9a-f]{40}$")
 
+    def test_build_sqlite_index_and_readonly_brain_index(self):
+        import tempfile
+        from buddy import build_brain_index
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            sb = tmp_path / "avd-second-brain"
+            (sb / "docs/knowledge/troubleshooting").mkdir(parents=True)
+            (sb / "docs/knowledge/troubleshooting/known-errors.yaml").write_text(
+                "errors:\n"
+                "- id: baked-test-01\n"
+                "  symptom: Baked SQLite FTS5 test symptom\n"
+                "  cause: Missing baked index\n"
+                "  fix: Run build_brain_index.py\n",
+                encoding="utf-8",
+            )
+            assess = tmp_path / "avd-assess"
+            assess.mkdir(parents=True)
+            db_out = tmp_path / "brain-index.sqlite"
+            count = build_brain_index.build_sqlite_index(
+                second_brain_dir=sb,
+                assess_dir=assess,
+                output_path=db_out,
+                pinned_sha="632fb604447aa659920f726390d0bc685aa33665",
+            )
+            self.assertGreaterEqual(count, 1)
+            idx = ar.BrainIndex(db_path=db_out)
+            try:
+                self.assertEqual(idx.pinned_sha, "632fb60")
+                hits = idx.search("Baked SQLite FTS5")
+                self.assertTrue(any(h["docId"] == "brain/known-errors/baked-test-01" for h in hits))
+            finally:
+                idx.conn.close()
+
 
 if __name__ == "__main__":
     unittest.main()

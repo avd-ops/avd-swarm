@@ -726,6 +726,23 @@
         mbCard.appendChild(ul);
         body.appendChild(mbCard);
       } else if (mb.kind === "guru") {
+        if (Array.isArray(mb.docs) && mb.docs.length > 0) {
+          const ul = document.createElement("ul");
+          ul.className = "mode-block-list";
+          for (const doc of mb.docs) {
+            const li = document.createElement("li");
+            const strong = document.createElement("strong");
+            strong.textContent = `[${String(doc.source || "brain")}] ${String(doc.title || doc.docId || "")}`;
+            li.appendChild(strong);
+            if (doc.summary) {
+              const span = document.createElement("span");
+              span.textContent = ` — ${String(doc.summary)}`;
+              li.appendChild(span);
+            }
+            ul.appendChild(li);
+          }
+          mbCard.appendChild(ul);
+        }
         if (Array.isArray(mb.snippets)) {
           for (const snip of mb.snippets) {
             const sc = document.createElement("div");

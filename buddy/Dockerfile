@@ -9,6 +9,10 @@ RUN pip install --no-cache-dir pyyaml==6.0.2
 
 COPY assets/buddy/ /app/assets/buddy/
 COPY governance/buddy-voice.yml /app/governance/buddy-voice.yml
+COPY governance/assistant-triage.yml /app/governance/assistant-triage.yml
+COPY governance/model-prices.yml /app/governance/model-prices.yml
+COPY governance/assistant-index.yml /app/governance/assistant-index.yml
+COPY catalog/ /app/catalog/
 COPY scripts/voice_check.py /app/scripts/voice_check.py
 COPY scripts/build_buddy_icons.py /app/scripts/build_buddy_icons.py
 COPY buddy/ /app/buddy/
