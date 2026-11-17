@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "avd-buddy",
-  "short_name": "buddy",
-  "description": "Installable chat front end for avd-swarm. Personal research project, not for production.",
+  "name": "avd-assistant",
+  "short_name": "Assistant",
+  "description": "Zero-token-first AVD operations assistant and control-plane companion for avd-swarm. Personal research project, not for production.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
