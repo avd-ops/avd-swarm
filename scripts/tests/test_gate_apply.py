@@ -410,6 +410,55 @@ class GateApplyTests(unittest.TestCase):
         self.assertEqual(regressed["status"], "verification-failed")
         self.assertTrue(any("compliance.regressed" in r for r in regressed["reasons"]))
 
+    def test_external_executor_cua_plan_and_evidence_validation(self):
+        from avd_gate.evidence import executor_evidence_refusals, external_executor_refusals
+
+        for backend in ("w365-agents", "avd-isolated"):
+            plan = {
+                **valid_plan(),
+                "planType": "external-executor",
+                "externalExecutor": {
+                    "kind": "cua",
+                    "backendSurface": backend,
+                    "taskIntent": "verify legacy portal setting",
+                    "maxMinutes": 15,
+                    "maxTokensUsd": 5.0,
+                },
+            }
+            self.assertEqual(external_executor_refusals(plan), [], backend)
+
+        bad_plan = {
+            **valid_plan(),
+            "planType": "external-executor",
+            "externalExecutor": {
+                "kind": "unknown",
+                "backendSurface": "shared-multisession",
+                "taskIntent": "",
+                "maxMinutes": 120,
+                "maxTokensUsd": 50.0,
+            },
+        }
+        bad_reasons = external_executor_refusals(bad_plan)
+        self.assertEqual(len(bad_reasons), 5, bad_reasons)
+        checked = gate_apply.check_plan(bad_plan)
+        self.assertEqual(checked["status"], "refused")
+        self.assertTrue(any(r.startswith("CUA:") for r in checked["reasons"]))
+
+        good_evidence = {
+            "executorKind": "cua",
+            "backendSurface": "w365-agents",
+            "status": "verified",
+            "stepCount": 8,
+            "artifactHashes": ["sha256:" + ("a" * 64)],
+        }
+        self.assertEqual(executor_evidence_refusals(good_evidence), [])
+
+        leaky_evidence = {**good_evidence, "screenshot": "base64...", "upn": "user@contoso.com", "artifactHashes": ["bad"]}
+        leaky_reasons = executor_evidence_refusals(leaky_evidence)
+        self.assertTrue(any("screenshot" in r for r in leaky_reasons))
+        self.assertTrue(any("upn" in r for r in leaky_reasons))
+        self.assertTrue(any("artifactHashes" in r for r in leaky_reasons))
+
 
 if __name__ == "__main__":
     unittest.main()
