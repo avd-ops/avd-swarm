@@ -19,7 +19,7 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="stylesheet" href="assets/avd-ops.css">
   <link rel="stylesheet" href="assets/avd-ops-shell.css">
-  <link rel="stylesheet" href="app.css?v=4">
+  <link rel="stylesheet" href="app.css?v=5">
   <script src="assets/theme.js"></script>
 </head>
 <body class="buddy-body">
@@ -28,9 +28,17 @@
   <!-- Top bar: three items on a phone (avatar + Assistant -> Settings, switch pill -> Status, menu button -> History/Settings/Sign out) -->
   <header class="buddy-top" role="banner">
     <button type="button" id="brand-settings-btn" class="buddy-brand-btn" aria-label="avd-assistant, open settings">
-      <img src="icons/avatar.svg?v=4" alt="" class="buddy-avatar" width="32" height="32">
+      <img src="icons/avatar.svg?v=5" alt="" class="buddy-avatar" width="32" height="32">
       <span class="buddy-title">Assistant</span>
     </button>
+
+    <label for="composer-mode" class="sr-only">Assistant mode</label>
+    <select id="composer-mode" class="header-mode-select" aria-label="Assistant mode">
+      <option value="chief_of_staff">Chief of Staff</option>
+      <option value="red_team">Red Team</option>
+      <option value="guru">Guru</option>
+      <option value="buddy">Buddy</option>
+    </select>
 
     <button type="button" id="history-toggle-btn" class="header-pill-btn" aria-expanded="true" aria-controls="history-panel">History</button>
 
@@ -132,17 +140,11 @@
           <div id="empty-state" class="empty-state">
             <div class="welcome-card card">
               <div class="welcome-head">
-                <img src="icons/avatar.svg?v=4" alt="" class="welcome-avatar" width="40" height="40">
+                <img src="icons/avatar.svg?v=5" alt="" class="welcome-avatar" width="40" height="40">
                 <div>
                   <h1 id="welcome-title" class="welcome-title">Chief of Staff</h1>
                   <p id="welcome-sub" class="welcome-sub">Ready for triage, approvals, or spend.</p>
                 </div>
-              </div>
-              <div id="welcome-mode-picker" class="mode-picker" role="group" aria-label="Choose assistant mode">
-                <button type="button" class="mode-tile" data-mode="chief_of_staff" aria-pressed="true">Chief of Staff</button>
-                <button type="button" class="mode-tile" data-mode="red_team" aria-pressed="false">Red Team</button>
-                <button type="button" class="mode-tile" data-mode="guru" aria-pressed="false">Guru</button>
-                <button type="button" class="mode-tile" data-mode="buddy" aria-pressed="false">Buddy</button>
               </div>
               <div id="starter-prompts" class="follow-ups">
                 <button type="button" class="follow-up-btn" data-prompt="What needs my attention?">What needs attention?</button>
@@ -166,13 +168,6 @@
 
         <!-- Pinned bottom composer (hidden at halt-agents and halt-all) -->
         <form id="composer-form" class="composer-bar" aria-label="Ask avd-assistant">
-          <label for="composer-mode" class="sr-only">Assistant mode</label>
-          <select id="composer-mode" class="composer-mode" aria-label="Assistant mode">
-            <option value="chief_of_staff">Chief of Staff</option>
-            <option value="red_team">Red Team</option>
-            <option value="guru">Guru</option>
-            <option value="buddy">Buddy</option>
-          </select>
           <label for="composer-input" class="sr-only">Your question for avd-assistant</label>
           <textarea
             id="composer-input"
@@ -396,6 +391,6 @@
   </footer>
 
   <script src="fixtures.js"></script>
-  <script src="app.js?v=4"></script>
+  <script src="app.js?v=5"></script>
 </body>
 </html>
