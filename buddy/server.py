@@ -175,6 +175,10 @@ class BuddyState:
         mcp_app_id: str = "",
         buddy_uami_client_id: str = "",
         token_provider: Callable[[], str] | None = None,
+        second_brain_dir: Path | None = None,
+        assess_dir: Path | None = None,
+        learn_search: bool | None = None,
+        learn_opener: Callable[..., Any] | None = None,
     ) -> None:
         self.require_easy_auth = require_easy_auth
         self.sim_mode = sim_mode
@@ -195,7 +199,12 @@ class BuddyState:
         brain_sha = str(
             (self.index_cfg.get("sources") or {}).get("avd-second-brain", {}).get("pinned_sha", "0000000")
         )
-        self.brain_index = assistant_router.BrainIndex(pinned_sha=brain_sha)
+        sb_dir = second_brain_dir or Path(os.environ.get("AVD_SECOND_BRAIN_PATH") or (ROOT.parent / "avd-second-brain"))
+        as_dir = assess_dir or Path(os.environ.get("AVD_ASSESS_PATH") or (ROOT.parent / "avd-assess"))
+        indexed_docs = assistant_router.load_docs_from_sources(sb_dir, as_dir)
+        self.brain_index = assistant_router.BrainIndex(docs=indexed_docs or None, pinned_sha=brain_sha)
+        self.learn_search = learn_search if learn_search is not None else (os.environ.get("AVD_LEARN_SEARCH", "1").strip() != "0")
+        self.learn_opener = learn_opener
         self.static_files = load_static_files(APP_DIR)
         self.turns: dict[str, dict[str, Any]] = {}
         self.idempotency_turns: dict[str, str] = {}
@@ -712,19 +721,40 @@ class BuddyState:
             raw_aside = None
         elif assistant_mode == "guru":
             hits = self.brain_index.search(question)
+            learn_hits = (
+                assistant_router.query_microsoft_learn(question, opener=self.learn_opener)
+                if self.learn_search
+                else []
+            )
             source_badge = f"0 tokens · brain @{self.brain_index.pinned_sha}"
+            seen_urls: set[str] = set()
+            learn_links: list[dict[str, str]] = []
+            for h in hits:
+                if h.get("learnUrl") and h["learnUrl"] not in seen_urls:
+                    seen_urls.add(h["learnUrl"])
+                    learn_links.append({"title": h["title"], "url": h["learnUrl"]})
+            for lh in learn_hits:
+                if lh.get("url") and lh["url"] not in seen_urls:
+                    seen_urls.add(lh["url"])
+                    learn_links.append({"title": lh["title"], "url": lh["url"]})
+
             if hits:
                 top = hits[0]
                 snippets = assistant_router.format_code_blocks(top.get("snippets", []), self.snippet_allowlist)
                 answer = f"{top['title']}: {top['summary']}"
-                citations = [{"id": top["docId"], "label": f"{top['source']} ({top['docId']})"}]
-                learn_links = [{"title": top["title"], "url": top["learnUrl"]}] if top.get("learnUrl") else []
-                mode_block = {"kind": "guru", "docs": hits, "snippets": snippets, "canSynthesize": True}
+                citations = [{"id": h["docId"], "label": f"{h['source']} ({h['docId']})"} for h in hits]
+                mode_block = {"kind": "guru", "docs": hits, "learnHits": learn_hits, "snippets": snippets, "canSynthesize": True}
+            elif learn_hits:
+                top_learn = learn_hits[0]
+                source_badge = "0 tokens · Microsoft Learn"
+                desc = f" — {top_learn['description']}" if top_learn.get("description") else ""
+                answer = f"Microsoft Learn: {top_learn['title']}{desc}"
+                citations = [{"id": "microsoft-learn", "label": f"Microsoft Learn ({top_learn['url']})"}]
+                mode_block = {"kind": "guru", "docs": [], "learnHits": learn_hits, "snippets": [], "canSynthesize": False}
             else:
                 answer = assistant_router.NO_MATCH_MESSAGE
                 citations = []
-                learn_links = []
-                mode_block = {"kind": "guru", "docs": [], "snippets": [], "canSynthesize": False}
+                mode_block = {"kind": "guru", "docs": [], "learnHits": [], "snippets": [], "canSynthesize": False}
             raw_aside = None
         elif any(w in q_lower for w in ("drain", "restart", "approve", "plan")):
             events.update({"plan-shown", "approval-pending"})
