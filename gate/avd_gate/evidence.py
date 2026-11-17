@@ -11,6 +11,8 @@ vocabulary, or a missing one, counts as not operator-started: the rule fails clo
 
 from __future__ import annotations
 
+import re
+
 OPERATOR = "avd-buddy"
 UNATTENDED = ("schedule", "manual", "alert")
 VOCABULARY = (OPERATOR, *UNATTENDED)
@@ -20,6 +22,23 @@ DESTRUCTIVE_ACTIONS = ("reprovision", "deprovision", "replace-session-host")
 NON_DESTRUCTIVE_ACTIONS = ("restart", "resize", "restore-point", "policy-pr")
 DESKTOP_DEVOPS_ACTIONS = (*DESTRUCTIVE_ACTIONS, *NON_DESTRUCTIVE_ACTIONS)
 MAX_RESTORE_POINT_AGE_HOURS = 24
+
+EXECUTOR_KINDS = ("cua",)
+EXECUTOR_BACKEND_SURFACES = ("w365-agents", "avd-isolated")
+EXECUTOR_EVIDENCE_STATUSES = ("verified", "failed", "halted", "rejected")
+MAX_EXECUTOR_MINUTES = 60
+MAX_EXECUTOR_TOKENS_USD = 20.0
+FORBIDDEN_EXECUTOR_EVIDENCE_KEYS = (
+    "screenshot",
+    "screenshots",
+    "rawScreenshot",
+    "keystrokes",
+    "password",
+    "token",
+    "secret",
+    "upn",
+)
+_SHA256_RE = re.compile(r"^(sha256:)?[0-9a-f]{64}$")
 
 
 def refusals(plan: object) -> list[str]:
@@ -69,6 +88,66 @@ def data_loss_guard_refusals(plan: object) -> list[str]:
             f"D1: destructive action {action!r} requires restorePointVerified=True with "
             f"restorePointAgeHours <= {MAX_RESTORE_POINT_AGE_HOURS} or discardLastCopyApproved=True"
         )
+    return out
+
+
+def external_executor_refusals(plan: object) -> list[str]:
+    """Why the gate refuses an external-executor (CUA) plan under avd-ops ADR 0022; empty when not applicable or valid."""
+    if not isinstance(plan, dict):
+        return ["CUA: a plan must be a mapping"]
+    is_external = plan.get("planType") == "external-executor" or plan.get("action") == "external-executor"
+    if not is_external:
+        return []
+    spec = plan.get("externalExecutor")
+    if not isinstance(spec, dict):
+        return ["CUA: external-executor plan requires an externalExecutor mapping"]
+    out: list[str] = []
+    kind = spec.get("kind")
+    if kind not in EXECUTOR_KINDS:
+        out.append(f"CUA: externalExecutor.kind {kind!r} isn't in {EXECUTOR_KINDS}")
+    backend = spec.get("backendSurface")
+    if backend not in EXECUTOR_BACKEND_SURFACES:
+        out.append(f"CUA: externalExecutor.backendSurface {backend!r} isn't in {EXECUTOR_BACKEND_SURFACES}")
+    intent = spec.get("taskIntent")
+    if not isinstance(intent, str) or not intent.strip():
+        out.append("CUA: externalExecutor.taskIntent must be a non-empty string")
+    max_minutes = spec.get("maxMinutes")
+    if (
+        not isinstance(max_minutes, int)
+        or isinstance(max_minutes, bool)
+        or not (1 <= max_minutes <= MAX_EXECUTOR_MINUTES)
+    ):
+        out.append(f"CUA: externalExecutor.maxMinutes must be an integer in 1..{MAX_EXECUTOR_MINUTES}")
+    max_usd = spec.get("maxTokensUsd")
+    if (
+        not isinstance(max_usd, (int, float))
+        or isinstance(max_usd, bool)
+        or not (0 < max_usd <= MAX_EXECUTOR_TOKENS_USD)
+    ):
+        out.append(f"CUA: externalExecutor.maxTokensUsd must be in (0, {MAX_EXECUTOR_TOKENS_USD}]")
+    return out
+
+
+def executor_evidence_refusals(evidence: object) -> list[str]:
+    """Why the gate refuses a C10 executorEvidence payload; ensures redacted/hashed-only telemetry."""
+    if not isinstance(evidence, dict):
+        return ["CUA: executorEvidence must be a mapping"]
+    out: list[str] = []
+    for bad_key in FORBIDDEN_EXECUTOR_EVIDENCE_KEYS:
+        if bad_key in evidence:
+            out.append(f"CUA: executorEvidence must not carry raw field {bad_key!r}")
+    if evidence.get("executorKind") not in EXECUTOR_KINDS:
+        out.append(f"CUA: executorEvidence.executorKind isn't in {EXECUTOR_KINDS}")
+    if evidence.get("backendSurface") not in EXECUTOR_BACKEND_SURFACES:
+        out.append(f"CUA: executorEvidence.backendSurface isn't in {EXECUTOR_BACKEND_SURFACES}")
+    if evidence.get("status") not in EXECUTOR_EVIDENCE_STATUSES:
+        out.append(f"CUA: executorEvidence.status isn't in {EXECUTOR_EVIDENCE_STATUSES}")
+    step_count = evidence.get("stepCount")
+    if not isinstance(step_count, int) or isinstance(step_count, bool) or step_count < 0:
+        out.append("CUA: executorEvidence.stepCount must be a non-negative integer")
+    hashes = evidence.get("artifactHashes")
+    if not isinstance(hashes, list) or not all(isinstance(h, str) and _SHA256_RE.match(h) for h in hashes):
+        out.append("CUA: executorEvidence.artifactHashes must be a list of SHA-256 digests")
     return out
 
 

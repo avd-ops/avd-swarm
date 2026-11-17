@@ -31,6 +31,8 @@ from .evidence import (
     CLOUDS,
     cloud_refusals,
     data_loss_guard_refusals,
+    executor_evidence_refusals,
+    external_executor_refusals,
     refusals as evidence_refusals,
     resolve_cloud_environment,
 )
@@ -320,7 +322,7 @@ def check_plan(
 
     rule_groups = [
         evidence_refusals(plan),
-        data_loss_guard_refusals(plan),
+        [*data_loss_guard_refusals(plan), *external_executor_refusals(plan)],
         [*why_refusals(plan), *cloud_refusals(plan, state, runner_env=runner_env)],
         [
             *host_precondition_refusals(action, state, plan_id=plan_id),
