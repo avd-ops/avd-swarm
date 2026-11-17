@@ -190,6 +190,122 @@ class AssistantServerHardeningTests(unittest.TestCase):
         ):
             self.assertIn(needle, bicep)
 
+    def test_load_docs_from_sources_and_microsoft_learn_mechanical_queries(self):
+        import io
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            sb = tmp_path / "avd-second-brain"
+            (sb / "docs/knowledge/troubleshooting").mkdir(parents=True)
+            (sb / "docs/knowledge/troubleshooting/known-errors.yaml").write_text(
+                "errors:\n"
+                "- id: fslogix-kerberos-0x52e\n"
+                "  symptom: FSLogix profile mount fails with 0x0000052e\n"
+                "  cause: Missing Cloud Kerberos ticket\n"
+                "  fix: Grant SMB Share Contributor\n"
+                "  source: https://learn.microsoft.com/azure/virtual-desktop/fslogix-containers-azure-files\n",
+                encoding="utf-8",
+            )
+            assess = tmp_path / "avd-assess"
+            (assess / "methods").mkdir(parents=True)
+            (assess / "index.json").write_text(
+                json.dumps(
+                    {
+                        "references": [
+                            {
+                                "id": "rdp-shortpath",
+                                "title": "RDP Shortpath for AVD",
+                                "url": "https://learn.microsoft.com/azure/virtual-desktop/rdp-shortpath",
+                                "notes": "UDP 3390 direct transport.",
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            docs = ar.load_docs_from_sources(sb, assess)
+            idx = ar.BrainIndex(docs=docs)
+            self.assertTrue(any(h["docId"] == "brain/known-errors/fslogix-kerberos-0x52e" for h in idx.search("FSLogix 0x0000052e")))
+            self.assertTrue(any(h["docId"] == "assess/ref:rdp-shortpath" for h in idx.search("RDP Shortpath UDP")))
+
+            captured = {}
+
+            class _FakeResp:
+                status = 200
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *args):
+                    return False
+
+                def read(self):
+                    return json.dumps(
+                        {
+                            "results": [
+                                {
+                                    "title": "Troubleshoot FSLogix",
+                                    "url": "https://learn.microsoft.com/en-us/fslogix/troubleshooting",
+                                    "description": "Resolve 0x0000052e mount errors.",
+                                }
+                            ]
+                        }
+                    ).encode("utf-8")
+
+            def fake_opener(req, timeout=2.5):
+                captured["url"] = req.full_url
+                return _FakeResp()
+
+            learn_hits = ar.query_microsoft_learn(
+                f"FSLogix 0x0000052e {'-'.join(['12345678', '1234', '1234', '1234', '1234567890ab'])} 10.0.0.5 user@contoso.com",
+                opener=fake_opener,
+            )
+            self.assertEqual(len(learn_hits), 1)
+            self.assertNotIn("12345678", captured["url"])
+            self.assertNotIn("10.0.0.5", captured["url"])
+            self.assertNotIn("contoso.com", captured["url"])
+
+            # End-to-end Guru mode with mocked Learn opener and F5 no-synthesis check on Learn-only match
+            state = buddy_server.BuddyState(
+                second_brain_dir=sb,
+                assess_dir=assess,
+                learn_search=True,
+                learn_opener=fake_opener,
+            )
+            srv = buddy_server.ThreadingHTTPServer(("127.0.0.1", 0), buddy_server.make_handler(state))
+            t = threading.Thread(target=srv.serve_forever, daemon=True)
+            t.start()
+            try:
+                base = f"http://127.0.0.1:{srv.server_address[1]}"
+                req = urllib.request.Request(
+                    f"{base}/api/turns",
+                    data=json.dumps({"question": "FSLogix 0x0000052e", "mode": "guru", "idempotencyKey": "guru-1"}).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req) as resp:
+                    turn_data = json.loads(resp.read().decode("utf-8"))["turn"]
+                self.assertIn("0 tokens", turn_data["sourceBadge"])
+                self.assertEqual(turn_data["modeBlock"]["canSynthesize"], True)
+                self.assertTrue(any(l["url"] == "https://learn.microsoft.com/en-us/fslogix/troubleshooting" for l in turn_data["learnLinks"]))
+
+                req2 = urllib.request.Request(
+                    f"{base}/api/turns",
+                    data=json.dumps({"question": "quantum computing entanglement", "mode": "guru", "idempotencyKey": "guru-2"}).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req2) as resp2:
+                    turn2 = json.loads(resp2.read().decode("utf-8"))["turn"]
+                self.assertIn("0 tokens", turn2["sourceBadge"])
+                self.assertEqual(turn2["modeBlock"]["canSynthesize"], False)
+                self.assertIn("Microsoft Learn", turn2["sourceBadge"])
+            finally:
+                srv.shutdown()
+                srv.server_close()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -8,10 +8,14 @@ Pure Python stdlib + PyYAML only. Holds zero model credentials and imports zero 
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import sqlite3
+import urllib.error
+import urllib.parse
+import urllib.request
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import yaml
 
@@ -312,3 +316,173 @@ def resolve_mode_model_config(mode: str, prices_cfg: dict[str, Any]) -> dict[str
     modes = prices_cfg.get("assistant_modes") or {}
     cfg = modes.get(normalize_mode(mode))
     return dict(cfg) if isinstance(cfg, dict) else None
+
+
+_GUID_RE = re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.I)
+_IPV4_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+_EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+_PLACEHOLDER_RE = re.compile(r"<[a-z]+-\d+>", re.I)
+
+
+def redact_query_for_learn(query: str) -> str:
+    """Strip GUIDs, IPv4s, emails, and redaction placeholders before calling Microsoft Learn."""
+    text = _GUID_RE.sub(" ", str(query or ""))
+    text = _IPV4_RE.sub(" ", text)
+    text = _EMAIL_RE.sub(" ", text)
+    text = _PLACEHOLDER_RE.sub(" ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def load_docs_from_sources(
+    second_brain_dir: Path | None = None,
+    assess_dir: Path | None = None,
+) -> list[dict[str, Any]]:
+    """Mechanically index avd-second-brain and avd-assess files into BrainIndex docs (0 tokens)."""
+    docs: list[dict[str, Any]] = []
+
+    if second_brain_dir and second_brain_dir.is_dir():
+        kb_root = second_brain_dir / "docs" / "knowledge"
+        known_errors = kb_root / "troubleshooting" / "known-errors.yaml"
+        if known_errors.is_file():
+            try:
+                data = yaml.safe_load(known_errors.read_text(encoding="utf-8")) or {}
+                for item in data.get("errors") or []:
+                    if not isinstance(item, dict) or not item.get("id"):
+                        continue
+                    err_id = str(item["id"])
+                    src = str(item.get("source", ""))
+                    cause = str(item.get("cause", "")).strip()
+                    fix = str(item.get("fix", "")).strip()
+                    docs.append(
+                        {
+                            "doc_id": f"brain/known-errors/{err_id}",
+                            "title": str(item.get("symptom", err_id)).strip(),
+                            "source": "avd-second-brain",
+                            "tags": f"{err_id} known-error troubleshooting",
+                            "summary": " ".join(p for p in (cause, f"Fix: {fix}" if fix else "") if p),
+                            "learn_url": src if src.startswith("https://learn.microsoft.com/") else "",
+                            "snippets": [],
+                        }
+                    )
+            except Exception:
+                pass
+
+        if kb_root.is_dir():
+            for md_file in sorted(kb_root.rglob("*.md")):
+                if "schema" in md_file.parts:
+                    continue
+                try:
+                    raw = md_file.read_text(encoding="utf-8")
+                    rel = md_file.relative_to(second_brain_dir).as_posix()
+                    title = md_file.stem
+                    summary = ""
+                    topic = ""
+                    fm_match = re.match(r"^---\r?\n([\s\S]*?)\r?\n---", raw)
+                    if fm_match:
+                        fm = yaml.safe_load(fm_match.group(1)) or {}
+                        if isinstance(fm, dict):
+                            title = str(fm.get("title") or title)
+                            summary = str(fm.get("summary") or "")
+                            topic = str(fm.get("topic") or "")
+                    if not summary:
+                        body = raw[fm_match.end():] if fm_match else raw
+                        lines = [ln.strip() for ln in body.splitlines() if ln.strip() and not ln.strip().startswith("#")]
+                        summary = " ".join(lines[:3])[:400]
+                    docs.append(
+                        {
+                            "doc_id": f"brain/{rel}",
+                            "title": title,
+                            "source": "avd-second-brain",
+                            "tags": f"{topic} {rel}".strip(),
+                            "summary": summary,
+                            "learn_url": "",
+                            "snippets": [],
+                        }
+                    )
+                except Exception:
+                    continue
+
+    if assess_dir and assess_dir.is_dir():
+        index_path = assess_dir / "index.json"
+        if index_path.is_file():
+            try:
+                idx = json.loads(index_path.read_text(encoding="utf-8"))
+                for ref in idx.get("references") or []:
+                    if not isinstance(ref, dict) or not ref.get("id"):
+                        continue
+                    claims = [str(c.get("says", "")) for c in (ref.get("claims") or []) if isinstance(c, dict)]
+                    summary = str(ref.get("notes") or "").strip() or " ".join(claims[:2]).strip()
+                    areas = " ".join(str(a) for a in (ref.get("areas") or []))
+                    pillars = " ".join(str(p) for p in (ref.get("pillars") or []))
+                    docs.append(
+                        {
+                            "doc_id": f"assess/ref:{ref['id']}",
+                            "title": str(ref.get("title") or ref["id"]),
+                            "source": "avd-assess",
+                            "tags": f"{ref['id']} {areas} {pillars}".strip(),
+                            "summary": summary,
+                            "learn_url": str(ref.get("url") or ""),
+                            "snippets": [],
+                        }
+                    )
+            except Exception:
+                pass
+
+        methods_dir = assess_dir / "methods"
+        if methods_dir.is_dir():
+            for md_file in sorted(methods_dir.glob("*.md")):
+                try:
+                    raw = md_file.read_text(encoding="utf-8")
+                    h_match = re.search(r"^#\s+(.+)$", raw, re.M)
+                    title = h_match.group(1).strip() if h_match else md_file.stem
+                    lines = [ln.strip() for ln in raw.splitlines() if ln.strip() and not ln.strip().startswith("#")]
+                    summary = " ".join(lines[:3])[:400]
+                    docs.append(
+                        {
+                            "doc_id": f"assess/methods/{md_file.name}",
+                            "title": title,
+                            "source": "avd-assess",
+                            "tags": md_file.stem,
+                            "summary": summary,
+                            "learn_url": "",
+                            "snippets": [],
+                        }
+                    )
+                except Exception:
+                    continue
+
+    return docs
+
+
+def query_microsoft_learn(
+    query: str,
+    *,
+    limit: int = 3,
+    timeout_s: float = 2.5,
+    opener: Callable[..., Any] | None = None,
+) -> list[dict[str, str]]:
+    """Deterministically query Microsoft Learn Search API (0 tokens, no estate identifiers)."""
+    clean_q = redact_query_for_learn(query)
+    if len(clean_q) < 3:
+        return []
+    url = f"https://learn.microsoft.com/api/search?{urllib.parse.urlencode({'search': clean_q, 'locale': 'en-us', '$top': str(limit)})}"
+    req = urllib.request.Request(url, headers={"Accept": "application/json"}, method="GET")
+    open_fn = opener or urllib.request.urlopen
+    try:
+        with open_fn(req, timeout=timeout_s) as resp:
+            status = getattr(resp, "status", 200)
+            if status and int(status) >= 400:
+                return []
+            data = json.loads(resp.read().decode("utf-8"))
+        hits: list[dict[str, str]] = []
+        for item in (data.get("results") or [])[:limit]:
+            if not isinstance(item, dict):
+                continue
+            title = str(item.get("title") or "").strip()
+            item_url = str(item.get("url") or "").strip()
+            desc = re.sub(r"\s+", " ", str(item.get("description") or "")).strip()
+            if title and item_url:
+                hits.append({"title": title, "url": item_url, "description": desc})
+        return hits
+    except Exception:
+        return []
