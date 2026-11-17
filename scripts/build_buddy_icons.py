@@ -174,14 +174,87 @@ def _mascot_favicon_svg() -> str:
     )
 
 
+def _rgba_png_to_rgb(png_bytes: bytes, bg: tuple[int, int, int] = (13, 16, 21)) -> bytes:
+    """Flatten an 8-bit RGBA (or RGB) PNG onto a solid RGB background using pure stdlib."""
+    pos = 8
+    width = height = color_type = 0
+    idat_parts: list[bytes] = []
+    while pos < len(png_bytes):
+        length = struct.unpack(">I", png_bytes[pos : pos + 4])[0]
+        ctype = png_bytes[pos + 4 : pos + 8]
+        data = png_bytes[pos + 8 : pos + 8 + length]
+        pos += 12 + length
+        if ctype == b"IHDR":
+            width, height, _bit, color_type = struct.unpack(">IIBB", data[:10])
+        elif ctype == b"IDAT":
+            idat_parts.append(data)
+    if color_type == 2:
+        return png_bytes
+    if color_type != 6:
+        raise ValueError(f"Unsupported PNG color type {color_type}")
+    raw = zlib.decompress(b"".join(idat_parts))
+    bpp = 4
+    stride = width * bpp
+    prev = bytearray(stride)
+    rows: list[bytearray] = []
+    idx = 0
+    for _ in range(height):
+        ftype = raw[idx]
+        idx += 1
+        scan = bytearray(raw[idx : idx + stride])
+        idx += stride
+        for i in range(stride):
+            a = scan[i - bpp] if i >= bpp else 0
+            b = prev[i]
+            c = prev[i - bpp] if i >= bpp else 0
+            if ftype == 1:
+                scan[i] = (scan[i] + a) & 0xFF
+            elif ftype == 2:
+                scan[i] = (scan[i] + b) & 0xFF
+            elif ftype == 3:
+                scan[i] = (scan[i] + ((a + b) >> 1)) & 0xFF
+            elif ftype == 4:
+                p = a + b - c
+                pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+                pr = a if pa <= pb and pa <= pc else (b if pb <= pc else c)
+                scan[i] = (scan[i] + pr) & 0xFF
+        prev = scan
+        rgb_row = bytearray(width * 3)
+        for x in range(width):
+            r, g, b, al = scan[x * 4 : x * 4 + 4]
+            inv = 255 - al
+            rgb_row[x * 3] = (r * al + bg[0] * inv) // 255
+            rgb_row[x * 3 + 1] = (g * al + bg[1] * inv) // 255
+            rgb_row[x * 3 + 2] = (b * al + bg[2] * inv) // 255
+        rows.append(rgb_row)
+    return _encode_png(width, height, rows, rgba=False)
+
+
 def build_icons(root: Path = ROOT) -> Path:
     brand_path = root / "buddy/app/brand.json"
     if not brand_path.is_file():
         raise FileNotFoundError(f"Missing {brand_path}")
     brand = json.loads(brand_path.read_text(encoding="utf-8"))
     source = brand.get("icon_source")
-    if source not in ("mascot", "placeholder"):
-        raise ValueError(f"icon_source must be 'mascot' or 'placeholder', got {source!r}")
+    if source not in ("assistant", "mascot", "placeholder"):
+        raise ValueError(f"icon_source must be 'assistant', 'mascot', or 'placeholder', got {source!r}")
+
+    out_dir = root / "buddy/app/icons"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    if source == "assistant":
+        review_path = root / "assets/assistant/REVIEW.md"
+        if not review_path.is_file():
+            raise RuntimeError("icon_source is 'assistant' but assets/assistant/REVIEW.md does not exist")
+        (out_dir / "icon-192.png").write_bytes((root / "assets/assistant/png/icon-pwa-192.png").read_bytes())
+        (out_dir / "icon-512.png").write_bytes((root / "assets/assistant/png/icon-pwa-512.png").read_bytes())
+        (out_dir / "icon-maskable-512.png").write_bytes(_rgba_png_to_rgb((root / "assets/assistant/png/icon-pwa-512.png").read_bytes()))
+        (out_dir / "icon-monochrome-512.png").write_bytes((root / "assets/assistant/png/icon-monochrome-white-512.png").read_bytes())
+        (out_dir / "apple-touch-icon.png").write_bytes(_rgba_png_to_rgb((root / "assets/assistant/png/apple-touch-icon-180.png").read_bytes()))
+        (out_dir / "favicon-32.png").write_bytes((root / "assets/assistant/png/favicon-32.png").read_bytes())
+        (out_dir / "favicon.svg").write_text((root / "assets/assistant/svg/favicon-32.svg").read_text(encoding="utf-8"), encoding="utf-8")
+        (out_dir / "avatar.svg").write_text((root / "assets/assistant/svg/avatar-chat.svg").read_text(encoding="utf-8"), encoding="utf-8")
+        return out_dir
 
     if source == "mascot":
         review_path = root / "assets/buddy/REVIEW.md"

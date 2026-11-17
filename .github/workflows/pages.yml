@@ -9,6 +9,7 @@ on:
       - main
     paths:
       - 'buddy/**'
+      - 'assets/assistant/**'
       - 'assets/buddy/**'
       - 'scripts/build_buddy_icons.py'
       - '.github/workflows/pages.yml'
