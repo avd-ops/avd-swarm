@@ -34,6 +34,7 @@ if str(ROOT / "scripts") not in sys.path:
 import build_buddy_icons  # noqa: E402
 import voice_check  # noqa: E402
 from buddy import assistant_router  # noqa: E402
+from buddy import transcript_store  # noqa: E402
 
 APP_DIR = ROOT / "buddy/app"
 VOICE_SETTINGS_PATH = ROOT / "governance/buddy-voice.yml"
@@ -200,6 +201,7 @@ class BuddyState:
         self.idempotency_turns: dict[str, str] = {}
         self.assistant_daily_spend_usd: dict[str, float] = {}
         self.pending_plans_count = 0
+        self.transcript_store = transcript_store.TranscriptStore()
         self.replies_since_aside = 99
         self.history: list[dict[str, str]] = [
             {"id": "thread-idle-hosts", "title": "Weekend idle hosts in Sales pool", "updatedAt": "Today, 09:14", "presetKey": "idle-hosts"},
@@ -545,6 +547,7 @@ class BuddyState:
             "status": "running",
         }
         self.turns[turn_id] = turn_obj
+        self.transcript_store.append_turn(turn_obj, operator_id=operator_claim.get("name", "operator"))
         return turn_obj
 
     def poll_turn(self, turn_id: str, operator_claim: dict[str, str]) -> dict[str, Any] | None:
@@ -800,6 +803,7 @@ class BuddyState:
             "status": "completed",
         }
         self.turns[turn_id] = turn_obj
+        self.transcript_store.append_turn(turn_obj, operator_id=operator_claim.get("name", "operator"))
         return turn_obj
 
 
@@ -877,7 +881,21 @@ def make_handler(state: BuddyState) -> type[BaseHTTPRequestHandler]:
                 principal = self._require_principal()
                 if principal is None:
                     return
-                self._send_json(200, {"items": state.history})
+                self._send_json(200, {"items": state.history, "retentionDays": transcript_store.RETENTION_DAYS})
+                return
+
+            if path == "/api/transcripts/export":
+                principal = self._require_principal()
+                if principal is None:
+                    return
+                self._send_json(
+                    200,
+                    {
+                        "tenantOnly": True,
+                        "retentionDays": transcript_store.RETENTION_DAYS,
+                        "jsonl": state.transcript_store.export_jsonl(),
+                    },
+                )
                 return
 
             if path.startswith("/api/turns/"):
@@ -1001,6 +1019,20 @@ def make_handler(state: BuddyState) -> type[BaseHTTPRequestHandler]:
                 )
                 http_code = 202 if turn_obj.get("status") == "running" else 200
                 self._send_json(http_code, {"turnId": turn_obj["id"], "status": turn_obj["status"], "turn": turn_obj})
+                return
+
+            if path == "/api/feedback":
+                turn_id = str(body.get("turnId", "")).strip()
+                rating = str(body.get("rating", "")).strip().lower()
+                reason = str(body.get("reason", "")).strip()
+                if not turn_id or rating not in ("up", "down"):
+                    self._send_json(400, {"error": "invalid-feedback"})
+                    return
+                updated = state.transcript_store.record_feedback(turn_id, rating, reason)
+                if not updated:
+                    self._send_json(404, {"error": "turn-not-found"})
+                    return
+                self._send_json(200, {"recorded": True, "tenantOnly": True, "turnId": turn_id})
                 return
 
             if path == "/api/switch/trip":

@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from buddy import assistant_router as ar  # noqa: E402
 from buddy import server as buddy_server  # noqa: E402
+from buddy import transcript_store as ts  # noqa: E402
 
 
 class ScopeGateAndWindowTests(unittest.TestCase):
@@ -141,6 +142,39 @@ class AssistantServerHardeningTests(unittest.TestCase):
         self.assertEqual(d1["turnId"], d2["turnId"])
         self.assertEqual(d1["turn"]["assistantMode"], "chief_of_staff")
         self.assertIsNone(d1["turn"]["aside"])
+
+    def test_redacted_transcript_store_and_feedback_stay_tenant_only(self):
+        fake_sub = "-".join(["11111111", "2222", "3333", "4444", "555555555555"])
+        _, d1 = self._post(
+            "/api/turns",
+            {
+                "question": f"Check hp-sales-01 and 10.20.1.5 for user@example.com in /subscriptions/{fake_sub}",
+                "mode": "buddy",
+                "idempotencyKey": "idem-redact-1",
+            },
+        )
+        fb_code, fb_data = self._post(
+            "/api/feedback",
+            {"turnId": d1["turnId"], "rating": "down", "reason": "tone"},
+        )
+        self.assertEqual(fb_code, 200)
+        self.assertTrue(fb_data["tenantOnly"])
+        exported = self.state.transcript_store.export_jsonl()
+        self.assertNotIn("10.20.1.5", exported)
+        self.assertNotIn("user@example.com", exported)
+        self.assertNotIn(fake_sub, exported)
+        self.assertNotIn("hp-sales-01", exported)
+        self.assertIn("<ip>", exported)
+        self.assertIn("<operator>", exported)
+        self.assertIn("<resource-id>", exported)
+
+    def test_transcript_store_prunes_records_older_than_90_days(self):
+        store = ts.TranscriptStore()
+        now = 1_800_000_000.0
+        store.append_turn({"id": "old-1", "operatorText": "old", "answer": "old"}, now_ts=now - (91 * 86400))
+        store.append_turn({"id": "new-1", "operatorText": "new", "answer": "new"}, now_ts=now)
+        self.assertEqual(len(store.records), 1)
+        self.assertEqual(store.records[0]["turnId"], "new-1")
 
 
 if __name__ == "__main__":
