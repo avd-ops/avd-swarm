@@ -204,7 +204,13 @@ class BuddyState:
         as_dir = assess_dir or Path(os.environ.get("AVD_ASSESS_PATH") or (ROOT.parent / "avd-assess"))
         rem_dir = remediate_dir or Path(os.environ.get("AVD_REMEDIATE_PATH") or (ROOT.parent / "avd-remediate"))
         indexed_docs = assistant_router.load_docs_from_sources(sb_dir, as_dir, rem_dir)
-        self.brain_index = assistant_router.BrainIndex(docs=indexed_docs or None, pinned_sha=brain_sha)
+        baked_db = ROOT / "buddy" / "brain-index.sqlite"
+        if indexed_docs:
+            self.brain_index = assistant_router.BrainIndex(docs=indexed_docs, pinned_sha=brain_sha)
+        elif baked_db.is_file():
+            self.brain_index = assistant_router.BrainIndex(pinned_sha=brain_sha, db_path=baked_db)
+        else:
+            self.brain_index = assistant_router.BrainIndex(pinned_sha=brain_sha)
         self.learn_search = learn_search if learn_search is not None else (os.environ.get("AVD_LEARN_SEARCH", "1").strip() != "0")
         self.learn_opener = learn_opener
         self.static_files = load_static_files(APP_DIR)
