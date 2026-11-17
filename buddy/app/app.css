@@ -1144,7 +1144,7 @@ body.buddy-body {
 
 .header-notice,
 .header-install-pill {
-  position: relative;
+  position: static;
 }
 
 .header-notice summary,
@@ -1181,9 +1181,12 @@ body.buddy-body {
 .header-notice-full,
 .header-install-pop {
   position: absolute;
-  top: calc(100% + var(--space-1));
-  right: 0;
-  width: min(22rem, 88vw);
+  top: 100%;
+  left: var(--gutter);
+  right: var(--gutter);
+  width: auto;
+  max-width: 36rem;
+  margin: var(--space-1) auto 0;
   padding: var(--space-3);
   background: var(--surface);
   color: var(--fg);
