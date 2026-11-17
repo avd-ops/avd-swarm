@@ -30,19 +30,52 @@
   const ASSISTANT_MODE_META = {
     chief_of_staff: {
       label: "Chief of Staff",
-      placeholder: "Ask Chief of Staff what needs attention..."
+      title: "Chief of Staff — ready when you are",
+      greeting: "I'm on Chief of Staff duty. Want the priority triage, pending approvals, or today's spend status?",
+      placeholder: "Ask Chief of Staff what needs attention...",
+      starters: [
+        "What needs my attention?",
+        "Any pending approvals?",
+        "Where are we on spend?",
+        "Check switch status"
+      ],
+      followUps: ["What should I do next?", "Switch to Red Team on this"]
     },
     red_team: {
       label: "Red Team",
-      placeholder: "Paste a plan or change for Red Team to challenge..."
+      title: "Red Team — challenge & risk lens",
+      greeting: "Point me at a plan or change and I'll surface risks, missing rollbacks, and unverified assumptions.",
+      placeholder: "Paste a plan or change for Red Team to challenge...",
+      starters: [
+        "Stress-test the drain plan",
+        "What assumptions aren't verified?",
+        "Check blast radius and rollback"
+      ],
+      followUps: ["What could break?", "Show the plan card"]
     },
     guru: {
       label: "Guru",
-      placeholder: "Ask Guru about AVD architecture, decisions or Learn..."
+      title: "Guru — second brain & architecture",
+      greeting: "I'll pull from the pinned second brain and Microsoft Learn first. What do you want to dig into?",
+      placeholder: "Ask Guru about AVD architecture, decisions or Learn...",
+      starters: [
+        "Why is max sessions set to 8?",
+        "How do idle hosts affect billing?",
+        "Explain Decision 0016"
+      ],
+      followUps: ["Show related Learn docs", "What's the safe Cloud Shell check?"]
     },
     buddy: {
       label: "Buddy",
-      placeholder: "Ask Buddy about hosts, sessions, cost or deployments..."
+      title: "Buddy — calm walkthroughs",
+      greeting: "Hey — Buddy here. Ask me anything about your pools, failed runs, or where to start.",
+      placeholder: "Ask Buddy about hosts, sessions, cost or deployments...",
+      starters: [
+        "Which hosts were idle all weekend?",
+        "The deploy failed and I don't know why",
+        "Drain host 3 and restart its agent"
+      ],
+      followUps: ["Walk me through the next step", "What's safe right now?"]
     }
   };
 
@@ -551,6 +584,14 @@
     const wrapper = document.createElement("div");
     wrapper.className = "msg-turn";
 
+    if (turn.handoff) {
+      const note = document.createElement("div");
+      note.className = "chat-handoff-pill";
+      note.textContent = String(turn.answer || "");
+      wrapper.appendChild(note);
+      return wrapper;
+    }
+
     if (turn.operatorText) {
       const opBubble = document.createElement("div");
       opBubble.className = "msg-operator";
@@ -882,7 +923,7 @@
       }
     });
 
-    setAssistantMode(state.settings.assistantMode);
+    setAssistantMode(state.settings.assistantMode, { silent: true });
     resetIdleTimer();
 
     const composerForm = document.getElementById("composer-form");
@@ -1156,8 +1197,10 @@
     }
   }
 
-  function setAssistantMode(modeKey) {
+  function setAssistantMode(modeKey, opts) {
     const valid = ASSISTANT_MODE_META[modeKey] ? modeKey : "chief_of_staff";
+    const meta = ASSISTANT_MODE_META[valid];
+    const changed = state.settings.assistantMode !== valid;
     state.settings.assistantMode = valid;
     saveSettings();
     const sel = document.getElementById("composer-mode");
@@ -1169,7 +1212,37 @@
     });
     const inputEl = document.getElementById("composer-input");
     if (inputEl) {
-      inputEl.placeholder = ASSISTANT_MODE_META[valid].placeholder;
+      inputEl.placeholder = meta.placeholder;
+    }
+    const wTitle = document.getElementById("welcome-title");
+    if (wTitle) {
+      wTitle.textContent = meta.title;
+    }
+    const wSub = document.getElementById("welcome-sub");
+    if (wSub) {
+      wSub.textContent = meta.greeting;
+    }
+    const startersEl = document.getElementById("starter-prompts");
+    if (startersEl && Array.isArray(meta.starters)) {
+      startersEl.innerHTML = "";
+      for (const promptText of meta.starters) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "follow-up-btn";
+        b.setAttribute("data-prompt", promptText);
+        b.textContent = promptText;
+        b.addEventListener("click", () => submitQuestion(promptText));
+        startersEl.appendChild(b);
+      }
+    }
+    if (changed && !(opts && opts.silent) && state.turns.length > 0) {
+      state.turns.push({
+        id: "handoff-" + Date.now(),
+        handoff: true,
+        assistantMode: valid,
+        answer: "Switched to " + meta.label + " — " + meta.greeting
+      });
+      renderMessages();
     }
   }
 
@@ -1644,7 +1717,7 @@
       }
     });
 
-    setAssistantMode(state.settings.assistantMode);
+    setAssistantMode(state.settings.assistantMode, { silent: true });
     resetIdleTimer();
 
     const composerForm = document.getElementById("composer-form");
