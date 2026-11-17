@@ -1685,13 +1685,34 @@
     });
 
     const closeHistBtn = document.getElementById("close-history-btn");
-    if (closeHistBtn) {
-      closeHistBtn.addEventListener("click", () => {
-        const panel = document.getElementById("history-panel");
-        if (panel) {
-          panel.classList.remove("open");
+    const toggleHistBtn = document.getElementById("history-toggle-btn");
+    const workspaceEl = document.querySelector(".buddy-workspace");
+    function toggleHistory(forceCollapse) {
+      const panel = document.getElementById("history-panel");
+      if (!panel) {
+        return;
+      }
+      if (window.innerWidth >= 768 && workspaceEl) {
+        const nextCollapsed = typeof forceCollapse === "boolean"
+          ? forceCollapse
+          : !workspaceEl.classList.contains("history-collapsed");
+        workspaceEl.classList.toggle("history-collapsed", nextCollapsed);
+        if (toggleHistBtn) {
+          toggleHistBtn.setAttribute("aria-expanded", nextCollapsed ? "false" : "true");
         }
-      });
+      } else {
+        const nextOpen = typeof forceCollapse === "boolean" ? !forceCollapse : !panel.classList.contains("open");
+        panel.classList.toggle("open", nextOpen);
+        if (toggleHistBtn) {
+          toggleHistBtn.setAttribute("aria-expanded", nextOpen ? "true" : "false");
+        }
+      }
+    }
+    if (closeHistBtn) {
+      closeHistBtn.addEventListener("click", () => toggleHistory(true));
+    }
+    if (toggleHistBtn) {
+      toggleHistBtn.addEventListener("click", () => toggleHistory());
     }
 
     const newChatBtn = document.getElementById("new-chat-btn");

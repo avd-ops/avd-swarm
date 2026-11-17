@@ -322,7 +322,7 @@ body.buddy-body {
     position: static;
     box-shadow: none;
   }
-  .history-close-mobile {
+  .buddy-workspace.history-collapsed .history-panel {
     display: none;
   }
 }
@@ -1145,7 +1145,8 @@ body.buddy-body {
 }
 
 .header-notice,
-.header-install-pill {
+.header-install-pill,
+.header-sim-pill {
   position: static;
 }
 
@@ -1202,6 +1203,26 @@ body.buddy-body {
   display: flex;
   gap: var(--space-2);
   margin-top: var(--space-2);
+}
+
+.buddy-foot {
+  padding: var(--space-1) var(--gutter);
+  background: var(--sunken);
+  border-top: 1px solid var(--line);
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.footer-notice summary {
+  cursor: pointer;
+  list-style: none;
+  text-align: center;
+}
+
+.footer-notice p {
+  margin: var(--space-1) auto 0;
+  max-width: var(--measure);
+  text-align: center;
 }
   border-radius: var(--radius-sm);
   font: 500 0.82rem var(--mono);

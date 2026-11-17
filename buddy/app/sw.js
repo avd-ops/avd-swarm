@@ -3,7 +3,7 @@
    Precaches the app shell only; network-only for /api/* and /.auth/*; deletes old caches on activate;
    never caches estate data; notifies clients with "Update ready, reload" instead of reloading mid-conversation. */
 
-const CACHE_NAME = "avd-assistant-shell-v2";
+const CACHE_NAME = "avd-assistant-shell-v4";
 const SHELL_ASSETS = [
   "./",
   "./index.html",
@@ -41,7 +41,9 @@ function isBypassPath(pathname) {
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_ASSETS))
+    caches.open(CACHE_NAME).then((cache) =>
+      cache.addAll(SHELL_ASSETS.map((url) => new Request(url, { cache: "reload" })))
+    )
   );
 });
 
