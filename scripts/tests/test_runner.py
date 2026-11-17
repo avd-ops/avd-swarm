@@ -117,6 +117,43 @@ class Execute(unittest.TestCase):
             with self.assertRaises(ValueError):
                 execute.run(HEALTH, SICK, None, started_by)
 
+    def test_brain_match_answers_without_calling_agent(self):
+        agent = mock.Mock()
+        seen_queries = []
+
+        def brain(query):
+            seen_queries.append(query)
+            return [{
+                "docId": "known-error:rdagent-unhealthy",
+                "title": "Restart RDAgentBootLoader",
+                "source": "avd-second-brain",
+                "summary": "Drain host and restart RDAgentBootLoader.",
+                "learnUrl": "https://learn.microsoft.com/azure/virtual-desktop/troubleshoot-agent",
+            }]
+
+        finding = execute.run(HEALTH, SICK, agent, "schedule", brain_lookup=brain)
+        agent.assert_not_called()
+        self.assertEqual(finding["outcome"], "finding")
+        self.assertEqual(finding["investigation"]["status"], "answered-by-brain")
+        self.assertEqual(len(finding["investigation"]["claims"]), 1)
+        self.assertEqual(finding["investigation"]["claims"][0]["docId"], "known-error:rdagent-unhealthy")
+        self.assertEqual(len(seen_queries), 1)
+        self.assertNotIn(SECRET_HOST, seen_queries[0])
+        self.assertIn("The second brain answered with 1 matches", report.summary(finding))
+
+    def test_brain_miss_or_error_falls_back_to_agent(self):
+        agent = mock.Mock(return_value={"claims": [{"claim": "fallback"}], "unanswered": []})
+        finding_miss = execute.run(HEALTH, SICK, agent, "schedule", brain_lookup=lambda q: [])
+        self.assertEqual(finding_miss["investigation"]["status"], "answered")
+
+        def broken_brain(_):
+            raise RuntimeError("index unavailable")
+
+        finding_err = api.handle({"runbook": "hosts.agent-unhealthy", "startedBy": "schedule"},
+                                 RUNBOOKS, SICK, agent, brain_lookup=broken_brain)
+        self.assertEqual(finding_err["investigation"]["status"], "answered")
+        self.assertEqual(agent.call_count, 2)
+
 
 class Report(unittest.TestCase):
     def test_issue_on_change(self):

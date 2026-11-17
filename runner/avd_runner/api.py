@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from .execute import STARTED_BY, Investigate, Reads, run
+from .execute import STARTED_BY, BrainLookup, Investigate, Reads, run
 from .runbook import Runbook
 
 
@@ -24,7 +24,7 @@ class BadRequest(ValueError):
 
 
 def handle(body: object, runbooks: dict[str, Runbook], reads: Reads, investigate: Investigate | None,
-           allowed_agents: set[str] | None = None) -> dict:
+           allowed_agents: set[str] | None = None, brain_lookup: BrainLookup | None = None) -> dict:
     """Validates the request and runs the runbook. runbooks: the deployed commit's runbooks, by ID."""
     if not isinstance(body, dict) or set(body) - {"runbook", "startedBy"}:
         raise BadRequest("the body is {runbook, startedBy} and nothing else")
@@ -38,7 +38,7 @@ def handle(body: object, runbooks: dict[str, Runbook], reads: Reads, investigate
         raise BadRequest("only read-only runbooks run in v1")
     if allowed_agents is not None and rb.meta["agent"] not in allowed_agents:
         raise BadRequest(f"agent {rb.meta['agent']} isn't deployed")
-    return run(rb, reads, investigate, started_by)
+    return run(rb, reads, investigate, started_by, brain_lookup=brain_lookup)
 
 
 def load_all(root, parse: Callable | None = None) -> dict[str, Runbook]:

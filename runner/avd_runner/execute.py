@@ -43,6 +43,9 @@ class Reads(Protocol):
 # (shield: '', 'flagged' or 'unscanned', the gateway shield's mark on the conversation)
 Investigate = Callable[[Runbook, dict, dict, float], dict]
 
+# brain_lookup(query) -> list of matching KB/known-error dicts (e.g. BrainIndex.search)
+BrainLookup = Callable[[str], list[dict]]
+
 
 # The gateway refuses with SpendRefused (the kill switch, a cap, an unpriced model, an unknown caller).
 Refused = SpendRefused
@@ -71,8 +74,33 @@ def run_reads(rb: Runbook, reads: Reads) -> tuple[dict, list[ReadFailure]]:
     return results, failures
 
 
+def _brain_query(rb: Runbook, evaluation: dict) -> str:
+    """Privacy-safe search query from runbook metadata and failed fact names (never row data)."""
+    parts = [rb.id.replace(".", " "), str(rb.meta.get("title", ""))]
+    for item in evaluation.get("investigate", []):
+        parts.append(item.get("fact", "") if isinstance(item, dict) else str(item))
+    return " ".join(p for p in parts if p).strip()
+
+
+def _brain_claims(hits: list[dict]) -> list[dict]:
+    """Maps second-brain hits into finding claims with source citations."""
+    claims = []
+    for hit in hits:
+        claim = {
+            "claim": hit.get("summary") or hit.get("title", ""),
+            "source": hit.get("source", "avd-second-brain"),
+            "docId": hit.get("docId", ""),
+            "title": hit.get("title", ""),
+        }
+        if hit.get("learnUrl"):
+            claim["learnUrl"] = hit["learnUrl"]
+        claims.append(claim)
+    return claims
+
+
 def run(rb: Runbook, reads: Reads, investigate: Investigate | None, started_by: str,
-        now: Callable[[], datetime] = lambda: datetime.now(timezone.utc)) -> dict:
+        now: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
+        brain_lookup: BrainLookup | None = None) -> dict:
     """One run of one runbook. The finding carries facts and counts, never the rows the reads returned."""
     if started_by not in STARTED_BY:
         raise ValueError(f"started_by must be one of {STARTED_BY}")
@@ -81,7 +109,15 @@ def run(rb: Runbook, reads: Reads, investigate: Investigate | None, started_by: 
     evaluation = evaluate(rb, results)
     investigation = {"status": "not-needed"}
     if evaluation["investigate"]:
-        if investigate is None:
+        brain_hits: list[dict] = []
+        if brain_lookup is not None:
+            try:
+                brain_hits = brain_lookup(_brain_query(rb, evaluation)) or []
+            except Exception:
+                brain_hits = []
+        if brain_hits:
+            investigation = {"status": "answered-by-brain", "claims": _brain_claims(brain_hits), "unanswered": []}
+        elif investigate is None:
             investigation = {"status": "not-available"}
         else:
             try:
