@@ -19,7 +19,7 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="stylesheet" href="assets/avd-ops.css">
   <link rel="stylesheet" href="assets/avd-ops-shell.css">
-  <link rel="stylesheet" href="app.css?v=3">
+  <link rel="stylesheet" href="app.css?v=4">
   <script src="assets/theme.js"></script>
 </head>
 <body class="buddy-body">
@@ -28,21 +28,33 @@
   <!-- Top bar: three items on a phone (avatar + Assistant -> Settings, switch pill -> Status, menu button -> History/Settings/Sign out) -->
   <header class="buddy-top" role="banner">
     <button type="button" id="brand-settings-btn" class="buddy-brand-btn" aria-label="avd-assistant, open settings">
-      <img src="icons/avatar.svg?v=3" alt="" class="buddy-avatar" width="32" height="32">
+      <img src="icons/avatar.svg?v=4" alt="" class="buddy-avatar" width="32" height="32">
       <span class="buddy-title">Assistant</span>
     </button>
+
+    <button type="button" id="history-toggle-btn" class="header-pill-btn" aria-expanded="true" aria-controls="history-panel">History</button>
 
     <button type="button" id="switch-pill" class="switch-pill pos-run" aria-label="Kill switch position: run. Open status">
       <span class="switch-dot" aria-hidden="true"></span>
       <span class="switch-label">Switch: <strong id="switch-pill-text">run</strong></span>
     </button>
 
-    <details class="header-notice" role="note">
-      <summary class="header-pill-btn">Notice</summary>
-      <div class="header-notice-full">
-        <strong>Personal research project — not for production.</strong>
-        Provided as is, without warranty; not affiliated with the author's employer, Liquidware or Microsoft.
-        avd-assistant reads and proposes plans only; every change is approved in GitHub.
+    <details id="sim-bar" class="header-sim-pill" aria-label="Public demo simulation controls" hidden>
+      <summary class="header-pill-btn">Sim</summary>
+      <div class="header-install-pop">
+        <div class="sim-actions" role="group" aria-label="Demo scenario presets">
+          <button type="button" class="sim-chip" data-preset="idle-hosts">Idle hosts</button>
+          <button type="button" class="sim-chip" data-preset="drain-host">Plan card</button>
+          <button type="button" class="sim-chip" data-preset="deploy-failed">Failed deploy</button>
+          <button type="button" class="sim-chip" data-preset="security-finding">Defender alert</button>
+        </div>
+        <div class="sim-actions" role="group" aria-label="Demo switch and network states">
+          <button type="button" class="sim-chip" data-sim-switch="run">run</button>
+          <button type="button" class="sim-chip" data-sim-switch="halt-actions">halt-actions</button>
+          <button type="button" class="sim-chip" data-sim-switch="halt-agents">halt-agents</button>
+          <button type="button" class="sim-chip" data-sim-switch="halt-all">halt-all</button>
+          <button type="button" class="sim-chip" id="sim-offline-toggle" aria-pressed="false">Offline</button>
+        </div>
       </div>
     </details>
 
@@ -97,28 +109,6 @@
     <button type="button" id="idle-resume-btn" class="banner-link">Tap to refresh</button>
   </div>
 
-  <!-- Simulation / Demo controls bar: collapsed by default so chat stays front and center -->
-  <section id="sim-bar" class="sim-bar" aria-label="Public demo simulation controls" hidden>
-    <details class="sim-details">
-      <summary class="sim-summary"><span class="sim-badge">Demo Sim</span> Scenarios &amp; switch states</summary>
-      <div class="sim-bar-row">
-        <div class="sim-actions" role="group" aria-label="Demo scenario presets">
-          <button type="button" class="sim-chip" data-preset="idle-hosts">Idle hosts</button>
-          <button type="button" class="sim-chip" data-preset="drain-host">Plan card</button>
-          <button type="button" class="sim-chip" data-preset="deploy-failed">Failed deploy</button>
-          <button type="button" class="sim-chip" data-preset="security-finding">Defender alert</button>
-        </div>
-        <div class="sim-actions" role="group" aria-label="Demo switch and network states">
-          <button type="button" class="sim-chip" data-sim-switch="run">run</button>
-          <button type="button" class="sim-chip" data-sim-switch="halt-actions">halt-actions</button>
-          <button type="button" class="sim-chip" data-sim-switch="halt-agents">halt-agents</button>
-          <button type="button" class="sim-chip" data-sim-switch="halt-all">halt-all</button>
-          <button type="button" class="sim-chip" id="sim-offline-toggle" aria-pressed="false">Offline</button>
-        </div>
-      </div>
-    </details>
-  </section>
-
   <div class="buddy-workspace">
     <!-- History drawer / side panel (stays open at >= 768px on iPad, drawer on phones; section 3 & section 5) -->
     <aside id="history-panel" class="history-panel" aria-label="Conversation history">
@@ -142,7 +132,7 @@
           <div id="empty-state" class="empty-state">
             <div class="welcome-card card">
               <div class="welcome-head">
-                <img src="icons/avatar.svg?v=3" alt="" class="welcome-avatar" width="40" height="40">
+                <img src="icons/avatar.svg?v=4" alt="" class="welcome-avatar" width="40" height="40">
                 <div>
                   <h1 id="welcome-title" class="welcome-title">Chief of Staff</h1>
                   <p id="welcome-sub" class="welcome-sub">Ready for triage, approvals, or spend.</p>
@@ -398,7 +388,14 @@
     </main>
   </div>
 
+  <footer class="buddy-foot">
+    <details class="footer-notice" role="note">
+      <summary>Personal research project — not for production</summary>
+      <p>Provided as is, without warranty; not affiliated with the author's employer, Liquidware or Microsoft. avd-assistant reads and proposes plans only; every change is approved in GitHub.</p>
+    </details>
+  </footer>
+
   <script src="fixtures.js"></script>
-  <script src="app.js?v=3"></script>
+  <script src="app.js?v=4"></script>
 </body>
 </html>
