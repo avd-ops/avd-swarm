@@ -119,10 +119,6 @@
         installDismissed: Boolean(parsed.installDismissed),
         assistantMode: ASSISTANT_MODE_META[parsed.assistantMode] ? parsed.assistantMode : "chief_of_staff"
       };
-        voice: ["off", "on", "auto"].includes(parsed.voice) ? parsed.voice : "off",
-        theme: ["system", "light", "dark"].includes(parsed.theme) ? parsed.theme : "system",
-        installDismissed: Boolean(parsed.installDismissed)
-      };
     } catch (_err) {
       return Object.assign({}, DEFAULT_SETTINGS);
     }
