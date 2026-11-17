@@ -1,0 +1,143 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" fill="none">
+  <title>assistant.avd-ops.dev — Social &amp; Demo Card (1200x630)</title>
+  <rect width="1200" height="630" fill="#0d1015"/>
+
+  <!-- Architectural 60px Hairline Grid -->
+  <g id="hairline-grid">
+    <line x1="60.5" y1="0" x2="60.5" y2="630" stroke="#64748b" stroke-opacity="0.09" stroke-width="1"/>
+    <line x1="120.5" y1="0" x2="120.5" y2="630" stroke="#64748b" stroke-opacity="0.09" stroke-width="1"/>
+    <line x1="180.5" y1="0" x2="180.5" y2="630" stroke="#64748b" stroke-opacity="0.09" stroke-width="1"/>
+    <line x1="240.5" y1="0" x2="240.5" y2="630" stroke="#64748b" stroke-opacity="0.09" stroke-width="1"/>
+    <line x1="300.5" y1="0" x2="300.5" y2="630" stroke="#64748b" stroke-opacity="0.09" stroke-width="1"/>
+    <line x1="360.5" y1="0" x2="360.5" y2="630" stroke="#64748b" stroke-opacity="0.09" stroke-width="1"/>
+    <line x1="420.5" y1="0" x2="420.5" y2="630" stroke="#64748b" stroke-opacity="0.09" stroke-width="1"/>
+    <line x1="480.5" y1="0" x2="480.5" y2="630" stroke="#64748b" stroke-opacity="0.09" stroke-width="1"/>
+    <line x1="540.5" y1="0" x2="540.5" y2="630" stroke="#64748b" stroke-opacity="0.09" stroke-width="1"/>
+    <line x1="600.5" y1="0" x2="600.5" y2="630" stroke="#64748b" stroke-opacity="0.09" stroke-width="1"/>
+    <line x1="660.5" y1="0" x2="660.5" y2="630" stroke="#64748b" stroke-opacity="0.09" stroke-width="1"/>
+    <line x1="720.5" y1="0" x2="720.5" y2="630" stroke="#64748b" stroke-opacity="0.09" stroke-width="1"/>
+    <line x1="780.5" y1="0" x2="780.5" y2="630" stroke="#64748b" stroke-opacity="0.09" stroke-width="1"/>
+    <line x1="840.5" y1="0" x2="840.5" y2="630" stroke="#64748b" stroke-opacity="0.09" stroke-width="1"/>
+    <line x1="900.5" y1="0" x2="900.5" y2="630" stroke="#64748b" stroke-opacity="0.09" stroke-width="1"/>
+    <line x1="960.5" y1="0" x2="960.5" y2="630" stroke="#64748b" stroke-opacity="0.09" stroke-width="1"/>
+    <line x1="1020.5" y1="0" x2="1020.5" y2="630" stroke="#64748b" stroke-opacity="0.09" stroke-width="1"/>
+    <line x1="1080.5" y1="0" x2="1080.5" y2="630" stroke="#64748b" stroke-opacity="0.09" stroke-width="1"/>
+    <line x1="1140.5" y1="0" x2="1140.5" y2="630" stroke="#64748b" stroke-opacity="0.09" stroke-width="1"/>
+    <line x1="0" y1="60.5" x2="1200" y2="60.5" stroke="#64748b" stroke-opacity="0.09" stroke-width="1"/>
+    <line x1="0" y1="120.5" x2="1200" y2="120.5" stroke="#64748b" stroke-opacity="0.09" stroke-width="1"/>
+    <line x1="0" y1="180.5" x2="1200" y2="180.5" stroke="#64748b" stroke-opacity="0.09" stroke-width="1"/>
+    <line x1="0" y1="240.5" x2="1200" y2="240.5" stroke="#64748b" stroke-opacity="0.09" stroke-width="1"/>
+    <line x1="0" y1="300.5" x2="1200" y2="300.5" stroke="#64748b" stroke-opacity="0.09" stroke-width="1"/>
+    <line x1="0" y1="360.5" x2="1200" y2="360.5" stroke="#64748b" stroke-opacity="0.09" stroke-width="1"/>
+    <line x1="0" y1="420.5" x2="1200" y2="420.5" stroke="#64748b" stroke-opacity="0.09" stroke-width="1"/>
+    <line x1="0" y1="480.5" x2="1200" y2="480.5" stroke="#64748b" stroke-opacity="0.09" stroke-width="1"/>
+    <line x1="0" y1="540.5" x2="1200" y2="540.5" stroke="#64748b" stroke-opacity="0.09" stroke-width="1"/>
+    <line x1="0" y1="600.5" x2="1200" y2="600.5" stroke="#64748b" stroke-opacity="0.09" stroke-width="1"/>
+  </g>
+
+  <!-- Quiet Left Content Bay Matte (keeps typography 100% free of grid-line strikethroughs while CAD bay retains full grid) -->
+  <rect x="61" y="61" width="1079" height="59" fill="#0d1015" fill-opacity="0.88"/>
+  <rect x="61" y="121" width="719" height="389" fill="#0d1015" fill-opacity="0.82"/>
+  <rect x="61" y="511" width="1079" height="59" fill="#0d1015" fill-opacity="0.88"/>
+
+  <!-- Outer Control-Plane Frame Locked to 60px Grid (x=60..1140, y=60..570) -->
+  <rect x="60.5" y="60.5" width="1080" height="510" stroke="#64748b" stroke-opacity="0.38" stroke-width="1"/>
+
+  <!-- 4 Corner Registration L-Ticks (#1ca998) -->
+  <path d="M 60.5 78.5 L 60.5 60.5 L 78.5 60.5" stroke="#1ca998" stroke-width="2"/>
+  <path d="M 1122.5 60.5 L 1140.5 60.5 L 1140.5 78.5" stroke="#1ca998" stroke-width="2"/>
+  <path d="M 60.5 552.5 L 60.5 570.5 L 78.5 570.5" stroke="#1ca998" stroke-width="2"/>
+  <path d="M 1122.5 570.5 L 1140.5 570.5 L 1140.5 552.5" stroke="#1ca998" stroke-width="2"/>
+
+  <!-- Header Band (y=60..120) & Footer Band (y=510..570) & Vertical Split (x=780) — All Exact Grid Multiples! -->
+  <line x1="60.5" y1="120.5" x2="1140.5" y2="120.5" stroke="#64748b" stroke-opacity="0.32" stroke-width="1"/>
+  <line x1="60.5" y1="510.5" x2="1140.5" y2="510.5" stroke="#64748b" stroke-opacity="0.32" stroke-width="1"/>
+  <line x1="780.5" y1="120.5" x2="780.5" y2="510.5" stroke="#64748b" stroke-opacity="0.32" stroke-width="1"/>
+
+  <!-- Top Telemetry Header -->
+  <rect x="88" y="86" width="8" height="8" fill="#1ca998"/>
+  <text x="108" y="95" fill="#64748b" font-family="'JetBrains Mono', 'IBM Plex Mono', 'DejaVu Sans Mono', monospace" font-size="13" font-weight="600" letter-spacing="2.0">AVD-OPS  //  OPERATIONS ASSISTANT PWA</text>
+  <text x="1112" y="95" text-anchor="end" fill="#1ca998" font-family="'JetBrains Mono', 'IBM Plex Mono', 'DejaVu Sans Mono', monospace" font-size="13" font-weight="600" letter-spacing="2.2">DEPLOY QUIETLY  ·  DS-V3.0</text>
+
+  <!-- LEFT PANE: Primary Horizontal Lockup + 4 Mode Sub-Badges -->
+  <g transform="translate(88, 156) scale(0.21)">
+    <path d="M 244.6 27.8 Q 256 24 267.4 27.8 L 436.6 84.2 Q 448 88 448 100 L 448 284 Q 448 296 439.5 304.5 L 264.5 479.5 Q 256 488 247.5 479.5 L 72.5 304.5 Q 64 296 64 284 L 64 100 Q 64 88 75.4 84.2 Z" fill="#1ca998"/>
+    <path d="M 118 120 L 394 120 L 404 130 L 404 236 L 372 268 L 140 268 L 108 236 L 108 130 Z" fill="#0d1015"/>
+    <path d="M 224 194 L 180 150 L 162 168 L 188 194 L 162 220 L 180 238 Z" fill="#ffffff"/>
+    <path d="M 288 194 L 332 150 L 350 168 L 324 194 L 350 220 L 332 238 Z" fill="#ffffff"/>
+  </g>
+
+  <text x="214" y="214" fill="#ffffff" font-family="'Schibsted Grotesk', 'Inter Display', 'Inter', system-ui, sans-serif" font-size="58" font-weight="700" letter-spacing="-1.8">avd<tspan fill="#1ca998">-</tspan>assistant</text>
+  <text x="216" y="248" fill="#64748b" font-family="'IBM Plex Mono', 'JetBrains Mono', 'DejaVu Sans Mono', monospace" font-size="14.5" font-weight="500" letter-spacing="0.3">Interactive control-plane companion for Azure Virtual Desktop</text>
+
+  <text x="92" y="316" fill="#64748b" font-family="'JetBrains Mono', 'IBM Plex Mono', 'DejaVu Sans Mono', monospace" font-size="11.5" font-weight="600" letter-spacing="2.0">OPERATOR MODES  //  SILHOUETTE-DISTINCT SUB-BADGES</text>
+  <line x1="92" y1="328.5" x2="744" y2="328.5" stroke="#64748b" stroke-opacity="0.24" stroke-width="1"/>
+
+  <!-- 4 Mode Sub-Badge Architectural Cells (y=346, width=154 each, gap=12) -->
+  <g transform="translate(92, 346)">
+    <rect x="0.5" y="0.5" width="153" height="130" rx="6" fill="#0d1015" stroke="#1ca998" stroke-opacity="0.8" stroke-width="1"/>
+    <rect x="1" y="1" width="152" height="3" fill="#1ca998"/>
+    <g transform="translate(18, 20) scale(1.5)">
+      <path d="M 12 2.5 L 20.5 11 L 18.5 13 L 12 6.5 L 5.5 13 L 3.5 11 Z" fill="#1ca998"/>
+      <path d="M 12 8.8 L 20.5 17.3 L 18.5 19.3 L 12 12.8 L 5.5 19.3 L 3.5 17.3 Z" fill="#ffffff"/>
+      <path d="M 7.5 19.5 L 16.5 19.5 L 17.7 20.7 L 16.5 21.9 L 7.5 21.9 L 6.3 20.7 Z" fill="#1ca998"/>
+    </g>
+    <text x="18" y="88" fill="#ffffff" font-family="'Schibsted Grotesk', 'Inter', sans-serif" font-size="16" font-weight="700" letter-spacing="-0.2">Chief of Staff</text>
+    <text x="18" y="110" fill="#1ca998" font-family="'IBM Plex Mono', 'DejaVu Sans Mono', monospace" font-size="11.5" font-weight="500" letter-spacing="0.6">TRIAGE · COMMAND</text>
+  </g>
+
+  <g transform="translate(258, 346)">
+    <rect x="0.5" y="0.5" width="153" height="130" rx="6" fill="#0d1015" stroke="#64748b" stroke-opacity="0.38" stroke-width="1"/>
+    <g transform="translate(18, 20) scale(1.5)">
+      <path fill-rule="evenodd" clip-rule="evenodd" d="M 12 3.8 L 20.2 12 L 12 20.2 L 3.8 12 Z M 12 6.6 L 17.4 12 L 12 17.4 L 6.6 12 Z" fill="#ffffff"/>
+      <path d="M 10.9 1 L 13.1 1 L 13.1 5.2 L 10.9 5.2 Z M 10.9 18.8 L 13.1 18.8 L 13.1 23 L 10.9 23 Z M 1 10.9 L 5.2 10.9 L 5.2 13.1 L 1 13.1 Z M 18.8 10.9 L 23 10.9 L 23 13.1 L 18.8 13.1 Z" fill="#1ca998"/>
+      <path d="M 12 9.8 L 14.2 12 L 12 14.2 L 9.8 12 Z" fill="#1ca998"/>
+    </g>
+    <text x="18" y="88" fill="#ffffff" font-family="'Schibsted Grotesk', 'Inter', sans-serif" font-size="16" font-weight="700" letter-spacing="-0.2">Red Team</text>
+    <text x="18" y="110" fill="#64748b" font-family="'IBM Plex Mono', 'DejaVu Sans Mono', monospace" font-size="11.5" font-weight="500" letter-spacing="0.6">RISK · CHALLENGE</text>
+  </g>
+
+  <g transform="translate(424, 346)">
+    <rect x="0.5" y="0.5" width="153" height="130" rx="6" fill="#0d1015" stroke="#64748b" stroke-opacity="0.38" stroke-width="1"/>
+    <g transform="translate(18, 20) scale(1.5)">
+      <path d="M 12 2.5 L 21.5 7.25 L 12 12 L 2.5 7.25 Z" fill="#1ca998"/>
+      <path d="M 2.5 11.8 L 4.5 10.8 L 12 14.55 L 19.5 10.8 L 21.5 11.8 L 12 16.55 Z" fill="#ffffff"/>
+      <path d="M 2.5 16.45 L 4.5 15.45 L 12 19.2 L 19.5 15.45 L 21.5 16.45 L 12 21.2 Z" fill="#ffffff" fill-opacity="0.78"/>
+    </g>
+    <text x="18" y="88" fill="#ffffff" font-family="'Schibsted Grotesk', 'Inter', sans-serif" font-size="16" font-weight="700" letter-spacing="-0.2">Guru</text>
+    <text x="18" y="110" fill="#64748b" font-family="'IBM Plex Mono', 'DejaVu Sans Mono', monospace" font-size="11.5" font-weight="500" letter-spacing="0.6">ARCH · DEEP DIVE</text>
+  </g>
+
+  <g transform="translate(590, 346)">
+    <rect x="0.5" y="0.5" width="153" height="130" rx="6" fill="#0d1015" stroke="#64748b" stroke-opacity="0.38" stroke-width="1"/>
+    <g transform="translate(18, 20) scale(1.5)">
+      <path fill-rule="evenodd" clip-rule="evenodd" d="M 3.5 5.5 L 20.5 5.5 L 22.5 7.5 L 22.5 15 L 19 18.5 L 5 18.5 L 1.5 15 L 1.5 7.5 Z M 4.5 7.5 L 19.5 7.5 L 20.5 8.5 L 20.5 14.2 L 18.2 16.5 L 5.8 16.5 L 3.5 14.2 L 3.5 8.5 Z" fill="#1ca998"/>
+      <path d="M 8.2 9.8 L 11.2 12.8 L 9.8 14.2 L 8.2 12.6 L 6.6 14.2 L 5.2 12.8 Z" fill="#ffffff"/>
+      <path d="M 15.8 9.8 L 18.8 12.8 L 17.4 14.2 L 15.8 12.6 L 14.2 14.2 L 12.8 12.8 Z" fill="#ffffff"/>
+    </g>
+    <text x="18" y="88" fill="#ffffff" font-family="'Schibsted Grotesk', 'Inter', sans-serif" font-size="16" font-weight="700" letter-spacing="-0.2">Buddy</text>
+    <text x="18" y="110" fill="#64748b" font-family="'IBM Plex Mono', 'DejaVu Sans Mono', monospace" font-size="11.5" font-weight="500" letter-spacing="0.6">WARM · COMPANION</text>
+  </g>
+
+  <!-- RIGHT PANE: CAD Geometric Elevation (centered inside x=780..1140) -->
+  <g transform="translate(822, 146)">
+    <rect x="0.5" y="0.5" width="275" height="275" rx="54" fill="#0d1015" stroke="#64748b" stroke-opacity="0.48" stroke-width="1"/>
+    <rect x="27.5" y="27.5" width="221" height="221" stroke="#64748b" stroke-opacity="0.28" stroke-dasharray="4 4" stroke-width="1"/>
+    <circle cx="138" cy="138" r="110.4" stroke="#1ca998" stroke-opacity="0.4" stroke-dasharray="3 3" stroke-width="1"/>
+    <line x1="138" y1="12" x2="138" y2="264" stroke="#64748b" stroke-opacity="0.18" stroke-width="1"/>
+    <line x1="12" y1="138" x2="264" y2="138" stroke="#64748b" stroke-opacity="0.18" stroke-width="1"/>
+    <g transform="scale(0.5390625)">
+      <path d="M 246.5 83.2 Q 256 80 265.5 83.2 L 390.5 124.8 Q 400 128 400 138 L 400 278 Q 400 288 392.9 295.1 L 263.1 424.9 Q 256 432 248.9 424.9 L 119.1 295.1 Q 112 288 112 278 L 112 138 Q 112 128 121.5 124.8 Z" fill="#1ca998"/>
+      <path d="M 152 152 L 360 152 L 368 160 L 368 240 L 344 264 L 168 264 L 144 240 L 144 160 Z" fill="#0d1015"/>
+      <path d="M 232 208 L 198 174 L 184 188 L 204 208 L 184 228 L 198 242 Z" fill="#ffffff"/>
+      <path d="M 280 208 L 314 174 L 328 188 L 308 208 L 328 228 L 314 242 Z" fill="#ffffff"/>
+    </g>
+    <rect x="-4" y="290" width="284" height="44" fill="#0d1015" fill-opacity="0.82"/>
+    <text x="0" y="306" fill="#64748b" font-family="'IBM Plex Mono', 'DejaVu Sans Mono', monospace" font-size="11.5" font-weight="500" letter-spacing="0.6">GRID: 512×512  ·  SAFE ZONE: 80%</text>
+    <text x="0" y="326" fill="#1ca998" font-family="'IBM Plex Mono', 'DejaVu Sans Mono', monospace" font-size="11.5" font-weight="500" letter-spacing="0.6">KEEL: 45.0°    ·  PROMPT: &gt;&lt; VISOR</text>
+  </g>
+
+  <!-- Bottom Footer Band -->
+  <text x="92" y="546" fill="#1ca998" font-family="'IBM Plex Mono', 'JetBrains Mono', 'DejaVu Sans Mono', monospace" font-size="17" font-weight="600" letter-spacing="0.5">&gt;&lt; <tspan fill="#ffffff">assistant.avd-ops.dev</tspan></text>
+  <text x="1112" y="545" text-anchor="end" fill="#64748b" font-family="'IBM Plex Mono', 'JetBrains Mono', 'DejaVu Sans Mono', monospace" font-size="12.5" font-weight="500" letter-spacing="1.4">UI NAME: ASSISTANT  ·  OPEN SOURCE MIT</text>
+</svg>

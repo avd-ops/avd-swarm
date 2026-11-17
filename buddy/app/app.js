@@ -22,7 +22,61 @@
     depth: "short",
     voice: "off",
     theme: "system",
-    installDismissed: false
+    installDismissed: false,
+    assistantMode: "chief_of_staff"
+  };
+
+  const IDLE_PAUSE_MS = 10 * 60 * 1000;
+  const ASSISTANT_MODE_META = {
+    chief_of_staff: {
+      label: "Chief of Staff",
+      title: "Chief of Staff — ready when you are",
+      greeting: "I'm on Chief of Staff duty. Want the priority triage, pending approvals, or today's spend status?",
+      placeholder: "Ask Chief of Staff what needs attention...",
+      starters: [
+        "What needs my attention?",
+        "Any pending approvals?",
+        "Where are we on spend?",
+        "Check switch status"
+      ],
+      followUps: ["What should I do next?", "Switch to Red Team on this"]
+    },
+    red_team: {
+      label: "Red Team",
+      title: "Red Team — challenge & risk lens",
+      greeting: "Point me at a plan or change and I'll surface risks, missing rollbacks, and unverified assumptions.",
+      placeholder: "Paste a plan or change for Red Team to challenge...",
+      starters: [
+        "Stress-test the drain plan",
+        "What assumptions aren't verified?",
+        "Check blast radius and rollback"
+      ],
+      followUps: ["What could break?", "Show the plan card"]
+    },
+    guru: {
+      label: "Guru",
+      title: "Guru — second brain & architecture",
+      greeting: "I'll pull from the pinned second brain and Microsoft Learn first. What do you want to dig into?",
+      placeholder: "Ask Guru about AVD architecture, decisions or Learn...",
+      starters: [
+        "Why is max sessions set to 8?",
+        "How do idle hosts affect billing?",
+        "Explain Decision 0016"
+      ],
+      followUps: ["Show related Learn docs", "What's the safe Cloud Shell check?"]
+    },
+    buddy: {
+      label: "Buddy",
+      title: "Buddy — calm walkthroughs",
+      greeting: "Hey — Buddy here. Ask me anything about your pools, failed runs, or where to start.",
+      placeholder: "Ask Buddy about hosts, sessions, cost or deployments...",
+      starters: [
+        "Which hosts were idle all weekend?",
+        "The deploy failed and I don't know why",
+        "Drain host 3 and restart its agent"
+      ],
+      followUps: ["Walk me through the next step", "What's safe right now?"]
+    }
   };
 
   const state = {
@@ -45,7 +99,9 @@
     draftInMemory: "",
     listening: false,
     recognition: null,
-    speakingTurnId: null
+    speakingTurnId: null,
+    idlePaused: false,
+    idleTimerId: null
   };
 
   function loadSettings() {
@@ -58,6 +114,11 @@
       return {
         humor: parsed.humor === "off" ? "off" : "light",
         depth: parsed.depth === "longer" ? "longer" : "short",
+        voice: parsed.voice === "on" || parsed.voice === "auto" ? parsed.voice : "off",
+        theme: parsed.theme === "light" || parsed.theme === "dark" ? parsed.theme : "system",
+        installDismissed: Boolean(parsed.installDismissed),
+        assistantMode: ASSISTANT_MODE_META[parsed.assistantMode] ? parsed.assistantMode : "chief_of_staff"
+      };
         voice: ["off", "on", "auto"].includes(parsed.voice) ? parsed.voice : "off",
         theme: ["system", "light", "dark"].includes(parsed.theme) ? parsed.theme : "system",
         installDismissed: Boolean(parsed.installDismissed)
@@ -523,6 +584,14 @@
     const wrapper = document.createElement("div");
     wrapper.className = "msg-turn";
 
+    if (turn.handoff) {
+      const note = document.createElement("div");
+      note.className = "chat-handoff-pill";
+      note.textContent = String(turn.answer || "");
+      wrapper.appendChild(note);
+      return wrapper;
+    }
+
     if (turn.operatorText) {
       const opBubble = document.createElement("div");
       opBubble.className = "msg-operator";
@@ -551,11 +620,20 @@
 
     const sender = document.createElement("span");
     sender.className = "msg-sender";
-    sender.textContent = "avd-buddy";
+    sender.textContent = "Assistant";
+
+    const assistantModeKey = ASSISTANT_MODE_META[turn.assistantMode] ? turn.assistantMode : state.settings.assistantMode;
+    const modeLabel = ASSISTANT_MODE_META[assistantModeKey].label;
+    const badgeParts = [modeLabel];
+    if (turn.sourceBadge) {
+      badgeParts.push(String(turn.sourceBadge));
+    } else {
+      badgeParts.push("mode: " + resolvedMode);
+    }
 
     const modeBadge = document.createElement("span");
     modeBadge.className = "msg-mode-badge";
-    modeBadge.textContent = "mode: " + resolvedMode;
+    modeBadge.textContent = badgeParts.join(" · ");
 
     metaRow.appendChild(sender);
     metaRow.appendChild(modeBadge);
@@ -581,7 +659,7 @@
     const answerP = document.createElement("p");
     answerP.className = "msg-answer";
     if (turn.thinking) {
-      answerP.textContent = "Thinking...";
+      answerP.textContent = "Waking Assistant...";
       body.appendChild(answerP);
       buddyRow.appendChild(body);
       wrapper.appendChild(buddyRow);
@@ -590,6 +668,94 @@
 
     appendSafeFormattedText(answerP, turn.answer || "");
     body.appendChild(answerP);
+
+    if (turn.modeBlock && typeof turn.modeBlock === "object") {
+      const mb = turn.modeBlock;
+      const mbCard = document.createElement("div");
+      mbCard.className = "mode-block-card";
+
+      if (mb.kind === "red_team") {
+        const sections = [
+          { title: "Risks surfaced", items: mb.risks || [] },
+          { title: "Assumptions", items: mb.assumptions || [] },
+          { title: "Questions before approval", items: mb.questions || [] }
+        ];
+        for (const sec of sections) {
+          if (sec.items.length > 0) {
+            const eb = document.createElement("span");
+            eb.className = "eyebrow";
+            eb.textContent = sec.title;
+            mbCard.appendChild(eb);
+            const ul = document.createElement("ul");
+            for (const item of sec.items) {
+              const li = document.createElement("li");
+              li.textContent = String(item);
+              ul.appendChild(li);
+            }
+            mbCard.appendChild(ul);
+          }
+        }
+        if (mb.footer) {
+          const fp = document.createElement("p");
+          fp.className = "mode-block-footer";
+          fp.textContent = String(mb.footer);
+          mbCard.appendChild(fp);
+        }
+        body.appendChild(mbCard);
+      } else if (mb.kind === "triage" && Array.isArray(mb.items) && mb.items.length > 0) {
+        const eb = document.createElement("span");
+        eb.className = "eyebrow";
+        eb.textContent = "Prioritized triage";
+        mbCard.appendChild(eb);
+        const ul = document.createElement("ul");
+        for (const item of mb.items) {
+          const li = document.createElement("li");
+          li.textContent = String(item.title || "");
+          ul.appendChild(li);
+        }
+        mbCard.appendChild(ul);
+        body.appendChild(mbCard);
+      } else if (mb.kind === "guru") {
+        if (Array.isArray(mb.snippets)) {
+          for (const snip of mb.snippets) {
+            const sc = document.createElement("div");
+            sc.className = snip.unverified ? "snippet-card snippet-unverified" : "snippet-card";
+            const lbl = document.createElement("span");
+            lbl.className = "eyebrow";
+            lbl.textContent = String(snip.label || "unverified, not for pasting");
+            sc.appendChild(lbl);
+            const bq = document.createElement("blockquote");
+            bq.className = "snippet-quote";
+            bq.textContent = String(snip.code || "");
+            sc.appendChild(bq);
+            if (snip.copyable === true && navigator.clipboard) {
+              const copyBtn = document.createElement("button");
+              copyBtn.type = "button";
+              copyBtn.className = "buddy-small-btn";
+              copyBtn.textContent = "Copy snippet";
+              copyBtn.addEventListener("click", () => {
+                navigator.clipboard.writeText(String(snip.code || ""));
+              });
+              sc.appendChild(copyBtn);
+            }
+            mbCard.appendChild(sc);
+          }
+        }
+        if (mb.canSynthesize && turn.operatorText) {
+          const synBtn = document.createElement("button");
+          synBtn.type = "button";
+          synBtn.className = "synthesize-btn";
+          synBtn.textContent = "Synthesize with AI (uses tokens)";
+          synBtn.addEventListener("click", () => {
+            submitQuestion(turn.operatorText, { synthesize: true });
+          });
+          mbCard.appendChild(synBtn);
+        }
+        if (mbCard.childNodes.length > 0) {
+          body.appendChild(mbCard);
+        }
+      }
+    }
 
     if (Array.isArray(turn.citations) && turn.citations.length > 0) {
       const citBox = document.createElement("div");
@@ -728,6 +894,38 @@
     const pillText = document.getElementById("switch-pill-text");
     const banner = document.getElementById("switch-banner");
     const bannerText = document.getElementById("switch-banner-text");
+    const composerMode = document.getElementById("composer-mode");
+    if (composerMode) {
+      composerMode.addEventListener("change", (e) => {
+        setAssistantMode(e.target.value);
+      });
+    }
+
+    document.querySelectorAll("#welcome-mode-picker .mode-tile").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        setAssistantMode(btn.getAttribute("data-mode") || "chief_of_staff");
+      });
+    });
+
+    const idleResumeBtn = document.getElementById("idle-resume-btn");
+    if (idleResumeBtn) {
+      idleResumeBtn.addEventListener("click", () => {
+        resetIdleTimer();
+        if (!state.simMode && !isOffline()) {
+          fetch("/api/status").catch(() => {});
+        }
+      });
+    }
+
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden && state.idlePaused) {
+        resetIdleTimer();
+      }
+    });
+
+    setAssistantMode(state.settings.assistantMode, { silent: true });
+    resetIdleTimer();
+
     const composerForm = document.getElementById("composer-form");
     const haltAgentsCard = document.getElementById("halt-agents-card");
     const statusBadge = document.getElementById("status-switch-badge");
@@ -999,7 +1197,78 @@
     }
   }
 
-  async function submitQuestion(text) {
+  function setAssistantMode(modeKey, opts) {
+    const valid = ASSISTANT_MODE_META[modeKey] ? modeKey : "chief_of_staff";
+    const meta = ASSISTANT_MODE_META[valid];
+    const changed = state.settings.assistantMode !== valid;
+    state.settings.assistantMode = valid;
+    saveSettings();
+    const sel = document.getElementById("composer-mode");
+    if (sel) {
+      sel.value = valid;
+    }
+    document.querySelectorAll("#welcome-mode-picker .mode-tile").forEach((btn) => {
+      btn.setAttribute("aria-pressed", btn.getAttribute("data-mode") === valid ? "true" : "false");
+    });
+    const inputEl = document.getElementById("composer-input");
+    if (inputEl) {
+      inputEl.placeholder = meta.placeholder;
+    }
+    const wTitle = document.getElementById("welcome-title");
+    if (wTitle) {
+      wTitle.textContent = meta.title;
+    }
+    const wSub = document.getElementById("welcome-sub");
+    if (wSub) {
+      wSub.textContent = meta.greeting;
+    }
+    const startersEl = document.getElementById("starter-prompts");
+    if (startersEl && Array.isArray(meta.starters)) {
+      startersEl.innerHTML = "";
+      for (const promptText of meta.starters) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "follow-up-btn";
+        b.setAttribute("data-prompt", promptText);
+        b.textContent = promptText;
+        b.addEventListener("click", () => submitQuestion(promptText));
+        startersEl.appendChild(b);
+      }
+    }
+    if (changed && !(opts && opts.silent) && state.turns.length > 0) {
+      state.turns.push({
+        id: "handoff-" + Date.now(),
+        handoff: true,
+        assistantMode: valid,
+        answer: "Switched to " + meta.label + " — " + meta.greeting
+      });
+      renderMessages();
+    }
+  }
+
+  function resetIdleTimer() {
+    if (state.idleTimerId) {
+      window.clearTimeout(state.idleTimerId);
+    }
+    if (state.idlePaused) {
+      state.idlePaused = false;
+      const idleBanner = document.getElementById("idle-pause-banner");
+      if (idleBanner) {
+        idleBanner.hidden = true;
+      }
+    }
+    state.idleTimerId = window.setTimeout(() => {
+      state.idlePaused = true;
+      const idleBanner = document.getElementById("idle-pause-banner");
+      if (idleBanner) {
+        idleBanner.hidden = false;
+      }
+    }, IDLE_PAUSE_MS);
+  }
+
+  async function submitQuestion(text, opts) {
+    resetIdleTimer();
+    const options = opts || {};
     // Rule 6: Never send later when offline.
     if (isOffline()) {
       updateOfflineUI();
@@ -1022,10 +1291,14 @@
     }
     state.draftInMemory = trimmed;
 
+    const currentMode = state.settings.assistantMode || "chief_of_staff";
+    const idempotencyKey = "idem-" + Date.now() + "-" + Math.random().toString(16).slice(2, 10);
+
     // Under 200ms local echo and thinking line (docs/buddy-app.md section 9).
     const pendingTurn = {
       id: "pending-" + Date.now(),
       operatorText: trimmed,
+      assistantMode: currentMode,
       thinking: true,
       mode: "light",
       events: []
@@ -1035,12 +1308,28 @@
 
     if (state.simMode) {
       const fixtures = window.AVD_BUDDY_FIXTURES;
-      const matched = fixtures.matchFixtureReply(trimmed);
+      const matched = Object.assign({}, fixtures.matchFixtureReply(trimmed), {
+        assistantMode: currentMode,
+        sourceBadge: "0 tokens · rule-based"
+      });
+      if (currentMode !== "buddy") {
+        matched.aside = null;
+      }
+      if (currentMode === "red_team") {
+        matched.modeBlock = {
+          kind: "red_team",
+          checksRun: 4,
+          risks: [],
+          assumptions: ["Plan hash matches the GitHub approve run."],
+          questions: ["Have active user sessions on target hosts been verified?"],
+          footer: "These 4 checks found nothing. This is not a gate result."
+        };
+      }
       state.turns[state.turns.length - 1] = matched;
       state.finishedAnswers += 1;
       state.draftInMemory = "";
       renderMessages();
-      announcePolite("avd-buddy answered: " + matched.answer);
+      announcePolite("Assistant answered: " + matched.answer);
       if (state.settings.voice === "auto") {
         speakTurn(matched, resolveTurnMode(matched));
       }
@@ -1053,6 +1342,9 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           question: trimmed,
+          mode: currentMode,
+          idempotencyKey: idempotencyKey,
+          synthesize: Boolean(options.synthesize),
           humor: state.settings.humor,
           depth: state.settings.depth
         })
@@ -1395,6 +1687,38 @@
         submitQuestion(btn.getAttribute("data-prompt") || "");
       });
     });
+
+    const composerMode = document.getElementById("composer-mode");
+    if (composerMode) {
+      composerMode.addEventListener("change", (e) => {
+        setAssistantMode(e.target.value);
+      });
+    }
+
+    document.querySelectorAll("#welcome-mode-picker .mode-tile").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        setAssistantMode(btn.getAttribute("data-mode") || "chief_of_staff");
+      });
+    });
+
+    const idleResumeBtn = document.getElementById("idle-resume-btn");
+    if (idleResumeBtn) {
+      idleResumeBtn.addEventListener("click", () => {
+        resetIdleTimer();
+        if (!state.simMode && !isOffline()) {
+          fetch("/api/status").catch(() => {});
+        }
+      });
+    }
+
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden && state.idlePaused) {
+        resetIdleTimer();
+      }
+    });
+
+    setAssistantMode(state.settings.assistantMode, { silent: true });
+    resetIdleTimer();
 
     const composerForm = document.getElementById("composer-form");
     const composerInput = document.getElementById("composer-input");

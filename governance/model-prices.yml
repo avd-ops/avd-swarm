@@ -30,3 +30,36 @@ providers:
       gpt-4.1-nano: {input: 0.10, output: 0.40, cacheRead: 0.025, cacheWrite: 0.10}
       gpt-4.1-mini: {input: 0.40, output: 1.60, cacheRead: 0.10, cacheWrite: 0.40}
       gpt-4o-mini:  {input: 0.15, output: 0.60, cacheRead: 0.075, cacheWrite: 0.15}
+
+# Server-pinned Stage 3 model, effort, output cap, and isolated daily sub-cap per assistant mode
+# (docs/assistant-spec.md sections 4-5, F5 & F10). Client-supplied model or effort is refused (400).
+# Hitting an assistant daily_cap_usd pauses Stage 3 only and never trips the swarm's halt-agents.
+assistant_modes:
+  chief_of_staff:
+    provider: anthropic
+    model_id: claude-haiku-5-5
+    effort: low
+    max_tokens: 400
+    daily_cap_usd: 0.25
+    prompt_caching: false
+  red_team:
+    provider: anthropic
+    model_id: claude-sonnet-5-5
+    effort: medium
+    max_tokens: 1000
+    daily_cap_usd: 0.50
+    prompt_caching: false
+  guru:
+    provider: anthropic
+    model_id: claude-sonnet-5-5
+    effort: medium
+    max_tokens: 1000
+    daily_cap_usd: 0.50
+    prompt_caching: false
+  buddy:
+    provider: anthropic
+    model_id: claude-haiku-5-5
+    effort: low
+    max_tokens: 300
+    daily_cap_usd: 0.15
+    prompt_caching: false

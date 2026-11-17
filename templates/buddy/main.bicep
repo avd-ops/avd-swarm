@@ -50,6 +50,15 @@ param tokenSpendCapUsd string = '15.00'
 @allowed(['true', 'false'])
 param simMode string = 'false'
 
+@description('Monthly Azure resource group budget alert in USD (F9: default $1).')
+param monthlyBudgetUsd int = 1
+
+@description('Optional email for the $1 resource group budget alert; leave empty to skip budget notification.')
+param budgetAlertEmail string = ''
+
+@description('Start date (YYYY-MM-01) for the monthly budget resource when budgetAlertEmail is set.')
+param budgetStartDate string = '2026-11-01'
+
 @description('Short unique suffix for resource names.')
 param suffix string = take(uniqueString(resourceGroup().id), 6)
 
@@ -114,12 +123,24 @@ resource buddyApp 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'AGENT_IDENTITY_APP_ID', value: agentIdentityAppId }
             { name: 'AGENT_MODEL', value: agentModel }
             { name: 'TOKEN_SPEND_CAP_USD', value: tokenSpendCapUsd }
+            // F8: Application Insights disabled; core environment uses --logs-destination none.
+            { name: 'APPINSIGHTS_DISABLED', value: 'true' }
           ]
         }
       ]
       scale: {
         minReplicas: 0
         maxReplicas: 2
+        rules: [
+          {
+            name: 'http-scale'
+            http: {
+              metadata: {
+                concurrentRequests: '10'
+              }
+            }
+          }
+        ]
       }
     }
   }
@@ -161,6 +182,30 @@ resource buddyAuth 'Microsoft.App/containerApps/authConfigs@2024-03-01' = {
     login: {
       tokenStore: {
         enabled: false
+      }
+    }
+  }
+}
+
+// F9: $1 resource group budget alert when budgetAlertEmail is provided.
+resource assistantBudget 'Microsoft.Consumption/budgets@2023-11-01' = if (!empty(budgetAlertEmail)) {
+  name: 'budget-avdswarm-assistant-${suffix}'
+  properties: {
+    category: 'Cost'
+    amount: monthlyBudgetUsd
+    timeGrain: 'Monthly'
+    timePeriod: {
+      startDate: budgetStartDate
+    }
+    notifications: {
+      actual80: {
+        enabled: true
+        operator: 'GreaterThan'
+        threshold: 80
+        contactEmails: [
+          budgetAlertEmail
+        ]
+        thresholdType: 'Actual'
       }
     }
   }

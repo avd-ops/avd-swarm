@@ -33,6 +33,8 @@ if str(ROOT / "scripts") not in sys.path:
 
 import build_buddy_icons  # noqa: E402
 import voice_check  # noqa: E402
+from buddy import assistant_router  # noqa: E402
+from buddy import transcript_store  # noqa: E402
 
 APP_DIR = ROOT / "buddy/app"
 VOICE_SETTINGS_PATH = ROOT / "governance/buddy-voice.yml"
@@ -186,8 +188,20 @@ class BuddyState:
         self.buddy_uami_client_id = buddy_uami_client_id
         self.token_provider = token_provider
         self.voice_settings = yaml.safe_load(VOICE_SETTINGS_PATH.read_text(encoding="utf-8"))
+        self.triage_cfg = assistant_router.load_yaml_safe(ROOT / "governance/assistant-triage.yml")
+        self.prices_cfg = assistant_router.load_yaml_safe(ROOT / "governance/model-prices.yml")
+        self.index_cfg = assistant_router.load_yaml_safe(ROOT / "governance/assistant-index.yml")
+        self.snippet_allowlist = assistant_router.load_snippet_allowlist(ROOT)
+        brain_sha = str(
+            (self.index_cfg.get("sources") or {}).get("avd-second-brain", {}).get("pinned_sha", "0000000")
+        )
+        self.brain_index = assistant_router.BrainIndex(pinned_sha=brain_sha)
         self.static_files = load_static_files(APP_DIR)
         self.turns: dict[str, dict[str, Any]] = {}
+        self.idempotency_turns: dict[str, str] = {}
+        self.assistant_daily_spend_usd: dict[str, float] = {}
+        self.pending_plans_count = 0
+        self.transcript_store = transcript_store.TranscriptStore()
         self.replies_since_aside = 99
         self.history: list[dict[str, str]] = [
             {"id": "thread-idle-hosts", "title": "Weekend idle hosts in Sales pool", "updatedAt": "Today, 09:14", "presetKey": "idle-hosts"},
@@ -323,20 +337,25 @@ class BuddyState:
         question: str,
         humor: str,
         events: set[str],
+        server_events: set[str] | None = None,
+        assistant_mode: str = "buddy",
         answer: str,
         raw_aside: str | None,
     ) -> tuple[str, str | None]:
         turn_check = voice_check.Turn(
             events=events,
+            server_events=server_events or set(),
             operator_text=question,
             language="en",
             humor_setting="off" if humor == "off" else "light",
+            assistant_mode=assistant_mode,
             replies_since_aside=self.replies_since_aside,
         )
         mode = voice_check.get_mode(turn_check, self.voice_settings)
         final_aside: str | None = None
         estate_names = ["contoso", "hp-contoso-prod", "hp-contoso-sales", "sh-pooled-03", "sh-sales-01"]
-        if raw_aside and voice_check.aside_allowed(turn_check, self.voice_settings):
+        # F16: drop aside in code unless mode == "buddy"
+        if assistant_mode == "buddy" and raw_aside and voice_check.aside_allowed(turn_check, self.voice_settings):
             findings = voice_check.check_reply(
                 turn_check,
                 raw_aside,
@@ -367,19 +386,113 @@ class BuddyState:
         )
         del self.history[20:]
 
-    def start_turn(self, question: str, humor: str, operator_claim: dict[str, str]) -> dict[str, Any]:
-        if self.sim_mode or not self.agent_api_url:
-            return self.build_reply(question, humor, operator_claim)
+    def _server_events(self) -> set[str]:
+        """Server-derived events that client screen state can add to, never remove (F2)."""
+        ev: set[str] = set()
+        if self.switch_position != "run":
+            ev.add("kill-switch")
+        if self.pending_plans_count > 0:
+            ev.add("approval-pending")
+        return ev
+
+    def start_turn(
+        self,
+        question: str,
+        humor: str,
+        operator_claim: dict[str, str],
+        *,
+        assistant_mode: str = "buddy",
+        idempotency_key: str = "",
+        synthesize: bool = False,
+        explicit_mode: bool = False,
+    ) -> dict[str, Any]:
+        if idempotency_key and idempotency_key in self.idempotency_turns:
+            existing = self.turns.get(self.idempotency_turns[idempotency_key])
+            if existing is not None:
+                return existing
+
+        # Stage 0: deterministic scope gate (0 tokens, F12)
+        recent_in_scope = any(t.get("stage", 1) >= 1 for t in list(self.turns.values())[-3:])
+        ok_scope, refusal = assistant_router.classify_scope(
+            question,
+            has_recent_in_scope=recent_in_scope,
+            has_open_plan_or_finding=self.pending_plans_count > 0,
+        )
+        if not ok_scope:
+            turn_id = "turn-" + uuid.uuid4().hex[:10]
+            turn_obj: dict[str, Any] = {
+                "id": turn_id,
+                "operatorText": question,
+                "requestedBy": operator_claim.get("name", "operator@contoso.com"),
+                "assistantMode": assistant_mode,
+                "stage": 0,
+                "tokenCost": 0,
+                "sourceBadge": "0 tokens · scope-gate",
+                "mode": "light",
+                "events": [],
+                "answer": refusal or assistant_router.OFF_TOPIC_REFERRAL,
+                "citations": [],
+                "learnLinks": [],
+                "aside": None,
+                "plan": None,
+                "status": "completed",
+            }
+            self.turns[turn_id] = turn_obj
+            if idempotency_key:
+                self.idempotency_turns[idempotency_key] = turn_id
+            return turn_obj
+
+        if self.sim_mode or not self.agent_api_url or (explicit_mode and not synthesize):
+            turn_obj = self.build_reply(
+                question,
+                humor,
+                operator_claim,
+                assistant_mode=assistant_mode,
+            )
+            if idempotency_key:
+                self.idempotency_turns[idempotency_key] = turn_obj["id"]
+            return turn_obj
 
         turn_id = "turn-" + uuid.uuid4().hex[:10]
+        mode_cfg = assistant_router.resolve_mode_model_config(assistant_mode, self.prices_cfg) or {}
+        daily_cap = float(mode_cfg.get("daily_cap_usd", 0.25))
+        op_key = f"{operator_claim.get('name', 'operator')}:{assistant_mode}"
+        if self.assistant_daily_spend_usd.get(op_key, 0.0) >= daily_cap:
+            turn_obj = {
+                "id": turn_id,
+                "operatorText": question,
+                "requestedBy": operator_claim.get("name", "operator@contoso.com"),
+                "assistantMode": assistant_mode,
+                "stage": 2,
+                "tokenCost": 0,
+                "sourceBadge": "0 tokens · sub-cap-paused",
+                "mode": "soft-steady",
+                "events": ["spend-alert"],
+                "answer": "AI synthesis is paused until tomorrow for this mode's daily budget. Stage 1 deterministic lookups remain available.",
+                "citations": [],
+                "learnLinks": [],
+                "aside": None,
+                "plan": None,
+                "status": "completed",
+            }
+            self.turns[turn_id] = turn_obj
+            if idempotency_key:
+                self.idempotency_turns[idempotency_key] = turn_id
+            return turn_obj
+
         try:
+            window = assistant_router.build_stage3_window(list(self.turns.values()))
             status, payload = self._agent_api_request(
                 "/ask",
                 method="POST",
                 body={
                     "question": question,
-                    "model": self.agent_model,
-                    "identity": self.agent_identity_app_id or "buddy-live",
+                    "mode": assistant_mode,
+                    "tools": "none",
+                    "model": str(mode_cfg.get("model_id", self.agent_model)),
+                    "maxTokens": int(mode_cfg.get("max_tokens", 400)),
+                    "window": window,
+                    "identity": self.agent_identity_app_id or "assistant-live",
                 },
                 operator_claim=operator_claim,
                 timeout=5.0,
@@ -434,6 +547,7 @@ class BuddyState:
             "status": "running",
         }
         self.turns[turn_id] = turn_obj
+        self.transcript_store.append_turn(turn_obj, operator_id=operator_claim.get("name", "operator"))
         return turn_obj
 
     def poll_turn(self, turn_id: str, operator_claim: dict[str, str]) -> dict[str, Any] | None:
@@ -554,16 +668,65 @@ class BuddyState:
         self._record_history_item(turn_id, question)
         return turn_obj
 
-    def build_reply(self, question: str, humor: str, operator_claim: dict[str, str]) -> dict[str, Any]:
+    def build_reply(
+        self,
+        question: str,
+        humor: str,
+        operator_claim: dict[str, str],
+        *,
+        assistant_mode: str = "buddy",
+    ) -> dict[str, Any]:
         q_lower = question.lower()
         events: set[str] = set()
+        server_events = self._server_events()
         plan: dict[str, Any] | None = None
         raw_aside: str | None = "Those two enjoyed a quieter weekend than most of us."
+        mode_block: dict[str, Any] | None = None
+        source_badge = "0 tokens · rule-based"
 
-        if self.switch_position != "run":
-            events.add("kill-switch")
-
-        if any(w in q_lower for w in ("drain", "restart", "approve", "plan")):
+        if assistant_mode == "chief_of_staff":
+            status_snapshot = {
+                "switchPosition": self.switch_position,
+                "switchMeaning": SWITCH_MEANINGS.get(self.switch_position, ""),
+                "pendingPlans": self.pending_plans_count,
+                "spendAlerts": [],
+                "overdueRuns": [],
+                "findings": self.estate_status.get("topFindings", []),
+            }
+            ranked = assistant_router.rank_triage_items(status_snapshot, self.triage_cfg)
+            next_step = ranked[0]["title"] if ranked else "No pending approvals or active alerts."
+            answer = f"Bottom line: {next_step} ({len(ranked)} item(s) prioritized by triage rules)."
+            citations = [{"id": "triage-01", "label": "governance/assistant-triage.yml (Stage 1)"}]
+            learn_links = []
+            mode_block = {"kind": "triage", "items": ranked, "nextStep": next_step}
+            raw_aside = None
+        elif assistant_mode == "red_team":
+            plan = DEFAULT_FIXTURE_PLAN if any(w in q_lower for w in ("drain", "restart", "approve", "plan")) else None
+            if plan:
+                events.update({"plan-shown", "approval-pending"})
+            audit = assistant_router.audit_plan_static(plan)
+            answer = audit["footer"]
+            citations = [{"id": "policy-01", "label": "Static plan & policy audit (Stage 1)"}]
+            learn_links = []
+            mode_block = {"kind": "red_team", **audit}
+            raw_aside = None
+        elif assistant_mode == "guru":
+            hits = self.brain_index.search(question)
+            source_badge = f"0 tokens · brain @{self.brain_index.pinned_sha}"
+            if hits:
+                top = hits[0]
+                snippets = assistant_router.format_code_blocks(top.get("snippets", []), self.snippet_allowlist)
+                answer = f"{top['title']}: {top['summary']}"
+                citations = [{"id": top["docId"], "label": f"{top['source']} ({top['docId']})"}]
+                learn_links = [{"title": top["title"], "url": top["learnUrl"]}] if top.get("learnUrl") else []
+                mode_block = {"kind": "guru", "docs": hits, "snippets": snippets, "canSynthesize": True}
+            else:
+                answer = assistant_router.NO_MATCH_MESSAGE
+                citations = []
+                learn_links = []
+                mode_block = {"kind": "guru", "docs": [], "snippets": [], "canSynthesize": False}
+            raw_aside = None
+        elif any(w in q_lower for w in ("drain", "restart", "approve", "plan")):
             events.update({"plan-shown", "approval-pending"})
             plan = DEFAULT_FIXTURE_PLAN
             answer = (
@@ -615,6 +778,8 @@ class BuddyState:
             question=question,
             humor=humor,
             events=events,
+            server_events=server_events,
+            assistant_mode=assistant_mode,
             answer=answer,
             raw_aside=raw_aside,
         )
@@ -623,16 +788,22 @@ class BuddyState:
             "id": turn_id,
             "operatorText": question,
             "requestedBy": operator_claim.get("name", "operator@contoso.com"),
+            "assistantMode": assistant_mode,
+            "stage": 1,
+            "tokenCost": 0,
+            "sourceBadge": source_badge,
             "mode": mode,
-            "events": sorted(events),
+            "events": sorted(events | server_events),
             "answer": answer,
             "citations": citations,
             "learnLinks": learn_links,
             "aside": final_aside,
             "plan": plan,
+            "modeBlock": mode_block,
             "status": "completed",
         }
         self.turns[turn_id] = turn_obj
+        self.transcript_store.append_turn(turn_obj, operator_id=operator_claim.get("name", "operator"))
         return turn_obj
 
 
@@ -710,7 +881,21 @@ def make_handler(state: BuddyState) -> type[BaseHTTPRequestHandler]:
                 principal = self._require_principal()
                 if principal is None:
                     return
-                self._send_json(200, {"items": state.history})
+                self._send_json(200, {"items": state.history, "retentionDays": transcript_store.RETENTION_DAYS})
+                return
+
+            if path == "/api/transcripts/export":
+                principal = self._require_principal()
+                if principal is None:
+                    return
+                self._send_json(
+                    200,
+                    {
+                        "tenantOnly": True,
+                        "retentionDays": transcript_store.RETENTION_DAYS,
+                        "jsonl": state.transcript_store.export_jsonl(),
+                    },
+                )
                 return
 
             if path.startswith("/api/turns/"):
@@ -808,14 +993,46 @@ def make_handler(state: BuddyState) -> type[BaseHTTPRequestHandler]:
                 if state.switch_position in ("halt-agents", "halt-all"):
                     self._send_json(409, {"error": "halted", "switchPosition": state.switch_position})
                     return
+                if "model" in body or "effort" in body:
+                    self._send_json(400, {"error": "client-model-override-forbidden"})
+                    return
                 question = str(body.get("question", "")).strip()
                 if not question:
                     self._send_json(400, {"error": "empty-question"})
                     return
+                has_explicit_mode = "mode" in body
+                idempotency_key = str(body.get("idempotencyKey", "")).strip()
+                if has_explicit_mode and not idempotency_key:
+                    self._send_json(400, {"error": "missing-idempotency-key"})
+                    return
+                assistant_mode = assistant_router.normalize_mode(body.get("mode")) if has_explicit_mode else "buddy"
                 humor = str(body.get("humor", "light"))
-                turn_obj = state.start_turn(question, humor, principal)
+                synthesize = bool(body.get("synthesize", False))
+                turn_obj = state.start_turn(
+                    question,
+                    humor,
+                    principal,
+                    assistant_mode=assistant_mode,
+                    idempotency_key=idempotency_key,
+                    synthesize=synthesize,
+                    explicit_mode=has_explicit_mode,
+                )
                 http_code = 202 if turn_obj.get("status") == "running" else 200
                 self._send_json(http_code, {"turnId": turn_obj["id"], "status": turn_obj["status"], "turn": turn_obj})
+                return
+
+            if path == "/api/feedback":
+                turn_id = str(body.get("turnId", "")).strip()
+                rating = str(body.get("rating", "")).strip().lower()
+                reason = str(body.get("reason", "")).strip()
+                if not turn_id or rating not in ("up", "down"):
+                    self._send_json(400, {"error": "invalid-feedback"})
+                    return
+                updated = state.transcript_store.record_feedback(turn_id, rating, reason)
+                if not updated:
+                    self._send_json(404, {"error": "turn-not-found"})
+                    return
+                self._send_json(200, {"recorded": True, "tenantOnly": True, "turnId": turn_id})
                 return
 
             if path == "/api/switch/trip":

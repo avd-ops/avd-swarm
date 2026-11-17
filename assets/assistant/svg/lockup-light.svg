@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 144" width="640" height="144" fill="none">
+  <title>avd-assistant — Horizontal Lockup (Light Theme)</title>
+  <rect width="640" height="144" rx="12" fill="#f4f6f9"/>
+  <rect x="0.5" y="0.5" width="639" height="143" rx="11.5" stroke="#64748b" stroke-opacity="0.25"/>
+
+  <g transform="translate(26, 20) scale(0.203125)">
+    <path d="M 244.6 27.8 Q 256 24 267.4 27.8 L 436.6 84.2 Q 448 88 448 100 L 448 284 Q 448 296 439.5 304.5 L 264.5 479.5 Q 256 488 247.5 479.5 L 72.5 304.5 Q 64 296 64 284 L 64 100 Q 64 88 75.4 84.2 Z" fill="#1ca998" stroke="#0d1015" stroke-width="6"/>
+    <path d="M 118 120 L 394 120 L 404 130 L 404 236 L 372 268 L 140 268 L 108 236 L 108 130 Z" fill="#0d1015"/>
+    <path d="M 224 194 L 180 150 L 162 168 L 188 194 L 162 220 L 180 238 Z" fill="#ffffff"/>
+    <path d="M 288 194 L 332 150 L 350 168 L 324 194 L 350 220 L 332 238 Z" fill="#ffffff"/>
+  </g>
+
+  <text x="144" y="76" fill="#0d1015" font-family="'Schibsted Grotesk', 'Inter Display', 'Inter', system-ui, -apple-system, sans-serif" font-size="48" font-weight="700" letter-spacing="-1.4">avd<tspan fill="#1ca998">-</tspan>assistant</text>
+
+  <rect x="482" y="46" width="114" height="28" rx="4" fill="#ffffff" stroke="#64748b" stroke-opacity="0.38" stroke-width="1"/>
+  <circle cx="497" cy="60" r="3.5" fill="#1ca998"/>
+  <text x="508" y="64" fill="#0d1015" font-family="'JetBrains Mono', 'IBM Plex Mono', 'DejaVu Sans Mono', monospace" font-size="11.5" font-weight="600" letter-spacing="0.6">PWA · v3.0</text>
+
+  <text x="146" y="106" fill="#64748b" font-family="'JetBrains Mono', 'IBM Plex Mono', 'DejaVu Sans Mono', monospace" font-size="12" font-weight="600" letter-spacing="1.6">AVD-OPS CONTROL PLANE  //  DEPLOY QUIETLY</text>
+</svg>

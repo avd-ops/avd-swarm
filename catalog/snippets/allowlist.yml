@@ -1,0 +1,4 @@
+# Protected SHA-256 allowlist for runnable Cloud Shell snippets (docs/assistant-spec.md section 4, F1).
+# Only snippets listed here render with a copy control; all others render as quoted unverified text.
+version: 1
+snippets: []

@@ -6,3 +6,4 @@
 - **The risk, as explained to the owner before deciding:** the character resembles Microsoft's Clippy. If a trademark holder objects, the icon has to be replaced, and because this repo is public, removing it means rewriting `main`'s history.
 - **Scope:** avd-buddy only (`buddy/app/brand.json` sets `"icon_source": "mascot"`). avd-ops.dev and the other family pages keep the avd-ops mark until the owner says otherwise.
 - **Revisit:** if anyone objects, if the project stops being a research project, or before any use that someone might pay for. Then switch `icon_source` back to `placeholder` (one line) and record the change here.
+- **Superseded (2026-11-17):** Owner approved replacing the mascot with the Shield + `><` visor brand kit (`assets/assistant/svg/icon-mark-transparent.svg`) for the `avd-assistant` redesign; see [`assets/assistant/REVIEW.md`](../assistant/REVIEW.md).

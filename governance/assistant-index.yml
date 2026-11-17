@@ -1,0 +1,18 @@
+# Pinned upstream commit SHAs for avd-assistant's baked read-only FTS5 index (docs/assistant-spec.md section 4, F1).
+# Protected path: image build fails if upstream pins move without a PR here.
+# Update SHAs explicitly via PR after reviewing upstream KB/standards changes.
+
+index_format_version: 1
+sources:
+  avd-second-brain:
+    repo: avd-ops/avd-second-brain
+    branch: main
+    pinned_sha: "0000000000000000000000000000000000000000"  # replace with verified commit SHA on first index build
+    paths:
+      - docs/knowledge/
+  avd-assess:
+    repo: avd-ops/avd-assess
+    branch: main
+    pinned_sha: "0000000000000000000000000000000000000000"  # replace with verified commit SHA on first index build
+    paths:
+      - docs/

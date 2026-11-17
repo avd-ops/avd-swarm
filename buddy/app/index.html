@@ -10,9 +10,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="buddy">
-  <meta name="description" content="avd-buddy: installable chat front end for avd-swarm. Personal research project, not for production.">
-  <title>avd-buddy</title>
+  <meta name="apple-mobile-web-app-title" content="Assistant">
+  <meta name="description" content="avd-assistant: zero-token-first AVD operations assistant for avd-swarm. Personal research project, not for production.">
+  <title>avd-assistant</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
   <link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
@@ -25,11 +25,11 @@
 <body class="buddy-body">
   <a class="skip" href="#main-content">Skip to conversation</a>
 
-  <!-- Top bar: three items on a phone (avatar + avd-buddy -> Settings, switch pill -> Status, menu button -> History/Settings/Sign out) -->
+  <!-- Top bar: three items on a phone (avatar + Assistant -> Settings, switch pill -> Status, menu button -> History/Settings/Sign out) -->
   <header class="buddy-top" role="banner">
-    <button type="button" id="brand-settings-btn" class="buddy-brand-btn" aria-label="avd-buddy, open settings">
+    <button type="button" id="brand-settings-btn" class="buddy-brand-btn" aria-label="avd-assistant, open settings">
       <img src="icons/avatar.svg" alt="" class="buddy-avatar" width="32" height="32">
-      <span class="buddy-title">avd-buddy</span>
+      <span class="buddy-title">Assistant</span>
     </button>
 
     <button type="button" id="switch-pill" class="switch-pill pos-run" aria-label="Kill switch position: run. Open status">
@@ -67,6 +67,12 @@
   <!-- Offline notice bar (section 2 rule 6, section 3) -->
   <div id="offline-banner" class="offline-banner" role="alert" hidden>
     <strong>You're offline. Nothing was sent.</strong> The conversation below is read-only until your connection returns.
+  </div>
+
+  <!-- Idle-tab pause banner (docs/assistant-spec.md section 6, F9): stops background polling after 10m idle -->
+  <div id="idle-pause-banner" class="update-banner" role="status" aria-live="polite" hidden>
+    <span>Paused after 10 minutes of inactivity to keep compute at zero.</span>
+    <button type="button" id="idle-resume-btn" class="banner-link">Tap to refresh</button>
   </div>
 
   <!-- Simulation / Demo controls bar: shown only in public demo / fixture mode (?sim=1 or static host without /api) -->
@@ -121,9 +127,28 @@
               <div class="welcome-head">
                 <img src="icons/avatar.svg" alt="" class="welcome-avatar" width="48" height="48">
                 <div>
-                  <h1 class="welcome-title">Ask about your AVD, Windows 365 or Intune estate</h1>
-                  <p class="welcome-sub">Answer first, plain words for the why, and a link to verify it yourself.</p>
+                  <h1 id="welcome-title" class="welcome-title">Chief of Staff — ready when you are</h1>
+                  <p id="welcome-sub" class="welcome-sub">I'm on Chief of Staff duty. Want the priority triage, pending approvals, or today's spend status?</p>
                 </div>
+              </div>
+              <p class="eyebrow">Switch who you're talking to</p>
+              <div id="welcome-mode-picker" class="mode-picker" role="group" aria-label="Choose assistant mode">
+                <button type="button" class="mode-tile" data-mode="chief_of_staff" aria-pressed="true">
+                  <strong>Chief of Staff</strong>
+                  <span>Triage, priorities &amp; next steps</span>
+                </button>
+                <button type="button" class="mode-tile" data-mode="red_team" aria-pressed="false">
+                  <strong>Red Team</strong>
+                  <span>Challenge plans &amp; surface risks</span>
+                </button>
+                <button type="button" class="mode-tile" data-mode="guru" aria-pressed="false">
+                  <strong>Guru</strong>
+                  <span>Pinned second brain &amp; Learn</span>
+                </button>
+                <button type="button" class="mode-tile" data-mode="buddy" aria-pressed="false">
+                  <strong>Buddy</strong>
+                  <span>Warm, dry-wit walkthroughs</span>
+                </button>
               </div>
               <p class="eyebrow">Suggested questions</p>
               <div id="starter-prompts" class="follow-ups">
@@ -162,13 +187,20 @@
         </div>
 
         <!-- Pinned bottom composer (hidden at halt-agents and halt-all) -->
-        <form id="composer-form" class="composer-bar" aria-label="Ask avd-buddy">
-          <label for="composer-input" class="sr-only">Your question for avd-buddy</label>
+        <form id="composer-form" class="composer-bar" aria-label="Ask avd-assistant">
+          <label for="composer-mode" class="sr-only">Assistant mode</label>
+          <select id="composer-mode" class="composer-mode" aria-label="Assistant mode">
+            <option value="chief_of_staff">Chief of Staff</option>
+            <option value="red_team">Red Team</option>
+            <option value="guru">Guru</option>
+            <option value="buddy">Buddy</option>
+          </select>
+          <label for="composer-input" class="sr-only">Your question for avd-assistant</label>
           <textarea
             id="composer-input"
             class="composer-input"
             rows="1"
-            placeholder="Ask a question about hosts, sessions, cost or deployments..."
+            placeholder="Ask Chief of Staff what needs attention..."
             required
           ></textarea>
           <button

@@ -998,6 +998,112 @@ body.buddy-body {
   background: var(--sunken);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
+  font: 500 0.85rem var(--mono);
+}
+
+/* Phase 3: 4-mode picker, composer mode select, snippet gate, and Red Team blocks (tokens only) */
+.mode-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--space-2);
+  margin: var(--space-2) 0 var(--space-3);
+}
+
+.mode-tile {
+  min-height: var(--tap);
+  text-align: left;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.mode-tile span {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.mode-tile[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.composer-mode {
+  min-height: var(--tap);
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-2);
+  font: 600 0.82rem var(--mono);
+  max-width: 9.5rem;
+}
+
+.mode-block-card {
+  margin-top: var(--space-2);
+  padding: var(--space-3);
+  background: var(--sunken);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+}
+
+.mode-block-footer {
+  margin: var(--space-2) 0 0;
+  font: 600 0.8rem var(--mono);
+  color: var(--muted);
+}
+
+.snippet-card {
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.snippet-unverified {
+  border-color: var(--caution);
+  background: var(--caution-soft);
+}
+
+.snippet-quote {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-2);
+  border-left: 2px solid var(--line-strong);
+  font: 400 0.82rem var(--mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.synthesize-btn {
+  margin-top: var(--space-2);
+  min-height: var(--tap);
+  padding: 0 var(--space-3);
+  background: var(--surface);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  font: 600 0.85rem var(--body);
+  cursor: pointer;
+}
+
+.chat-handoff-pill {
+  align-self: center;
+  margin: var(--space-2) auto;
+  padding: var(--space-1) var(--space-3);
+  background: var(--sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--pill);
+  font: 500 0.78rem var(--mono);
+  color: var(--muted);
+  text-align: center;
+}
+  border-radius: var(--radius-sm);
   font: 500 0.82rem var(--mono);
   color: var(--fg);
   margin-bottom: var(--space-3);

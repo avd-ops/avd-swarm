@@ -46,8 +46,8 @@ class ManifestAndIconsTests(unittest.TestCase):
     def test_manifest_fields_and_token_hex_match(self) -> None:
         manifest_path = ROOT / "buddy/app/manifest.webmanifest"
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        self.assertEqual(manifest["name"], "avd-buddy")
-        self.assertEqual(manifest["short_name"], "buddy")
+        self.assertEqual(manifest["name"], "avd-assistant")
+        self.assertEqual(manifest["short_name"], "Assistant")
         self.assertEqual(manifest["display"], "standalone")
         self.assertEqual(manifest["start_url"], "/")
         self.assertEqual(manifest["scope"], "/")

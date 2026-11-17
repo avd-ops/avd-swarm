@@ -19,9 +19,11 @@ class Turn:
     """What code knows about a turn before the model answers: events from the tool layer, the operator's words."""
 
     events: set[str] = field(default_factory=set)
+    server_events: set[str] = field(default_factory=set)  # derived server-side; client events can add, never remove
     operator_text: str = ""
     language: str = "en"
     humor_setting: str = "light"  # the operator's own setting: "light" or "off"
+    assistant_mode: str = "buddy"  # chief_of_staff | red_team | guru | buddy
     replies_since_aside: int = 99
     model_asked_steady: bool = False  # the model may ask for steady mode, never for light
 
@@ -41,10 +43,11 @@ def _is_emoji(ch: str) -> bool:
 
 def get_mode(turn: Turn, settings: dict) -> str:
     """The turn's mode. Hard steady wins over soft steady, which wins over light."""
-    if turn.events & set(settings["hard_steady_events"]):
+    effective_events = turn.server_events | turn.events
+    if effective_events & set(settings["hard_steady_events"]):
         return HARD_STEADY
     if (
-        turn.events & set(settings["soft_steady_events"])
+        effective_events & set(settings["soft_steady_events"])
         or _words_in(turn.operator_text, settings["stress_words"])
         or turn.model_asked_steady
     ):
@@ -53,7 +56,9 @@ def get_mode(turn: Turn, settings: dict) -> str:
 
 
 def aside_allowed(turn: Turn, settings: dict) -> bool:
-    """Whether avd-buddy may show an aside this turn. Off means the front end drops it unread."""
+    """Whether avd-assistant may show an aside this turn. Off outside buddy mode or when humor is off."""
+    if turn.assistant_mode != "buddy":
+        return False
     aside = settings["aside"]
     if turn.humor_setting != "light" or turn.language not in aside["languages"]:
         return False
@@ -88,10 +93,20 @@ def get_aside_findings(aside: str, settings: dict, estate_names: list[str] | Non
     return findings
 
 
+def get_verdict_findings(answer: str, settings: dict) -> list[str]:
+    """Flag approval/safety verdict phrases in Stage 3 output across all assistant modes (F4)."""
+    phrases = settings.get("verdict_phrases", [])
+    if not phrases or not answer:
+        return []
+    return [f"verdict-phrase:{hit}" for hit in _words_in(answer, phrases)]
+
+
 def check_reply(turn: Turn, aside: str | None, settings: dict, estate_names: list[str] | None = None) -> list[str]:
     """Findings for one reply as the eval sees it: an aside where none is allowed, or a bad aside."""
     if not aside:
         return []
+    if turn.assistant_mode != "buddy":
+        return ["aside-outside-buddy"]
     if not aside_allowed(turn, settings):
         return [f"aside-in-{get_mode(turn, settings)}"]
     return get_aside_findings(aside, settings, estate_names)
