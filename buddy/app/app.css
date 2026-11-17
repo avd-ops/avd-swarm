@@ -323,6 +323,16 @@ body.buddy-body {
     box-shadow: none;
   }
   .buddy-workspace.history-collapsed .history-panel {
+    width: 2.75rem;
+    padding: var(--space-2) 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .buddy-workspace.history-collapsed .history-heading,
+  .buddy-workspace.history-collapsed #new-chat-btn,
+  .buddy-workspace.history-collapsed .history-note,
+  .buddy-workspace.history-collapsed .history-list {
     display: none;
   }
 }
@@ -1205,15 +1215,34 @@ body.buddy-body {
   margin-top: var(--space-2);
 }
 
-.header-mode-select {
-  min-height: 2.25rem;
-  background: var(--sunken);
-  color: var(--fg);
-  border: 1px solid var(--line-strong);
+.header-mode-pill {
+  position: relative;
+}
+
+.mode-pill {
+  list-style: none;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.mode-dot {
+  width: 10px;
+  height: 10px;
   border-radius: var(--pill);
-  padding: 0 var(--space-3);
-  font: 600 0.8rem var(--mono);
-  cursor: pointer;
+  background: var(--accent);
+  flex: none;
+}
+
+.mode-dropdown {
+  left: 0;
+  right: auto;
+  min-width: 12rem;
+}
+
+.mode-dropdown [aria-pressed="true"] {
+  color: var(--accent);
+  font-weight: 700;
 }
 
 .buddy-foot {

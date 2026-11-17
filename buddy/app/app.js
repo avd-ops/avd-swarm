@@ -920,14 +920,7 @@
     const pillText = document.getElementById("switch-pill-text");
     const banner = document.getElementById("switch-banner");
     const bannerText = document.getElementById("switch-banner-text");
-    const composerMode = document.getElementById("composer-mode");
-    if (composerMode) {
-      composerMode.addEventListener("change", (e) => {
-        setAssistantMode(e.target.value);
-      });
-    }
-
-    document.querySelectorAll("#welcome-mode-picker .mode-tile").forEach((btn) => {
+    document.querySelectorAll(".mode-dropdown [data-mode], #welcome-mode-picker .mode-tile").forEach((btn) => {
       btn.addEventListener("click", () => {
         setAssistantMode(btn.getAttribute("data-mode") || "chief_of_staff");
       });
@@ -1229,11 +1222,19 @@
     const changed = state.settings.assistantMode !== valid;
     state.settings.assistantMode = valid;
     saveSettings();
-    const sel = document.getElementById("composer-mode");
-    if (sel) {
-      sel.value = valid;
+    const pillText = document.getElementById("mode-pill-text");
+    if (pillText) {
+      pillText.textContent = meta.label;
     }
-    document.querySelectorAll("#welcome-mode-picker .mode-tile").forEach((btn) => {
+    const modeWrap = document.getElementById("mode-pill-wrap");
+    if (modeWrap) {
+      const sum = modeWrap.querySelector("summary");
+      if (sum) {
+        sum.setAttribute("aria-label", "Assistant mode: " + meta.label);
+      }
+      modeWrap.open = false;
+    }
+    document.querySelectorAll(".mode-dropdown [data-mode], #welcome-mode-picker .mode-tile").forEach((btn) => {
       btn.setAttribute("aria-pressed", btn.getAttribute("data-mode") === valid ? "true" : "false");
     });
     const inputEl = document.getElementById("composer-input");
@@ -1688,7 +1689,6 @@
     });
 
     const closeHistBtn = document.getElementById("close-history-btn");
-    const toggleHistBtn = document.getElementById("history-toggle-btn");
     const workspaceEl = document.querySelector(".buddy-workspace");
     function toggleHistory(forceCollapse) {
       const panel = document.getElementById("history-panel");
@@ -1700,22 +1700,18 @@
           ? forceCollapse
           : !workspaceEl.classList.contains("history-collapsed");
         workspaceEl.classList.toggle("history-collapsed", nextCollapsed);
-        if (toggleHistBtn) {
-          toggleHistBtn.setAttribute("aria-expanded", nextCollapsed ? "false" : "true");
+        if (closeHistBtn) {
+          closeHistBtn.textContent = nextCollapsed ? "\u203a" : "\u2039";
+          closeHistBtn.setAttribute("aria-expanded", nextCollapsed ? "false" : "true");
+          closeHistBtn.setAttribute("aria-label", nextCollapsed ? "Expand history" : "Collapse history");
         }
       } else {
         const nextOpen = typeof forceCollapse === "boolean" ? !forceCollapse : !panel.classList.contains("open");
         panel.classList.toggle("open", nextOpen);
-        if (toggleHistBtn) {
-          toggleHistBtn.setAttribute("aria-expanded", nextOpen ? "true" : "false");
-        }
       }
     }
     if (closeHistBtn) {
-      closeHistBtn.addEventListener("click", () => toggleHistory(true));
-    }
-    if (toggleHistBtn) {
-      toggleHistBtn.addEventListener("click", () => toggleHistory());
+      closeHistBtn.addEventListener("click", () => toggleHistory());
     }
 
     const newChatBtn = document.getElementById("new-chat-btn");
@@ -1735,14 +1731,7 @@
       });
     });
 
-    const composerMode = document.getElementById("composer-mode");
-    if (composerMode) {
-      composerMode.addEventListener("change", (e) => {
-        setAssistantMode(e.target.value);
-      });
-    }
-
-    document.querySelectorAll("#welcome-mode-picker .mode-tile").forEach((btn) => {
+    document.querySelectorAll(".mode-dropdown [data-mode], #welcome-mode-picker .mode-tile").forEach((btn) => {
       btn.addEventListener("click", () => {
         setAssistantMode(btn.getAttribute("data-mode") || "chief_of_staff");
       });

@@ -19,7 +19,7 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="stylesheet" href="assets/avd-ops.css">
   <link rel="stylesheet" href="assets/avd-ops-shell.css">
-  <link rel="stylesheet" href="app.css?v=7">
+  <link rel="stylesheet" href="app.css?v=8">
   <script src="assets/theme.js"></script>
 </head>
 <body class="buddy-body">
@@ -28,19 +28,22 @@
   <!-- Top bar: three items on a phone (avatar + Assistant -> Settings, switch pill -> Status, menu button -> History/Settings/Sign out) -->
   <header class="buddy-top" role="banner">
     <button type="button" id="brand-settings-btn" class="buddy-brand-btn" aria-label="avd-assistant, open settings">
-      <img src="icons/avatar.svg?v=7" alt="" class="buddy-avatar" width="32" height="32">
+      <img src="icons/avatar.svg?v=8" alt="" class="buddy-avatar" width="32" height="32">
       <span class="buddy-title">Assistant</span>
     </button>
 
-    <label for="composer-mode" class="sr-only">Assistant mode</label>
-    <select id="composer-mode" class="header-mode-select" aria-label="Assistant mode">
-      <option value="chief_of_staff">Chief of Staff</option>
-      <option value="red_team">Red Team</option>
-      <option value="guru">Guru</option>
-      <option value="buddy">Buddy</option>
-    </select>
-
-    <button type="button" id="history-toggle-btn" class="header-pill-btn" aria-expanded="true" aria-controls="history-panel">History</button>
+    <details id="mode-pill-wrap" class="header-mode-pill">
+      <summary class="switch-pill mode-pill" aria-label="Assistant mode: Chief of Staff">
+        <span class="mode-dot" aria-hidden="true"></span>
+        <span class="switch-label">Mode: <strong id="mode-pill-text">Chief of Staff</strong></span>
+      </summary>
+      <div class="buddy-dropdown mode-dropdown" role="menu" aria-label="Choose assistant mode">
+        <button type="button" class="menu-item" data-mode="chief_of_staff" aria-pressed="true">Chief of Staff</button>
+        <button type="button" class="menu-item" data-mode="red_team" aria-pressed="false">Red Team</button>
+        <button type="button" class="menu-item" data-mode="guru" aria-pressed="false">Guru</button>
+        <button type="button" class="menu-item" data-mode="buddy" aria-pressed="false">Buddy</button>
+      </div>
+    </details>
 
     <button type="button" id="switch-pill" class="switch-pill pos-run" aria-label="Kill switch position: run. Open status">
       <span class="switch-dot" aria-hidden="true"></span>
@@ -124,7 +127,7 @@
       <div class="history-head">
         <h2 class="history-heading">History</h2>
         <button type="button" id="new-chat-btn" class="buddy-small-btn">New chat</button>
-        <button type="button" id="close-history-btn" class="buddy-small-btn history-close-mobile" aria-label="Close history">Close</button>
+        <button type="button" id="close-history-btn" class="buddy-small-btn history-rail-btn" aria-expanded="true" aria-label="Collapse history">&#8249;</button>
       </div>
       <p class="history-note">Fetched from the server; nothing from the estate is stored on this device.</p>
       <ul id="history-list" class="history-list"></ul>
@@ -141,7 +144,7 @@
           <div id="empty-state" class="empty-state">
             <div class="welcome-card card">
               <div class="welcome-head">
-                <img src="icons/avatar.svg?v=7" alt="" class="welcome-avatar" width="40" height="40">
+                <img src="icons/avatar.svg?v=8" alt="" class="welcome-avatar" width="40" height="40">
                 <div>
                   <h1 id="welcome-title" class="welcome-title">Chief of Staff</h1>
                   <p id="welcome-sub" class="welcome-sub">Ready for triage, approvals, or spend.</p>
@@ -392,6 +395,6 @@
   </footer>
 
   <script src="fixtures.js"></script>
-  <script src="app.js?v=7"></script>
+  <script src="app.js?v=8"></script>
 </body>
 </html>
