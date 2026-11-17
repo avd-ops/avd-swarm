@@ -1,6 +1,6 @@
 ---
 id: hosts.agent-unhealthy
-version: 1
+version: 2
 title: Session host agent unhealthy
 trigger:
   schedule: "0 6 * * 1-5"   # 06:00 UTC on weekdays
@@ -37,7 +37,7 @@ budget: {tokensUsd: 0.50}
 
 **Clear** when at least one host reports and no host is unhealthy or silent. A clear run never reaches a model. **No reports at all** (no hosts, or the workspace lost its diagnostic setting) is a finding reported without a model: missing data is not health.
 
-**When it isn't clear,** the Hosts agent gets the failing hosts and their failed health checks, and the session host list, and answers three questions with citations: which hosts, which check failed on each, and whether the host is deallocated on purpose (a deallocated host is not unhealthy: spec section 5a). It proposes nothing in v1. The operator's next step is the fix for that health check in [Troubleshoot the Azure Virtual Desktop Agent](https://learn.microsoft.com/azure/virtual-desktop/troubleshoot-agent); restarting the agent becomes a catalog action at build step 3, with every host precondition in spec section 5a.
+**When it isn't clear,** the Hosts agent gets the failing hosts and their failed health checks, and the session host list, and answers three questions with citations: which hosts, which check failed on each, and whether the host is deallocated on purpose (a deallocated host is not unhealthy: spec section 5a). It proposes nothing in v1. For `hostPlacement: "azure-local"` host pools (Decision 0023), never recommend migrating FSLogix profiles to Azure Files or adding Azure IaaS VMs to the pool. The operator's next step is the fix for that health check in [Troubleshoot the Azure Virtual Desktop Agent](https://learn.microsoft.com/azure/virtual-desktop/troubleshoot-agent); restarting the agent becomes a catalog action at build step 3, with every host precondition in spec section 5a.
 
 **When it can't run** (the workspace or the tool didn't answer), the outcome is `could-not-run`, never `clear`: missing data is not health.
 
