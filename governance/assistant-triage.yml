@@ -1,0 +1,23 @@
+# Chief of Staff Stage 1 deterministic triage ranking (docs/assistant-spec.md section 4, F13).
+# Protected path: an agent-authored PR cannot alter this order.
+# Code ranks GET /api/status items strictly in this priority order at 0 tokens.
+
+triage_order:
+  - id: switch-not-run
+    label: "Kill switch not in run"
+    description: "Any kill switch position other than 'run' takes top priority."
+  - id: pending-operator-approval
+    label: "Plans awaiting your approval"
+    description: "Pending plans assigned to the signed-in operator, oldest first."
+  - id: spend-alerts
+    label: "Spend alerts & cap warnings"
+    description: "Active Azure resource or token cap alerts."
+  - id: overdue-teardowns
+    label: "Overdue sandbox teardowns"
+    description: "Open spend runs past their planned teardown window."
+  - id: findings-by-severity
+    label: "Active findings by severity"
+    description: "C11/C21 findings ordered critical -> high -> medium -> low."
+  - id: oldest-open-item
+    label: "Oldest open item"
+    description: "Any remaining open runbook or drift item, oldest first."

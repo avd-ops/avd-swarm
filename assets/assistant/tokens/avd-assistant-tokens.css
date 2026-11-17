@@ -1,0 +1,18 @@
+:root {
+  /* avd-assistant — Design System 3.0 ("Deploy quietly") */
+  --avd-teal: #1ca998;
+  --avd-deep-ink: #0d1015;
+  --avd-light-surface: #f4f6f9;
+  --avd-pure-white: #ffffff;
+  --avd-cool-slate: #64748b;
+
+  /* Typography */
+  --font-display: 'Schibsted Grotesk', system-ui, -apple-system, sans-serif;
+  --font-mono-label: 'JetBrains Mono', 'IBM Plex Mono', ui-monospace, monospace;
+  --font-mono-ui: 'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace;
+
+  /* Iconography Grid Metrics */
+  --icon-master-grid: 512px;
+  --icon-pwa-safe-zone: 80%;
+  --icon-keel-angle: 45deg;
+}

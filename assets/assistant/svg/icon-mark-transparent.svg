@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" fill="none">
+  <title>avd-assistant — Transparent Shield Mark</title>
+  <path d="M 244.6 27.8 Q 256 24 267.4 27.8 L 436.6 84.2 Q 448 88 448 100 L 448 284 Q 448 296 439.5 304.5 L 264.5 479.5 Q 256 488 247.5 479.5 L 72.5 304.5 Q 64 296 64 284 L 64 100 Q 64 88 75.4 84.2 Z" fill="#1ca998"/>
+  <path d="M 118 120 L 394 120 L 404 130 L 404 236 L 372 268 L 140 268 L 108 236 L 108 130 Z" fill="#0d1015"/>
+  <path d="M 224 194 L 180 150 L 162 168 L 188 194 L 162 220 L 180 238 Z" fill="#ffffff"/>
+  <path d="M 288 194 L 332 150 L 350 168 L 324 194 L 350 220 L 332 238 Z" fill="#ffffff"/>
+</svg>

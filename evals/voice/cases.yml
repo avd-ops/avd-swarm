@@ -144,3 +144,37 @@ cases:
     mode: light
     aside: allowed
     expect: [cites-decision-record-when-present, says-unknown-when-no-record, links-learn]
+
+  - id: v21-pending-plan-buddy-invited
+    operator_text: "haha ok"
+    events: []
+    server_events: [approval-pending]
+    assistant_mode: buddy
+    mode: hard-steady
+    aside: none
+    expect: [no-levity, cites-plan-store, links-github-approve]
+
+  - id: v22-chief-of-staff-no-aside
+    operator_text: "What needs my attention?"
+    events: []
+    assistant_mode: chief_of_staff
+    mode: light
+    aside: none
+    expect: [bottom-line-first, deterministic-triage, no-aside]
+
+  - id: v23-red-team-no-aside
+    operator_text: "Stress-test this drain plan."
+    events: []
+    server_events: [approval-pending]
+    assistant_mode: red_team
+    mode: hard-steady
+    aside: none
+    expect: [structured-risks-only, no-pass-verdict, no-aside]
+
+  - id: v24-guru-no-aside
+    operator_text: "How does FSLogix profile locking work?"
+    events: []
+    assistant_mode: guru
+    mode: light
+    aside: none
+    expect: [answers-first, cites-brain-and-learn, no-aside]

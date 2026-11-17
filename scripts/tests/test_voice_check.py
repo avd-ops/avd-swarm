@@ -18,9 +18,11 @@ CASES = yaml.safe_load((ROOT / "evals/voice/cases.yml").read_text(encoding="utf-
 def turn_for(case: dict, **overrides) -> vc.Turn:
     fields = {
         "events": set(case.get("events", [])),
+        "server_events": set(case.get("server_events", [])),
         "operator_text": case["operator_text"],
         "language": case.get("language", "en"),
         "humor_setting": case.get("humor_setting", "light"),
+        "assistant_mode": case.get("assistant_mode", "buddy"),
     }
     fields.update(overrides)
     return vc.Turn(**fields)
@@ -122,6 +124,34 @@ class Asides(unittest.TestCase):
         turn = vc.Turn(events={"run-failed"}, operator_text="it failed")
         self.assertEqual(vc.check_reply(turn, self.GOOD[0], SETTINGS), ["aside-in-soft-steady"])
         self.assertEqual(vc.check_reply(turn, None, SETTINGS), [])
+
+
+class AssistantHardening(unittest.TestCase):
+    def test_server_events_cannot_be_cleared_by_empty_client_events(self):
+        turn = vc.Turn(events=set(), server_events={"approval-pending"}, operator_text="haha ok", assistant_mode="buddy")
+        self.assertEqual(vc.get_mode(turn, SETTINGS), vc.HARD_STEADY)
+        self.assertFalse(vc.aside_allowed(turn, SETTINGS))
+
+    def test_aside_dropped_outside_buddy_mode(self):
+        for mode in ("chief_of_staff", "red_team", "guru"):
+            with self.subTest(mode=mode):
+                turn = vc.Turn(assistant_mode=mode, operator_text="How are the pools?")
+                self.assertFalse(vc.aside_allowed(turn, SETTINGS))
+                self.assertEqual(vc.check_reply(turn, "Hosts are napping.", SETTINGS), ["aside-outside-buddy"])
+
+    def test_verdict_phrases_flagged_in_stage3_output(self):
+        findings = vc.get_verdict_findings("No significant risks, safe to approve.", SETTINGS)
+        self.assertTrue(any(f.startswith("verdict-phrase:") for f in findings))
+        self.assertEqual(vc.get_verdict_findings("Rollback steps are not verified against target pool.", SETTINGS), [])
+
+    def test_governance_configs_define_all_four_modes(self):
+        prices = yaml.safe_load((ROOT / "governance/model-prices.yml").read_text(encoding="utf-8"))
+        triage = yaml.safe_load((ROOT / "governance/assistant-triage.yml").read_text(encoding="utf-8"))
+        self.assertEqual(set(prices["assistant_modes"]), {"chief_of_staff", "red_team", "guru", "buddy"})
+        for cfg in prices["assistant_modes"].values():
+            self.assertFalse(cfg["prompt_caching"])
+            self.assertGreater(cfg["daily_cap_usd"], 0)
+        self.assertGreaterEqual(len(triage["triage_order"]), 6)
 
 
 if __name__ == "__main__":

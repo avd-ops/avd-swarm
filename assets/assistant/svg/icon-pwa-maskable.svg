@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" fill="none">
+  <title>avd-assistant — Primary PWA Maskable Icon</title>
+  <rect width="512" height="512" fill="#0d1015"/>
+  <path d="M 246.5 83.2 Q 256 80 265.5 83.2 L 390.5 124.8 Q 400 128 400 138 L 400 278 Q 400 288 392.9 295.1 L 263.1 424.9 Q 256 432 248.9 424.9 L 119.1 295.1 Q 112 288 112 278 L 112 138 Q 112 128 121.5 124.8 Z" fill="#1ca998"/>
+  <path d="M 152 152 L 360 152 L 368 160 L 368 240 L 344 264 L 168 264 L 144 240 L 144 160 Z" fill="#0d1015"/>
+  <path d="M 232 208 L 198 174 L 184 188 L 204 208 L 184 228 L 198 242 Z" fill="#ffffff"/>
+  <path d="M 280 208 L 314 174 L 328 188 L 308 208 L 328 228 L 314 242 Z" fill="#ffffff"/>
+</svg>

@@ -1,0 +1,70 @@
+{
+  "$schema": "https://tr.designtokens.org/format/",
+  "brand": {
+    "id": "avd-assistant",
+    "shortName": "Assistant",
+    "parentSystem": "avd-ops Design System 3.0",
+    "tagline": "Deploy quietly",
+    "domain": "assistant.avd-ops.dev"
+  },
+  "color": {
+    "primaryTeal": {
+      "$value": "#1ca998",
+      "$type": "color"
+    },
+    "deepInk": {
+      "$value": "#0d1015",
+      "$type": "color"
+    },
+    "lightSurface": {
+      "$value": "#f4f6f9",
+      "$type": "color"
+    },
+    "pureWhite": {
+      "$value": "#ffffff",
+      "$type": "color"
+    },
+    "coolSlate": {
+      "$value": "#64748b",
+      "$type": "color"
+    }
+  },
+  "typography": {
+    "wordmark": {
+      "fontFamily": "Schibsted Grotesk",
+      "fontWeight": 700,
+      "letterSpacing": "-0.03em",
+      "case": "lowercase"
+    },
+    "technical": {
+      "fontFamily": [
+        "JetBrains Mono",
+        "IBM Plex Mono"
+      ],
+      "fontWeight": 600,
+      "fontVariantNumeric": "tabular-nums"
+    }
+  },
+  "modes": {
+    "chief-of-staff": {
+      "label": "Chief of Staff",
+      "role": "Triage / Priority / Command",
+      "icon": "svg/mode-chief-of-staff.svg"
+    },
+    "red-team": {
+      "label": "Red Team",
+      "role": "Challenge / Risk / Inspection",
+      "icon": "svg/mode-red-team.svg"
+    },
+    "guru": {
+      "label": "Guru",
+      "role": "Architecture / Knowledge / Deep Dive",
+      "icon": "svg/mode-guru.svg"
+    },
+    "buddy": {
+      "label": "Buddy",
+      "role": "Warmth / Approachable / Dry-Wit Companion",
+      "icon": "svg/mode-buddy.svg"
+    }
+  }
+}

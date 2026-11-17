@@ -54,3 +54,24 @@ aside_forbidden_patterns:
   emoticon: '(^|\s)[:;=]-?[()DPp]($|\s|[.!?,])'
   resource_id: '/subscriptions/'
   guid: '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-'
+
+# Interactive assistant modes (docs/assistant-spec.md section 4, F16).
+# Only `buddy` may emit an aside; all other modes drop `aside` in code before voice_check runs.
+assistant_modes:
+  - chief_of_staff
+  - red_team
+  - guru
+  - buddy
+
+# Verdict phrases withheld in Stage 3 output across all modes (docs/assistant-spec.md section 4, F4).
+# Whole words / phrases, case-insensitive.
+verdict_phrases:
+  - "safe"
+  - "safe to approve"
+  - "approved"
+  - "approve it"
+  - "ok to approve"
+  - "no issues"
+  - "no significant risks"
+  - "looks good"
+  - "go ahead"
