@@ -1205,6 +1205,17 @@ body.buddy-body {
   margin-top: var(--space-2);
 }
 
+.header-mode-select {
+  min-height: 2.25rem;
+  background: var(--sunken);
+  color: var(--fg);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--pill);
+  padding: 0 var(--space-3);
+  font: 600 0.8rem var(--mono);
+  cursor: pointer;
+}
+
 .buddy-foot {
   padding: var(--space-1) var(--gutter);
   background: var(--sunken);
