@@ -887,11 +887,14 @@
     const hintEl = document.getElementById("install-hint");
     const bodyEl = document.getElementById("install-hint-body");
     const installBtn = document.getElementById("install-pwa-btn");
+    const menuInstallBtn = document.getElementById("menu-install-btn");
+    if (menuInstallBtn) {
+      menuInstallBtn.hidden = isStandaloneMode();
+    }
     if (!hintEl || !bodyEl || !installBtn) {
       return;
     }
-    // Never show before the first finished answer, after dismissal, or inside the installed app (section 3 & 5).
-    if (state.finishedAnswers < 1 || state.settings.installDismissed || isStandaloneMode()) {
+    if (state.settings.installDismissed || isStandaloneMode()) {
       hintEl.hidden = true;
       return;
     }
@@ -1803,16 +1806,32 @@
     }
 
     const installPwaBtn = document.getElementById("install-pwa-btn");
-    if (installPwaBtn) {
-      installPwaBtn.addEventListener("click", async () => {
-        if (!state.deferredInstallPrompt) {
-          return;
-        }
+    const menuInstallBtn = document.getElementById("menu-install-btn");
+    async function triggerInstallAction() {
+      if (state.deferredInstallPrompt) {
         state.deferredInstallPrompt.prompt();
         state.deferredInstallPrompt = null;
         state.settings.installDismissed = true;
         saveSettings();
         maybeUpdateInstallHint();
+        return;
+      }
+      const hintEl = document.getElementById("install-hint");
+      if (hintEl) {
+        hintEl.hidden = false;
+        hintEl.open = true;
+      }
+    }
+    if (installPwaBtn) {
+      installPwaBtn.addEventListener("click", triggerInstallAction);
+    }
+    if (menuInstallBtn) {
+      menuInstallBtn.addEventListener("click", () => {
+        if (dropdown && menuBtn) {
+          dropdown.hidden = true;
+          menuBtn.setAttribute("aria-expanded", "false");
+        }
+        triggerInstallAction();
       });
     }
 
