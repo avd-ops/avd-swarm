@@ -176,6 +176,20 @@ class AssistantServerHardeningTests(unittest.TestCase):
         self.assertEqual(len(store.records), 1)
         self.assertEqual(store.records[0]["turnId"], "new-1")
 
+    def test_bicep_hardening_guards_f7_f8_f9(self):
+        bicep = (ROOT / "templates/buddy/main.bicep").read_text(encoding="utf-8")
+        for needle in (
+            "external: true",
+            "allowInsecure: false",
+            "unauthenticatedClientAction: 'RedirectToLoginPage'",
+            "enabled: false",
+            "concurrentRequests: '10'",
+            "minReplicas: 0",
+            "APPINSIGHTS_DISABLED",
+            "Microsoft.Consumption/budgets",
+        ):
+            self.assertIn(needle, bicep)
+
 
 if __name__ == "__main__":
     unittest.main()
