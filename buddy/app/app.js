@@ -30,52 +30,47 @@
   const ASSISTANT_MODE_META = {
     chief_of_staff: {
       label: "Chief of Staff",
-      title: "Chief of Staff — ready when you are",
-      greeting: "I'm on Chief of Staff duty. Want the priority triage, pending approvals, or today's spend status?",
-      placeholder: "Ask Chief of Staff what needs attention...",
+      title: "Chief of Staff",
+      greeting: "Ready for triage, approvals, or spend.",
+      placeholder: "Ask Chief of Staff...",
       starters: [
-        "What needs my attention?",
-        "Any pending approvals?",
-        "Where are we on spend?",
-        "Check switch status"
-      ],
-      followUps: ["What should I do next?", "Switch to Red Team on this"]
+        "What needs attention?",
+        "Pending approvals?",
+        "Spend status?"
+      ]
     },
     red_team: {
       label: "Red Team",
-      title: "Red Team — challenge & risk lens",
-      greeting: "Point me at a plan or change and I'll surface risks, missing rollbacks, and unverified assumptions.",
-      placeholder: "Paste a plan or change for Red Team to challenge...",
+      title: "Red Team",
+      greeting: "Point me at a plan to surface risks and gaps.",
+      placeholder: "Paste a plan or change to challenge...",
       starters: [
-        "Stress-test the drain plan",
-        "What assumptions aren't verified?",
-        "Check blast radius and rollback"
-      ],
-      followUps: ["What could break?", "Show the plan card"]
+        "Stress-test drain plan",
+        "Check assumptions",
+        "Check rollback"
+      ]
     },
     guru: {
       label: "Guru",
-      title: "Guru — second brain & architecture",
-      greeting: "I'll pull from the pinned second brain and Microsoft Learn first. What do you want to dig into?",
-      placeholder: "Ask Guru about AVD architecture, decisions or Learn...",
+      title: "Guru",
+      greeting: "Pinned second brain & Microsoft Learn.",
+      placeholder: "Ask Guru...",
       starters: [
-        "Why is max sessions set to 8?",
-        "How do idle hosts affect billing?",
-        "Explain Decision 0016"
-      ],
-      followUps: ["Show related Learn docs", "What's the safe Cloud Shell check?"]
+        "Why max sessions = 8?",
+        "Idle host billing?",
+        "Decision 0016?"
+      ]
     },
     buddy: {
       label: "Buddy",
-      title: "Buddy — calm walkthroughs",
-      greeting: "Hey — Buddy here. Ask me anything about your pools, failed runs, or where to start.",
-      placeholder: "Ask Buddy about hosts, sessions, cost or deployments...",
+      title: "Buddy",
+      greeting: "Ask about pools, failed runs, or next steps.",
+      placeholder: "Ask Buddy...",
       starters: [
-        "Which hosts were idle all weekend?",
-        "The deploy failed and I don't know why",
-        "Drain host 3 and restart its agent"
-      ],
-      followUps: ["Walk me through the next step", "What's safe right now?"]
+        "Idle hosts this weekend?",
+        "Why did deploy fail?",
+        "Drain host 3"
+      ]
     }
   };
 
@@ -671,25 +666,44 @@
       mbCard.className = "mode-block-card";
 
       if (mb.kind === "red_team") {
-        const sections = [
-          { title: "Risks surfaced", items: mb.risks || [] },
+        const risks = mb.risks || [];
+        if (risks.length > 0) {
+          const eb = document.createElement("span");
+          eb.className = "eyebrow";
+          eb.textContent = "Risks surfaced";
+          mbCard.appendChild(eb);
+          const ul = document.createElement("ul");
+          for (const item of risks) {
+            const li = document.createElement("li");
+            li.textContent = String(item);
+            ul.appendChild(li);
+          }
+          mbCard.appendChild(ul);
+        }
+        const extraSections = [
           { title: "Assumptions", items: mb.assumptions || [] },
           { title: "Questions before approval", items: mb.questions || [] }
-        ];
-        for (const sec of sections) {
-          if (sec.items.length > 0) {
+        ].filter((s) => s.items.length > 0);
+        if (extraSections.length > 0) {
+          const det = document.createElement("details");
+          det.className = "msg-details";
+          const sum = document.createElement("summary");
+          sum.textContent = "Assumptions & questions";
+          det.appendChild(sum);
+          for (const sec of extraSections) {
             const eb = document.createElement("span");
             eb.className = "eyebrow";
             eb.textContent = sec.title;
-            mbCard.appendChild(eb);
+            det.appendChild(eb);
             const ul = document.createElement("ul");
             for (const item of sec.items) {
               const li = document.createElement("li");
               li.textContent = String(item);
               ul.appendChild(li);
             }
-            mbCard.appendChild(ul);
+            det.appendChild(ul);
           }
+          mbCard.appendChild(det);
         }
         if (mb.footer) {
           const fp = document.createElement("p");
@@ -753,56 +767,69 @@
       }
     }
 
-    if (Array.isArray(turn.citations) && turn.citations.length > 0) {
-      const citBox = document.createElement("div");
-      citBox.className = "msg-citations";
-      const eyebrow = document.createElement("span");
-      eyebrow.className = "eyebrow";
-      eyebrow.textContent = "Sources cited";
-      citBox.appendChild(eyebrow);
-      const ul = document.createElement("ul");
-      const dev = isDevMode();
-      for (const c of turn.citations) {
-        const li = document.createElement("li");
-        const citLabel = dev && c.devLabel ? c.devLabel : c.label;
-        li.textContent = String(citLabel || c.id || "");
-        ul.appendChild(li);
-      }
-      citBox.appendChild(ul);
-      body.appendChild(citBox);
-    }
+    const hasCitations = Array.isArray(turn.citations) && turn.citations.length > 0;
+    const hasLearn = Array.isArray(turn.learnLinks) && turn.learnLinks.length > 0;
+    if (hasCitations || hasLearn) {
+      const refDetails = document.createElement("details");
+      refDetails.className = "msg-details";
+      const refSummary = document.createElement("summary");
+      const totalRefs = (hasCitations ? turn.citations.length : 0) + (hasLearn ? turn.learnLinks.length : 0);
+      refSummary.textContent = "Sources & links (" + totalRefs + ")";
+      refDetails.appendChild(refSummary);
 
-    if (Array.isArray(turn.learnLinks) && turn.learnLinks.length > 0) {
-      const learnBox = document.createElement("div");
-      learnBox.className = "msg-learn";
-      const eyebrow = document.createElement("span");
-      eyebrow.className = "eyebrow";
-      eyebrow.textContent = "Learn more";
-      learnBox.appendChild(eyebrow);
-      const ul = document.createElement("ul");
-      for (const item of turn.learnLinks) {
-        const li = document.createElement("li");
-        const a = document.createElement("a");
-        a.href = String(item.url || "https://learn.microsoft.com/");
-        // Teaching links open in system browser so standalone PWA isn't trapped (docs/buddy-app.md section 3).
-        a.target = "_blank";
-        a.rel = "noopener noreferrer";
-        a.textContent = String(item.title || item.url);
-        let host = "learn.microsoft.com";
-        try {
-          host = new URL(a.href).host;
-        } catch (_err) {
-          host = "learn.microsoft.com";
+      if (hasCitations) {
+        const citBox = document.createElement("div");
+        citBox.className = "msg-citations";
+        const eyebrow = document.createElement("span");
+        eyebrow.className = "eyebrow";
+        eyebrow.textContent = "Sources cited";
+        citBox.appendChild(eyebrow);
+        const ul = document.createElement("ul");
+        const dev = isDevMode();
+        for (const c of turn.citations) {
+          const li = document.createElement("li");
+          const citLabel = dev && c.devLabel ? c.devLabel : c.label;
+          li.textContent = String(citLabel || c.id || "");
+          ul.appendChild(li);
         }
-        const hostSpan = document.createElement("span");
-        hostSpan.className = "learn-link-host";
-        hostSpan.textContent = " (" + host + " ↗)";
-        li.appendChild(a);
-        li.appendChild(hostSpan);
-        ul.appendChild(li);
+        citBox.appendChild(ul);
+        refDetails.appendChild(citBox);
       }
-      learnBox.appendChild(ul);
-      body.appendChild(learnBox);
+
+      if (hasLearn) {
+        const learnBox = document.createElement("div");
+        learnBox.className = "msg-learn";
+        const eyebrow = document.createElement("span");
+        eyebrow.className = "eyebrow";
+        eyebrow.textContent = "Learn more";
+        learnBox.appendChild(eyebrow);
+        const ul = document.createElement("ul");
+        for (const item of turn.learnLinks) {
+          const li = document.createElement("li");
+          const a = document.createElement("a");
+          a.href = String(item.url || "https://learn.microsoft.com/");
+          // Teaching links open in system browser so standalone PWA isn't trapped (docs/buddy-app.md section 3).
+          a.target = "_blank";
+          a.rel = "noopener noreferrer";
+          a.textContent = String(item.title || item.url);
+          let host = "learn.microsoft.com";
+          try {
+            host = new URL(a.href).host;
+          } catch (_err) {
+            host = "learn.microsoft.com";
+          }
+          const hostSpan = document.createElement("span");
+          hostSpan.className = "learn-link-host";
+          hostSpan.textContent = " (" + host + " ↗)";
+          li.appendChild(a);
+          li.appendChild(hostSpan);
+          ul.appendChild(li);
+        }
+        learnBox.appendChild(ul);
+        refDetails.appendChild(learnBox);
+      }
+
+      body.appendChild(refDetails);
     }
 
     if (turn.plan) {
