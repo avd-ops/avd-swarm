@@ -177,6 +177,7 @@ class BuddyState:
         token_provider: Callable[[], str] | None = None,
         second_brain_dir: Path | None = None,
         assess_dir: Path | None = None,
+        remediate_dir: Path | None = None,
         learn_search: bool | None = None,
         learn_opener: Callable[..., Any] | None = None,
     ) -> None:
@@ -201,7 +202,8 @@ class BuddyState:
         )
         sb_dir = second_brain_dir or Path(os.environ.get("AVD_SECOND_BRAIN_PATH") or (ROOT.parent / "avd-second-brain"))
         as_dir = assess_dir or Path(os.environ.get("AVD_ASSESS_PATH") or (ROOT.parent / "avd-assess"))
-        indexed_docs = assistant_router.load_docs_from_sources(sb_dir, as_dir)
+        rem_dir = remediate_dir or Path(os.environ.get("AVD_REMEDIATE_PATH") or (ROOT.parent / "avd-remediate"))
+        indexed_docs = assistant_router.load_docs_from_sources(sb_dir, as_dir, rem_dir)
         self.brain_index = assistant_router.BrainIndex(docs=indexed_docs or None, pinned_sha=brain_sha)
         self.learn_search = learn_search if learn_search is not None else (os.environ.get("AVD_LEARN_SEARCH", "1").strip() != "0")
         self.learn_opener = learn_opener
@@ -792,17 +794,49 @@ class BuddyState:
             learn_links = [{"title": "Microsoft Learn: Troubleshoot subnet overlap errors", "url": "https://learn.microsoft.com/azure/virtual-network/virtual-networks-faq"}]
             raw_aside = "Subnets do not like sharing their personal space."
         else:
-            answer = (
-                "Two hosts were idle all weekend: `sh-sales-01` and `sh-sales-02` in `hp-contoso-sales` had zero sessions from Friday 18:00 UTC to Monday 08:00 UTC. "
-                "Why it matters: a running VM bills compute every hour even with zero sessions, whereas a stopped (deallocated) VM stops compute billing while its OS disk keeps billing."
-            )
-            citations = [
-                {"id": "call-kql-01", "label": "WVDAgentHealthStatus & WVDConnections (48h window)"},
-                {"id": "call-cost-01", "label": "Cost Management: forecast_costs (rg-contoso-prod-avd)"},
-            ]
-            learn_links = [
-                {"title": "Microsoft Learn: Azure VM states and billing", "url": "https://learn.microsoft.com/azure/virtual-machines/states-billing"},
-            ]
+            if not self.sim_mode:
+                hits = self.brain_index.search(question)
+                learn_hits = (
+                    assistant_router.query_microsoft_learn(question, opener=self.learn_opener)
+                    if self.learn_search
+                    else []
+                )
+                if hits:
+                    top = hits[0]
+                    source_badge = f"0 tokens · brain @{self.brain_index.pinned_sha}"
+                    answer = f"{top['title']}: {top['summary']}"
+                    citations = [{"id": h["docId"], "label": f"{h['source']} ({h['docId']})"} for h in hits]
+                    learn_links = [{"title": lh["title"], "url": lh["url"]} for lh in learn_hits if lh.get("url")]
+                    if top.get("learnUrl") and all(l["url"] != top["learnUrl"] for l in learn_links):
+                        learn_links.insert(0, {"title": top["title"], "url": top["learnUrl"]})
+                    mode_block = {"kind": "guru", "docs": hits, "learnHits": learn_hits, "snippets": [], "canSynthesize": True}
+                    raw_aside = None
+                elif learn_hits:
+                    top_learn = learn_hits[0]
+                    source_badge = "0 tokens · Microsoft Learn"
+                    desc = f" — {top_learn['description']}" if top_learn.get("description") else ""
+                    answer = f"Microsoft Learn: {top_learn['title']}{desc}"
+                    citations = [{"id": "microsoft-learn", "label": f"Microsoft Learn ({top_learn['url']})"}]
+                    learn_links = [{"title": lh["title"], "url": lh["url"]} for lh in learn_hits if lh.get("url")]
+                    mode_block = {"kind": "guru", "docs": [], "learnHits": learn_hits, "snippets": [], "canSynthesize": False}
+                    raw_aside = None
+                else:
+                    answer = assistant_router.NO_MATCH_MESSAGE
+                    citations = []
+                    learn_links = []
+                    raw_aside = None
+            else:
+                answer = (
+                    "Two hosts were idle all weekend: `sh-sales-01` and `sh-sales-02` in `hp-contoso-sales` had zero sessions from Friday 18:00 UTC to Monday 08:00 UTC. "
+                    "Why it matters: a running VM bills compute every hour even with zero sessions, whereas a stopped (deallocated) VM stops compute billing while its OS disk keeps billing."
+                )
+                citations = [
+                    {"id": "call-kql-01", "label": "WVDAgentHealthStatus & WVDConnections (48h window)"},
+                    {"id": "call-cost-01", "label": "Cost Management: forecast_costs (rg-contoso-prod-avd)"},
+                ]
+                learn_links = [
+                    {"title": "Microsoft Learn: Azure VM states and billing", "url": "https://learn.microsoft.com/azure/virtual-machines/states-billing"},
+                ]
 
         mode, final_aside = self._apply_voice_check(
             question=question,

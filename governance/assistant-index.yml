@@ -7,12 +7,19 @@ sources:
   avd-second-brain:
     repo: avd-ops/avd-second-brain
     branch: main
-    pinned_sha: "0000000000000000000000000000000000000000"  # replace with verified commit SHA on first index build
+    pinned_sha: "632fb604447aa659920f726390d0bc685aa33665"
     paths:
       - docs/knowledge/
   avd-assess:
     repo: avd-ops/avd-assess
     branch: main
-    pinned_sha: "0000000000000000000000000000000000000000"  # replace with verified commit SHA on first index build
+    pinned_sha: "064607c93e9874f848c47e5c74bee77e82e57f4c"
     paths:
-      - docs/
+      - index.json
+      - methods/
+  avd-remediate:
+    repo: avd-ops/avd-remediate
+    branch: main
+    pinned_sha: "4f29f312817fe49ce08ad67cc6b97ce585ac1e03"
+    paths:
+      - playbooks/catalog.json
