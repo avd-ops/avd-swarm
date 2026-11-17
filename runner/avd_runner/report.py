@@ -60,6 +60,8 @@ def summary(finding: dict) -> str:
     status = finding["investigation"]["status"]
     if status == "answered":
         lines += ["", f"The agent answered with {len(finding['investigation']['claims'])} claims; read them in avd-buddy."]
+    elif status == "answered-by-brain":
+        lines += ["", f"The second brain answered with {len(finding['investigation']['claims'])} matches; read them in avd-buddy."]
     elif status != "not-needed":
         lines += ["", f"Investigation: {status}."]
     return "\n".join(lines)
