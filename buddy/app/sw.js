@@ -3,7 +3,7 @@
    Precaches the app shell only; network-only for /api/* and /.auth/*; deletes old caches on activate;
    never caches estate data; notifies clients with "Update ready, reload" instead of reloading mid-conversation. */
 
-const CACHE_NAME = "avd-buddy-shell-v1";
+const CACHE_NAME = "avd-assistant-shell-v2";
 const SHELL_ASSETS = [
   "./",
   "./index.html",
