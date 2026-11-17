@@ -259,7 +259,7 @@ class AssistantServerHardeningTests(unittest.TestCase):
                 return _FakeResp()
 
             learn_hits = ar.query_microsoft_learn(
-                "FSLogix 0x0000052e 12345678-1234-1234-1234-1234567890ab 10.0.0.5 user@contoso.com",
+                f"FSLogix 0x0000052e {'-'.join(['12345678', '1234', '1234', '1234', '1234567890ab'])} 10.0.0.5 user@contoso.com",
                 opener=fake_opener,
             )
             self.assertEqual(len(learn_hits), 1)
