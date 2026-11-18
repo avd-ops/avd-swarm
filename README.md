@@ -10,7 +10,7 @@ Part of [avd-ops](https://avd-ops.dev/), the open toolkit for Azure Virtual Desk
 > - It is provided **"as is", without warranty of any kind**, under the [MIT License](LICENSE). You use it at your own risk. You are responsible for what it changes, for any Azure or model charges, and for reviewing the code before you run it.
 > - **Contributions and forks are welcome and encouraged.** See [Contributing](#contributing).
 
-An agent-based Desktop DevOps platform for managing Azure Virtual Desktop (`avd`), Windows 365 (`win365`) and Microsoft Intune (`intune`) without the portals, starting with the [AVD landing zone](https://github.com/avd-ops/avd-landing-zone) and [avd-intune](https://github.com/avd-ops/avd-intune). Its chat front end, **[avd-buddy](docs/buddy-app.md)** ([public demo](https://buddy.avd-ops.dev/)), works as an installable web app from any browser, Android, iPhone and iPad included. A coordinator agent hands questions to specialist agents (readiness, deploy, hosts, intune, images, users, cost). They read freely and change nothing without a person approving the exact plan (or merging a policy-as-code pull request for Intune). It connects to the [second brain](https://github.com/avd-ops/avd-second-brain) where they overlap.
+An agent-based Desktop DevOps platform for managing Azure Virtual Desktop (`avd`), Windows 365 (`win365`) and Microsoft Intune (`intune`) without the portals, starting with the [AVD landing zone](https://github.com/avd-ops/avd-landing-zone) and [avd-intune](https://github.com/avd-ops/avd-intune). Its chat front end, **[avd-buddy](docs/buddy-app.md)** ([public demo](https://avd-ops.app/assistant/)), works as an installable web app from any browser, Android, iPhone and iPad included. A coordinator agent hands questions to specialist agents (readiness, deploy, hosts, intune, images, users, cost). They read freely and change nothing without a person approving the exact plan (or merging a policy-as-code pull request for Intune). It connects to the [second brain](https://github.com/avd-ops/avd-second-brain) where they overlap.
 
 It covers AVD, Windows 365 Cloud PCs, endpoint management in Intune, and the users, groups and licenses they need. Unrelated tenant-wide administration (Exchange, Teams, SharePoint) is out of scope here.
 
@@ -19,7 +19,7 @@ It covers AVD, Windows 365 Cloud PCs, endpoint management in Intune, and the use
 The write path never runs in this public repo: adopters run it from a private repo synced from a release tag ([spec Â§5b](docs/spec.md#5b-where-the-write-path-runs-the-project-and-its-adopters)).
 
 - Spec: [docs/spec.md](docs/spec.md)
-- avd-buddy app & public demo: [docs/buddy-app.md](docs/buddy-app.md) ([buddy.avd-ops.dev](https://buddy.avd-ops.dev/))
+- avd-buddy app & public demo: [docs/buddy-app.md](docs/buddy-app.md) ([avd-ops.app/assistant/](https://avd-ops.app/assistant/))
 - Open-source core and optional adapters (accepted 2026-10-21): [docs/core-and-adapters.md](docs/core-and-adapters.md)
 - Decisions: [docs/decisions](docs/decisions)
 - Recovery tests and failover: [docs/recovery.md](docs/recovery.md)
@@ -30,7 +30,7 @@ The write path never runs in this public repo: adopters run it from a private re
 
 | Direction | Repo | Relationship |
 |---|---|---|
-| Front door | [avd-ops](https://github.com/avd-ops/avd-ops#readme) | Overview, [repo page](https://avd-ops.dev/docs/repos/avd-swarm.html), and [buddy demo](https://buddy.avd-ops.dev/) |
+| Front door | [avd-ops](https://github.com/avd-ops/avd-ops#readme) | Overview, [repo page](https://avd-ops.dev/docs/repos/avd-swarm.html), and [buddy demo](https://avd-ops.app/assistant/) |
 | Intelligence | [avd-second-brain](https://github.com/avd-ops/avd-second-brain#readme) | Memory layer: pinned KB (`C6`), proposals (`C9`), insights (`C8`), outcomes (`C10`) |
 | Target | [avd-landing-zone](https://github.com/avd-ops/avd-landing-zone#readme) | Orchestrates AVD estate changes through approved plans |
 | Target | [avd-intune](https://github.com/avd-ops/avd-intune#readme) | Policy-as-code pull requests for Intune and Windows 365 |

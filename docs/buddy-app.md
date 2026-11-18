@@ -117,7 +117,7 @@ Feasible, with limits, and **not in step 2**. There's nothing to approve until s
 - **Short poll turns for mobile resilience.** Even without Static Web Apps' 45-second HTTP cliff, mobile connections drop between towers and locks: `POST /api/turns` returns a turn ID, and the client polls `GET /api/turns/{id}?after=n` (each poll under 30 seconds) for new chunks until the turn ends.
 - **Deterministic zero-token endpoints for status and healthy checks.** Status views (`GET /api/status`), open-run banners, and manual or scheduled runbook cards whose `expect:` assertions pass ([core-and-adapters.md](core-and-adapters.md) §3.2) read from the plan store or the brain's latest `C11`/`C21` facts and return fixed cards without calling a model. In Phase D, `GET /api/status` includes the five control-plane scores (`azure`, `entra`, `intune`, `m365`, `power-platform`), pillar coverage, pseudonymous host pool availability, and active `gap`/`warn` check rows; tapping any plane or finding opens Chat with a pre-filled question for `avd-buddy`.
 
-GitHub Pages (`buddy.avd-ops.dev`) serves the offline public demo simulation only (static files and client-side fixtures, zero Azure spend); it never hosts an adopter's live estate deployment, which needs the Entra sign-in and the internal-ingress `/api` relay on the adopter's Container App.
+GitHub Pages (`avd-ops.app/assistant/`) serves the offline public demo simulation only (static files and client-side fixtures, zero Azure spend); it never hosts an adopter's live estate deployment, which needs the Entra sign-in and the internal-ingress `/api` relay on the adopter's Container App.
 
 **Performance budgets** (checked in CI on a throttled mid-range phone profile):
 
@@ -199,4 +199,4 @@ What we found no prior art for, and so wrote: a chat PWA that by rule can't appr
 - **BQ2** Does GitHub Mobile let a reviewer approve a deployment on a phone? GitHub's docs describe the web flow only. Check on a real device in phase B; if not, the "Review and approve in GitHub" link opens the mobile web page, which works.
 - **BQ3** Push (phase C) at all? Default: only if the owner asks after phase B.
 - **BQ4** Web Chat or our own chat view (§11)? Default: our own, unless Web Chat fits the budgets.
-- **BQ5** A custom domain for the adopter's app? Default: the Container App's default hostname for an adopter's live deployment; `buddy.avd-ops.dev` is used only for the public offline demo simulation on GitHub Pages.
+- **BQ5** A custom domain for the adopter's app? Default: the Container App's default hostname for an adopter's live deployment; `avd-ops.app/assistant/` is used only for the public offline demo simulation on GitHub Pages.
