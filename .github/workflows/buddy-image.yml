@@ -47,13 +47,13 @@ jobs:
 
       - name: Smoke-test container with baked brain-index.sqlite
         run: |
-          CID=$(docker run -d --rm \
+          CID=$(docker run -d \
             -e BUDDY_REQUIRE_EASY_AUTH=false \
             -e BUDDY_SIM_MODE=false \
             -e AVD_LEARN_SEARCH=0 \
             -p 18080:8080 \
             "${{ steps.build.outputs.image }}:${{ steps.build.outputs.tag_sha }}")
-          trap 'docker stop "$CID" >/dev/null 2>&1 || true' EXIT
+          trap 'docker logs "$CID" || true; docker rm -f "$CID" >/dev/null 2>&1 || true' EXIT
 
           python3 - <<'PY'
           import json, time, urllib.request
