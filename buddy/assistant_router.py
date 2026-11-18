@@ -355,6 +355,7 @@ def load_docs_from_sources(
     second_brain_dir: Path | None = None,
     assess_dir: Path | None = None,
     remediate_dir: Path | None = None,
+    learn_dir: Path | None = None,
 ) -> list[dict[str, Any]]:
     """Mechanically index avd-second-brain, avd-assess, and avd-remediate playbook summaries into BrainIndex docs (0 tokens)."""
     docs: list[dict[str, Any]] = []
@@ -500,6 +501,60 @@ def load_docs_from_sources(
                             "tags": f"{pb_id} {pb.get('domain', '')} {pb.get('plane', '')} {keywords} {c21_checks}".strip(),
                             "summary": " ".join(p for p in summary_parts if p)[:500],
                             "learn_url": "https://github.com/avd-ops/avd-remediate/blob/main/playbooks/catalog.json",
+                            "snippets": [],
+                        }
+                    )
+            except Exception:
+                pass
+
+    if learn_dir and learn_dir.is_dir():
+        concepts_path = learn_dir / "dataset" / "concepts.json"
+        if concepts_path.is_file():
+            try:
+                cdata = json.loads(concepts_path.read_text(encoding="utf-8"))
+                for c in cdata.get("concepts") or []:
+                    if not isinstance(c, dict) or not c.get("id"):
+                        continue
+                    c_id = str(c["id"])
+                    exams = " ".join(str(e) for e in (c.get("exams") or []))
+                    gotchas = " ".join(str(g) for g in (c.get("gotchas") or []))
+                    summary = " ".join(
+                        p for p in (str(c.get("plainEnglish") or "").strip(), str(c.get("whyItMatters") or "").strip()) if p
+                    )[:500]
+                    docs.append(
+                        {
+                            "doc_id": f"learn/concepts/{c_id}",
+                            "title": str(c.get("title") or c_id),
+                            "source": "avd-learn",
+                            "tags": f"{c_id} {c.get('track', '')} {exams} {c.get('domain', '')} {gotchas}".strip(),
+                            "summary": summary,
+                            "learn_url": "https://avd-ops.github.io/avd-learn/site/",
+                            "snippets": [],
+                        }
+                    )
+            except Exception:
+                pass
+
+        scenarios_path = learn_dir / "dataset" / "scenarios.json"
+        if scenarios_path.is_file():
+            try:
+                sdata = json.loads(scenarios_path.read_text(encoding="utf-8"))
+                for s in sdata.get("scenarios") or []:
+                    if not isinstance(s, dict) or not s.get("id"):
+                        continue
+                    s_id = str(s["id"])
+                    exams = " ".join(str(e) for e in (s.get("exams") or []))
+                    summary = " ".join(
+                        p for p in (str(s.get("prompt") or "").strip(), str(s.get("explanation") or "").strip()) if p
+                    )[:500]
+                    docs.append(
+                        {
+                            "doc_id": f"learn/scenarios/{s_id}",
+                            "title": str(s.get("title") or s_id),
+                            "source": "avd-learn",
+                            "tags": f"{s_id} {exams} {s.get('difficulty', '')} scenario".strip(),
+                            "summary": summary,
+                            "learn_url": "https://avd-ops.github.io/avd-learn/site/",
                             "snippets": [],
                         }
                     )

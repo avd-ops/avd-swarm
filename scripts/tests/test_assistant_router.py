@@ -407,6 +407,71 @@ class AssistantServerHardeningTests(unittest.TestCase):
             finally:
                 idx.conn.close()
 
+    def test_build_sqlite_index_includes_avd_learn(self):
+        from buddy import build_brain_index
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            sb = tmp_path / "sb"
+            assess = tmp_path / "assess"
+            learn = tmp_path / "learn"
+            (sb / "docs" / "knowledge").mkdir(parents=True)
+            assess.mkdir()
+            (learn / "dataset").mkdir(parents=True)
+            (learn / "dataset" / "concepts.json").write_text(
+                json.dumps(
+                    {
+                        "concepts": [
+                            {
+                                "id": "learn-test-fslogix",
+                                "track": "avd-profiles-apps",
+                                "title": "FSLogix Profile Containers",
+                                "exams": ["AZ-140"],
+                                "domain": "AZ-140: User environments",
+                                "plainEnglish": "Mount user profiles via VHDX containers on Azure Files.",
+                                "whyItMatters": "Keeps state persistent across pooled hosts.",
+                                "gotchas": ["Exclude Teams cache."],
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (learn / "dataset" / "scenarios.json").write_text(
+                json.dumps(
+                    {
+                        "scenarios": [
+                            {
+                                "id": "scen-test-storm",
+                                "title": "Morning Logon Storm",
+                                "exams": ["AZ-140"],
+                                "difficulty": "intermediate",
+                                "prompt": "120 users hit slow sign-ins.",
+                                "explanation": "Upgrade to Premium FileStorage.",
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            db_out = tmp_path / "brain-index.sqlite"
+            count = build_brain_index.build_sqlite_index(
+                second_brain_dir=sb,
+                assess_dir=assess,
+                learn_dir=learn,
+                output_path=db_out,
+                learn_sha="cbe683c70a13fe347ffbdca9ba98a2eaefd4988e",
+            )
+            self.assertEqual(count, 2)
+            idx = ar.BrainIndex(db_path=db_out)
+            try:
+                hits = idx.search("FSLogix VHDX containers")
+                self.assertTrue(any(h["docId"] == "learn/concepts/learn-test-fslogix" for h in hits))
+                scen_hits = idx.search("Morning Logon Storm")
+                self.assertTrue(any(h["docId"] == "learn/scenarios/scen-test-storm" for h in scen_hits))
+            finally:
+                idx.conn.close()
+
 
 if __name__ == "__main__":
     unittest.main()

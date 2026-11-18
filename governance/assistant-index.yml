@@ -23,3 +23,10 @@ sources:
     pinned_sha: "4f29f312817fe49ce08ad67cc6b97ce585ac1e03"
     paths:
       - playbooks/catalog.json
+  avd-learn:
+    repo: avd-ops/avd-learn
+    branch: main
+    pinned_sha: "cbe683c70a13fe347ffbdca9ba98a2eaefd4988e"
+    paths:
+      - dataset/concepts.json
+      - dataset/scenarios.json
