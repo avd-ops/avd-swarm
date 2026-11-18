@@ -369,19 +369,41 @@ class AssistantServerHardeningTests(unittest.TestCase):
             )
             assess = tmp_path / "avd-assess"
             assess.mkdir(parents=True)
+            rem = tmp_path / "avd-remediate"
+            (rem / "playbooks").mkdir(parents=True)
+            (rem / "playbooks" / "catalog.json").write_text(
+                json.dumps(
+                    {
+                        "playbooks": [
+                            {
+                                "id": "pb-baked-test",
+                                "domain": "connectivity",
+                                "plane": "intune",
+                                "title": "Baked playbook summary test",
+                                "bottomLine": "Verify remediate catalog is baked into SQLite.",
+                                "keywords": ["baked", "playbook"],
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
             db_out = tmp_path / "brain-index.sqlite"
             count = build_brain_index.build_sqlite_index(
                 second_brain_dir=sb,
                 assess_dir=assess,
+                remediate_dir=rem,
                 output_path=db_out,
                 pinned_sha="632fb604447aa659920f726390d0bc685aa33665",
             )
-            self.assertGreaterEqual(count, 1)
+            self.assertGreaterEqual(count, 2)
             idx = ar.BrainIndex(db_path=db_out)
             try:
                 self.assertEqual(idx.pinned_sha, "632fb60")
                 hits = idx.search("Baked SQLite FTS5")
                 self.assertTrue(any(h["docId"] == "brain/known-errors/baked-test-01" for h in hits))
+                rem_hits = idx.search("Baked playbook summary")
+                self.assertTrue(any(h["docId"] == "remediate/playbooks/pb-baked-test" for h in rem_hits))
             finally:
                 idx.conn.close()
 
