@@ -222,7 +222,7 @@ param brainRepo string = 'avd-ops/avd-second-brain'
 param brainCommit string = ''
 
 @description('anthropic only: scale agentsApp to zero when idle (minReplicas: 0) for the <$1/month standing sandbox RAG mode.')
-param scaleToZero bool = false
+param scaleToZero bool = true
 
 @description('anthropic only: the run\'s cap on Claude spend in USD, metered from each response before the next call (gateway/avd_gateway/meter.py).')
 param tokenSpendCapUsd string = '15'
