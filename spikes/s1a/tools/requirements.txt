@@ -1,4 +1,4 @@
-anthropic==2.6.0
+anthropic==2.8.0
 azure-ai-projects==2.9.0
 azure-identity==1.27.0
 httpx==0.28.1
