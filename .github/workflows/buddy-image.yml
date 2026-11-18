@@ -1,0 +1,103 @@
+name: Build and Push avd-assistant Image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'buddy/**'
+      - 'assets/assistant/**'
+      - 'governance/assistant-*.yml'
+      - 'governance/buddy-voice.yml'
+      - 'catalog/**'
+      - 'scripts/voice_check.py'
+      - 'scripts/build_buddy_icons.py'
+      - '.github/workflows/buddy-image.yml'
+  pull_request:
+    paths:
+      - 'buddy/**'
+      - 'assets/assistant/**'
+      - 'governance/assistant-*.yml'
+      - 'governance/buddy-voice.yml'
+      - 'catalog/**'
+      - 'scripts/voice_check.py'
+      - 'scripts/build_buddy_icons.py'
+      - '.github/workflows/buddy-image.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-smoke:
+    name: Build, smoke-test, and push buddy/Dockerfile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build container image
+        id: build
+        run: |
+          OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE="ghcr.io/${OWNER_LOWER}/avd-buddy"
+          TAG_SHA="sha-${GITHUB_SHA::12}"
+          docker build -f buddy/Dockerfile -t "${IMAGE}:${TAG_SHA}" -t "${IMAGE}:latest" .
+          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "tag_sha=${TAG_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke-test container with baked brain-index.sqlite
+        run: |
+          CID=$(docker run -d \
+            -e BUDDY_REQUIRE_EASY_AUTH=false \
+            -e BUDDY_SIM_MODE=false \
+            -e AVD_LEARN_SEARCH=0 \
+            -p 18080:8080 \
+            "${{ steps.build.outputs.image }}:${{ steps.build.outputs.tag_sha }}")
+          trap 'docker logs "$CID" || true; docker rm -f "$CID" >/dev/null 2>&1 || true' EXIT
+
+          python3 - <<'PY'
+          import json, time, urllib.request
+
+          for _ in range(20):
+              try:
+                  with urllib.request.urlopen("http://127.0.0.1:18080/api/status", timeout=2) as r:
+                      if r.status == 200:
+                          break
+              except Exception:
+                  time.sleep(0.5)
+          else:
+              raise RuntimeError("Container did not become ready on /api/status")
+
+          req = urllib.request.Request(
+              "http://127.0.0.1:18080/api/turns",
+              data=json.dumps({
+                  "question": "FSLogix 0x0000052e",
+                  "mode": "guru",
+                  "idempotencyKey": "ci-container-smoke-1"
+              }).encode("utf-8"),
+              headers={"Content-Type": "application/json"},
+              method="POST",
+          )
+          with urllib.request.urlopen(req, timeout=5) as r:
+              turn = json.loads(r.read().decode("utf-8"))["turn"]
+          docs = (turn.get("modeBlock") or {}).get("docs") or []
+          badge = turn.get("sourceBadge") or ""
+          print(f"Container smoke: badge={badge!r}, docs={len(docs)}")
+          assert "0 tokens" in badge, turn
+          assert len(docs) >= 1, turn
+          PY
+
+      - name: Push digest-pinned image to GHCR
+        if: github.event_name != 'pull_request'
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          IMAGE="${{ steps.build.outputs.image }}"
+          TAG_SHA="${{ steps.build.outputs.tag_sha }}"
+          docker push "${IMAGE}:${TAG_SHA}"
+          docker push "${IMAGE}:latest"
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "${IMAGE}:${TAG_SHA}")
+          echo "### Published avd-assistant image" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Tag: \`${IMAGE}:${TAG_SHA}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Digest: \`${DIGEST}\`" >> "$GITHUB_STEP_SUMMARY"

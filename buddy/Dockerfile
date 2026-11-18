@@ -8,6 +8,7 @@ WORKDIR /app
 RUN pip install --no-cache-dir pyyaml==6.0.2
 
 COPY assets/buddy/ /app/assets/buddy/
+COPY assets/assistant/ /app/assets/assistant/
 COPY governance/buddy-voice.yml /app/governance/buddy-voice.yml
 COPY governance/assistant-triage.yml /app/governance/assistant-triage.yml
 COPY governance/model-prices.yml /app/governance/model-prices.yml
