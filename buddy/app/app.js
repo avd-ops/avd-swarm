@@ -1577,7 +1577,8 @@
       params.get("sim") === "1" ||
       params.get("demo") === "1" ||
       host.endsWith(".github.io") ||
-      host === "buddy.avd-ops.dev"
+      host === "buddy.avd-ops.dev" ||
+      host === "avd-ops.app"
     ) {
       enableSimMode();
       return;
