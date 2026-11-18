@@ -241,7 +241,7 @@ This repository is public, so its Actions logs, job summaries, artifacts and run
 |---|---|---|
 | Who | This repo and its one maintainer | An organization, or a person, running avd-swarm against their own tenant. Nick's own sandbox is an adopter too |
 | Runs here | CI only: the guard, tests and checks against fixtures. No workflow holds an Azure credential, an environment or `id-token: write` | Everything that touches a tenant: `approve`, `stop-spend`, the kill switch trip and drill workflows, Improve and Scribe, the eval runs against Azure, the spend jobs |
-| Ships or holds | Code, the action catalog, workflow **templates** (`templates/workflows/`, which GitHub doesn't run), conservative defaults | Their variables (IDs), environments and approvers, their plan store, transcripts and ledger |
+| Ships or holds | Code, the action catalog, workflow **templates** (`templates/workflows/`, which GitHub doesn't run), conservative defaults | Their single private companion repo (`avd-private`: `swarm/` + `.github/workflows/`), variables (IDs), environments and approvers, their plan store, transcripts and ledger |
 | Syncs | n/a | From a **release tag**, never from `main`. A sync PR passes the adopter's own guard, so every guardrail change upstream made is visible before it merges |
 
 **Rules that enforce it.**
