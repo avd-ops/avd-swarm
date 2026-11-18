@@ -146,7 +146,7 @@ The spike built both. The check asked for on 2026-10-21:
 
 Nothing in this plan touches these, and the adapter check fails a manifest that tries:
 
-- every write is a plan a person approves in the GitHub Environment `approve` (spec section 5); the plan store is written only by `propose_change`; the job re-reads live state and compares hashes;
+- every write is a plan a person approves in the GitHub Environment `approve` (spec section 5; note: Environment required reviewers on a private repo require GitHub Pro+, so GitHub Free adopters run writes interactively from Azure Cloud Shell per `avd-ops` ADR 0026); the plan store is written only by `propose_change`; the job re-reads live state and compares hashes;
 - the deterministic gate runs before approval and again in the job (governance section 2.1); its policy is in Git, protected;
 - the kill switch has four positions, enforced in layers by an identity that can only take capability away, and **only a person resets it** from Cloud Shell (governance section 2.3); every adapter and every published tool layer is refused at the positions that forbid it;
 - observers can deny and trip and never reset; they see events, never text (section 2.2);
@@ -187,7 +187,7 @@ Work packages are sized for one thread each. Every PR is Claude-reviewed, passes
 
 Order: WP0 first (two days of thread time; it unblocks the rest and lands the KB). WP1, WP3 and WP5's manifests run in parallel next, all offline. WP2 and WP6 follow and are the first things in this plan that spend money. WP4, WP5's enforcement and WP7 are step 3 work, after step 2's exit (answers cite evidence in at least 80% of eval questions).
 
-Expected end state: an adopter clones this repo, syncs a release tag into a private repo, sets variables, runs the Cloud Shell blocks, and has read-only agents, scheduled runbooks and alert-triggered investigations for cents a month idle plus metered tokens ([decision 0010](decisions/0010-avd-buddy-container-app-hosting.md)), with every write through the gate and every paid Microsoft service off until they estimate it and turn it on.
+Expected end state: an adopter clones this repo, syncs a release tag into `swarm/` and `.github/workflows/` of their single private companion repo (`avd-private`), sets variables, runs the Cloud Shell blocks, and has read-only agents, scheduled runbooks and alert-triggered investigations for cents a month idle plus metered tokens ([decision 0010](decisions/0010-avd-buddy-container-app-hosting.md)), with every write through the gate (GitHub Environment `approve` on Pro+, or Cloud Shell on GitHub Free) and every paid Microsoft service off until they estimate it and turn it on.
 
 ## 8. What needs Nick
 

@@ -1,12 +1,17 @@
 # avd-swarm approve workflow template: two-stage governance gate and approved write path (spec section 5, avd-swarm#43).
 # Personal project, not for production, provided as is; not affiliated with the author's employer, Liquidware or Microsoft.
 #
-# A TEMPLATE: GitHub doesn't run files in templates/. An adopter copies it into the private repo synced from a
-# release tag (spec section 5b). Job 1 (`gate`) runs outside the `approve` environment with no write role and
-# checks the plan's evidence, preconditions, and hash. Job 2 (`apply`) waits for a person's approval in the
-# `approve` environment, re-reads the kill switch and live target state, compares the rebuilt hash against the
-# approved hash, applies the reversible action, and verifies the result. Logs and job summaries carry only the
-# plan ID, hash, action name, and gate counts — never a target, parameter, or resource name (R17).
+# A TEMPLATE: GitHub doesn't run files in templates/. An adopter copies it into their single private companion
+# repo (`avd-private`, synced from a release tag, spec section 5b). Job 1 (`gate`) runs outside the `approve`
+# environment with no write role and checks the plan's evidence, preconditions, and hash. Job 2 (`apply`) waits
+# for a person's approval in the `approve` environment, re-reads the kill switch and live target state, compares
+# the rebuilt hash against the approved hash, applies the reversible action, and verifies the result.
+#
+# GITHUB FREE LIMIT: Environment required reviewers on a private repository require GitHub Pro, Team, or
+# Enterprise. On GitHub Free, `environment: approve` will NOT pause for human approval — do not enable this
+# workflow on a GitHub Free private repo; run approved writes interactively from Azure Cloud Shell instead.
+# Logs and job summaries carry only the plan ID, hash, action name, and gate counts — never a target,
+# parameter, or resource name (R17).
 name: Approve
 
 on:
