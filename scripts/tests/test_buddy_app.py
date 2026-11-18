@@ -387,7 +387,7 @@ class ContainerAppBicepTests(unittest.TestCase):
         bicep_text = (ROOT / "templates/buddy/main.bicep").read_text(encoding="utf-8")
         self.assertIn("minReplicas: 0", bicep_text)
         self.assertIn("Microsoft.App/containerApps/authConfigs@2024-03-01", bicep_text)
-        self.assertIn("override-use-mi-fic-assertion-clientid", bicep_text)
+        self.assertNotIn("clientSecretSettingName", bicep_text)
         self.assertIn("RedirectToLoginPage", bicep_text)
         self.assertIn("tokenStore: {\n        enabled: false\n      }", bicep_text)
         for env_name in ("BUDDY_UAMI_CLIENT_ID", "MCP_APP_ID", "AGENT_IDENTITY_APP_ID", "AGENT_MODEL"):

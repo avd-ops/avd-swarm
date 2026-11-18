@@ -93,12 +93,6 @@ resource buddyApp 'Microsoft.App/containerApps@2024-03-01' = {
         allowInsecure: false
         transport: 'auto'
       }
-      secrets: [
-        {
-          name: 'override-use-mi-fic-assertion-clientid'
-          value: buddyIdentity.properties.clientId
-        }
-      ]
     }
     template: {
       containers: [
@@ -169,7 +163,6 @@ resource buddyAuth 'Microsoft.App/containerApps/authConfigs@2024-03-01' = {
         registration: {
           openIdIssuer: openIdIssuer
           clientId: entraSignInClientId
-          clientSecretSettingName: 'override-use-mi-fic-assertion-clientid'
         }
         validation: {
           allowedAudiences: [
