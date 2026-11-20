@@ -1,6 +1,7 @@
 name: release
 
-# Publishes a GitHub Release on SemVer tag push (avd-ops ADR 0029).
+# Standalone source-release workflow for avd-swarm (avd-ops ADR 0029).
+# Uses contents: write only (public repo guard W1 forbids id-token: write).
 on:
   push:
     tags:
@@ -10,8 +11,93 @@ permissions: {}
 
 jobs:
   release:
-    uses: avd-ops/avd-ops/.github/workflows/reusable-release.yml@a608ef34ae2f95851c47a5a70b0d3b5bb8ea6d8c
-    with:
-      default-branch: 'main'
+    runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+
+      - name: Verify SemVer tag and origin/main ancestry
+        run: |
+          python3 - <<'PY'
+          import os, re, subprocess, sys
+          tag = os.environ["TAG"]
+          sha = os.environ["GITHUB_SHA"]
+          pat = r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$"
+          if not re.match(pat, tag):
+              sys.exit(f"RESULT FAIL {tag} does not match {pat}")
+          subprocess.run(["git", "fetch", "--no-tags", "origin", "main"], check=True)
+          rc = subprocess.run(["git", "merge-base", "--is-ancestor", sha, "origin/main"]).returncode
+          if rc != 0:
+              sys.exit(f"RESULT FAIL {tag} ({sha}) is not an ancestor of origin/main")
+          print(f"RESULT PASS {tag} is a valid SemVer tag on origin/main")
+          PY
+
+      - name: Build and leak-scan release notes
+        run: |
+          python3 - <<'PY'
+          import json, os, re, subprocess, sys
+          from pathlib import Path
+
+          tag = os.environ["TAG"]
+          version = tag[1:] if tag.startswith("v") else tag
+          repo = os.environ["GH_REPO"]
+          sha = os.environ["GITHUB_SHA"]
+          cl_path = Path("CHANGELOG.md")
+
+          section = ""
+          if cl_path.exists():
+              text = cl_path.read_text(encoding="utf-8")
+              pat = re.compile(rf"^##\s+\[?v?{re.escape(version)}\]?[^\n]*\n(.*?)(?=^##\s|\Z)", re.M | re.S)
+              m = pat.search(text)
+              if m:
+                  section = m.group(1).strip()
+
+          if not section:
+              raw = subprocess.check_output(
+                  ["gh", "api", f"repos/{repo}/releases/generate-notes", "-f", f"tag_name={tag}"],
+                  text=True,
+              )
+              section = json.loads(raw).get("body", "").strip()
+
+          notes = (
+              f"{repo} `{tag}`, built from `{sha}`.\n\n"
+              "Personal project, not for production, as is; not affiliated with the author's employer or Microsoft.\n\n"
+              f"{section}\n"
+          )
+
+          # Leak and policy scan before publishing
+          bad_patterns = [
+              (r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", "UUID/GUID"),
+              (r"\b(?:10|172\.(?:1[6-9]|2\d|3[01])|192\.168)\.\d{1,3}\.\d{1,3}\b", "private IPv4"),
+              (r"[A-Za-z0-9._%+-]+@(?!users\.noreply\.github\.com|example\.com|contoso\.com)[A-Za-z0-9.-]+\.[A-Za-z]{2,}", "email"),
+              (r"\b(?:ghp_|gho_|github_pat_|AKIA)[A-Za-z0-9_]{10,}\b", "token"),
+          ]
+          for pat, label in bad_patterns:
+              if re.search(pat, notes, re.I):
+                  sys.exit(f"RESULT FAIL release notes matched {label} leak pattern")
+
+          Path("release-notes.md").write_text(notes, encoding="utf-8")
+          print("RESULT PASS release notes built and scanned")
+          PY
+
+      - name: Create draft release and publish
+        run: |
+          PRERELEASE_FLAG=""
+          if [[ "$TAG" == *-* ]]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+          gh release create "$TAG" --draft --verify-tag $PRERELEASE_FLAG --title "$TAG" --notes-file release-notes.md
+          gh release edit "$TAG" --draft=false
+          echo "RESULT PASS published $TAG"
