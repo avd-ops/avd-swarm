@@ -1,0 +1,17 @@
+name: release
+
+# Publishes a GitHub Release on SemVer tag push (avd-ops ADR 0029).
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions: {}
+
+jobs:
+  release:
+    uses: avd-ops/avd-ops/.github/workflows/reusable-release.yml@a608ef34ae2f95851c47a5a70b0d3b5bb8ea6d8c
+    with:
+      default-branch: 'main'
+    permissions:
+      contents: write
