@@ -20,7 +20,7 @@ TICKET_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 DEFAULT_JIRA_STATUS_MAP = {
     "new": "Waiting for support",
     "triaging": "In Progress",
-    "awaiting_approval": "Waiting for approval",
+    "awaiting_approval": "Pending",
     "resolved": "Resolved",
 }
 
