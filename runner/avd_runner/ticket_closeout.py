@@ -166,9 +166,25 @@ def closeout_ticket(
     ref = normalize_ticket_ref(ticket_ref)
     client = adapter or create_ticket_adapter(ref["provider"])
     note = format_closeout_note(execution_record, ref)
-    succeeded = execution_record.get("status") == "succeeded"
+    succeeded = execution_record.get("status") in ("succeeded", "applied-and-verified")
     next_state = "resolved" if succeeded else "triaging"
 
     client.add_work_note(ref["ticketId"], note, internal=not succeeded)
     client.transition_ticket(ref["ticketId"], next_state)
     return {"ticketId": ref["ticketId"], "status": next_state, "note": note}
+
+
+def closeout_plan_ticket(
+    plan: dict[str, Any],
+    execution_record: dict[str, Any],
+    adapter: Any = None,
+) -> dict[str, Any] | None:
+    """If a C9/C24 plan carries ticketRef (or extensions.avd-ops-ticket), close out that ticket."""
+    if not isinstance(plan, dict):
+        return None
+    ticket_ref = plan.get("ticketRef")
+    if not ticket_ref and isinstance(plan.get("extensions"), dict):
+        ticket_ref = plan["extensions"].get("avd-ops-ticket")
+    if not ticket_ref:
+        return None
+    return closeout_ticket(execution_record, ticket_ref, adapter=adapter)

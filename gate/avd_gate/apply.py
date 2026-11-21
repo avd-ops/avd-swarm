@@ -357,6 +357,7 @@ def apply_approved_plan(
     cosignature: dict | None = None,
     cosign_config: dict[str, Any] | None = None,
     now_utc: datetime | None = None,
+    ticket_adapter: Any = None,
 ) -> dict:
     """Executes an approved plan inside the `approve` environment after re-reading the kill switch and live state
     (spec section 5 step 7, section 5a, section 6d). Fails closed on any drift or missing verification."""
@@ -467,7 +468,7 @@ def apply_approved_plan(
             if compliance_regressed
             else "verify: positive post-action evidence missing or failed"
         )
-        return {
+        record = {
             "planId": plan_id,
             "planHash": approved_hash,
             "action": action,
@@ -476,8 +477,12 @@ def apply_approved_plan(
             "status": "verification-failed",
             "reasons": [reason],
         }
+        if ticket_adapter is not None:
+            from runner.avd_runner.ticket_closeout import closeout_plan_ticket
+            closeout_plan_ticket(plan, record, adapter=ticket_adapter)
+        return record
 
-    return {
+    record = {
         "planId": plan_id,
         "planHash": approved_hash,
         "action": action,
@@ -486,6 +491,10 @@ def apply_approved_plan(
         "status": "applied-and-verified",
         "reasons": [],
     }
+    if ticket_adapter is not None:
+        from runner.avd_runner.ticket_closeout import closeout_plan_ticket
+        closeout_plan_ticket(plan, record, adapter=ticket_adapter)
+    return record
 
 
 def redacted_summary_markdown(result: dict) -> str:

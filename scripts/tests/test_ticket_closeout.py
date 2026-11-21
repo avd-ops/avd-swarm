@@ -4,6 +4,7 @@ import unittest
 
 from runner.avd_runner.ticket_closeout import (
     MockTicketAdapter,
+    closeout_plan_ticket,
     closeout_ticket,
     create_ticket_adapter,
     format_closeout_note,
@@ -93,6 +94,15 @@ class TicketCloseoutTests(unittest.TestCase):
             normalize_ticket_ref({"provider": "mock", "ticketId": "bad ticket id!"})
         note = format_closeout_note({"planId": "p1", "planHash": "d" * 64, "action": "host.drain", "passedCount": 1, "failedCount": 0, "status": "succeeded"}, {"provider": "mock", "ticketId": "AVD-1"})
         self.assertIn("AVD-1", note)
+
+    def test_closeout_plan_ticket_handles_applied_and_verified_and_extensions(self):
+        adapter = MockTicketAdapter([{"id": "AVD-55", "status": "Pending"}])
+        plan = {"extensions": {"avd-ops-ticket": {"provider": "mock", "ticketId": "AVD-55"}}}
+        record = {"planId": "p-55", "planHash": "e" * 64, "action": "host.drain", "passedCount": 1, "failedCount": 0, "status": "applied-and-verified"}
+        res = closeout_plan_ticket(plan, record, adapter=adapter)
+        self.assertIsNotNone(res)
+        self.assertEqual(res["status"], "resolved")
+        self.assertEqual(adapter.get_ticket("AVD-55")["status"], "resolved")
 
 
 if __name__ == "__main__":
