@@ -2,11 +2,13 @@
 """Tests for the public spend guard, spend/spend_guard.py (docs/spend.md section 2). Offline: no az calls."""
 
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "spend"))
@@ -143,6 +145,66 @@ class Ledger(unittest.TestCase):
             teardown.write_text('{"step":"remove-spike","leftovers":[]}')
             self.assertEqual(g.main(["--ledger", tmp, "close", "--run-id", opened["runId"], "--teardown", str(teardown)]), 0)
             self.assertEqual(g.main(args), 0)
+
+    def test_settle_uses_azure_cost_backup_and_fails_cleanly_on_cost_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(g.main(["--ledger", tmp, "open", "--purpose", "t", "--resource-group", "rg-x",
+                                     "--estimate", "5", "--run-cap", "20", "--monthly-cap", "150",
+                                     "--month-to-date", "0"]), 0)
+            opened = g.load_runs(Path(tmp), "lab")[0]
+            teardown = Path(tmp) / "teardown.json"
+            teardown.write_text('{"step":"remove-spike","leftovers":[]}')
+            self.assertEqual(g.main(["--ledger", tmp, "close", "--run-id", opened["runId"],
+                                     "--teardown", str(teardown), "--token-cost", "1.25"]), 0)
+            with mock.patch.object(g, "read_cost", side_effect=RuntimeError("429 Too Many Requests")):
+                self.assertEqual(g.main(["--ledger", tmp, "settle", "--run-id", opened["runId"]]), 1)
+            self.assertEqual(g.main(["--ledger", tmp, "settle", "--run-id", opened["runId"],
+                                     "--azure-cost", "0.50", "--currency", "USD"]), 0)
+            settled = g.find_run(Path(tmp), "lab", opened["runId"])
+            self.assertEqual(settled["cost"]["azure"], 0.5)
+            self.assertEqual(settled["cost"]["total"], 1.75)
+
+
+class CostRetry(unittest.TestCase):
+    def test_read_cost_retries_429_and_timeout_then_succeeds(self):
+        sleeps: list[float] = []
+        calls = 0
+
+        def fake_az(*args: str) -> str:
+            nonlocal calls
+            if args[:2] == ("account", "show"):
+                return json.dumps({"id": "sub-1"})
+            calls += 1
+            if calls == 1:
+                raise RuntimeError("az rest --method failed: 429 Too Many Requests (Retry-After: 5)")
+            if calls == 2:
+                raise RuntimeError("az rest --method timed out after 60s")
+            return json.dumps(Cost.RESPONSE)
+
+        with mock.patch.object(g, "az", side_effect=fake_az):
+            cost = g.read_cost(g.cost_query(start=NOW.date(), end=NOW.date(), resource_group="rg-x"),
+                               sleep=sleeps.append)
+        self.assertEqual(cost["total"], 1.85)
+        self.assertEqual(sleeps, [5.0, 4.0])
+
+    def test_read_cost_does_not_retry_non_transient_error(self):
+        sleeps: list[float] = []
+
+        def fake_az(*args: str) -> str:
+            if args[:2] == ("account", "show"):
+                return json.dumps({"id": "sub-1"})
+            raise RuntimeError("az rest --method failed: 403 Forbidden")
+
+        with mock.patch.object(g, "az", side_effect=fake_az):
+            with self.assertRaises(RuntimeError):
+                g.read_cost(g.cost_query(start=NOW.date(), end=NOW.date(), resource_group="rg-x"),
+                            sleep=sleeps.append)
+        self.assertEqual(sleeps, [])
+
+    def test_az_timeout_raises_runtime_error(self):
+        with mock.patch.object(subprocess, "run", side_effect=subprocess.TimeoutExpired(["az"], 60)):
+            with self.assertRaisesRegex(RuntimeError, "timed out after 60s"):
+                g.az("rest", "--method", "post")
 
 
 if __name__ == "__main__":
