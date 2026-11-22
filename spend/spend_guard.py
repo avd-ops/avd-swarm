@@ -30,10 +30,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import secrets
 import shutil
 import subprocess
 import sys
+import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -247,21 +249,49 @@ def find_run(ledger: Path, sandbox: str, run_id: str) -> dict:
 
 # ---------- Azure reads (az only; nothing here writes to Azure) ----------
 
-def az(*args: str) -> str:
+def az(*args: str, timeout: float = 60.0) -> str:
     az_bin = shutil.which("az") or "az"
     try:
-        result = subprocess.run([az_bin, *args, "--only-show-errors", "-o", "json"], capture_output=True, text=True)
+        result = subprocess.run([az_bin, *args, "--only-show-errors", "-o", "json"],
+                                capture_output=True, text=True, timeout=timeout)
     except FileNotFoundError as exc:
         raise RuntimeError("Azure CLI ('az') not found on PATH") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"az {' '.join(args[:2])} timed out after {timeout:.0f}s") from exc
     if result.returncode:
         raise RuntimeError(f"az {' '.join(args[:2])} failed: {result.stderr.strip()}")
     return result.stdout
 
 
-def read_cost(body: dict) -> dict:
+def _is_transient_cost_error(message: str) -> bool:
+    lower = message.lower()
+    return any(tok in lower for tok in (
+        "429", "too many requests", "toomanyrequests",
+        "503", "504", "service unavailable", "gateway timeout", "timed out",
+    ))
+
+
+def _retry_after_seconds(message: str) -> float | None:
+    match = re.search(r"retry-after\s*[:=]\s*(\d+(?:\.\d+)?)", message, re.IGNORECASE)
+    return float(match.group(1)) if match else None
+
+
+def read_cost(body: dict, *, max_attempts: int = 5, base_delay: float = 2.0,
+              max_delay: float = 60.0, sleep=time.sleep) -> dict:
     subscription = json.loads(az("account", "show"))["id"]  # used for the call only, never written down
     url = f"https://management.azure.com/subscriptions/{subscription}/providers/Microsoft.CostManagement/query?api-version={COST_API}"
-    return sum_cost_rows(json.loads(az("rest", "--method", "post", "--url", url, "--body", json.dumps(body))))
+    payload = json.dumps(body)
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return sum_cost_rows(json.loads(az("rest", "--method", "post", "--url", url, "--body", payload)))
+        except RuntimeError as exc:
+            if attempt >= max_attempts or not _is_transient_cost_error(str(exc)):
+                raise
+            delay = min(max_delay, max(_retry_after_seconds(str(exc)) or 0.0, base_delay * (2 ** (attempt - 1))))
+            print(f"Cost Management transient error (attempt {attempt}/{max_attempts}), retrying in {delay:.1f}s...",
+                  file=sys.stderr)
+            sleep(delay)
+    raise RuntimeError("unreachable")
 
 
 # ---------- Commands ----------
@@ -323,8 +353,16 @@ def cmd_close(args) -> int:
 def cmd_settle(args) -> int:
     record = find_run(args.ledger, args.sandbox, args.run_id)
     now = datetime.now(timezone.utc)
-    azure = read_cost(cost_query(start=parse_time(record["startedAt"]).date(), end=now.date(),
-                                 resource_group=record["resourceGroup"]))
+    if args.azure_cost is not None:
+        azure = {"total": round(args.azure_cost, 4), "currency": args.currency, "byDay": {}}
+    else:
+        try:
+            azure = read_cost(cost_query(start=parse_time(record["startedAt"]).date(), end=now.date(),
+                                         resource_group=record["resourceGroup"]))
+        except RuntimeError as exc:
+            print(f"Could not read Cost Management for {args.run_id}: {exc}\n"
+                  f"Retry later or pass --azure-cost <amount> as a backup.", file=sys.stderr)
+            return 1
     settled = settle_record(record, now=now, azure=azure)
     save(args.ledger, settled)
     cost = settled["cost"]
@@ -381,6 +419,8 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("settle", help="read the run's actual Azure cost from Cost Management")
     p.add_argument("--run-id", required=True)
+    p.add_argument("--azure-cost", type=float, help="skip the Cost Management read and use this amount as backup")
+    p.add_argument("--currency", default="USD", help="currency when --azure-cost is given (default USD)")
     p.set_defaults(func=cmd_settle)
 
     p = sub.add_parser("status", help="list the sandbox's runs")
