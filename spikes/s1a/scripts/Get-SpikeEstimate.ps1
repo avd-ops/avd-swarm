@@ -28,16 +28,47 @@ if ($Provider -eq 'AzureOpenAI' -and -not $PSBoundParameters.ContainsKey('TokenU
     $TokenUpperBound = 1.00
 }
 
+$script:RetailMeterCache = @{}
+
+function Invoke-RetailPricesPage {
+    param([string] $Uri)
+    $delay = 2
+    for ($attempt = 1; $attempt -le 5; $attempt++) {
+        try {
+            return Invoke-RestMethod -Uri $Uri -Method Get
+        }
+        catch {
+            $status = $null
+            if ($_.Exception.Response) {
+                $status = [int]$_.Exception.Response.StatusCode
+            }
+            $retryable = ($status -eq 429 -or ($status -ge 500 -and $status -lt 600) -or $_.Exception.Message -match 'Too many requests')
+            if (-not $retryable -or $attempt -eq 5) { throw }
+            $wait = $delay
+            if ($_.Exception.Response -and $_.Exception.Response.Headers -and $_.Exception.Response.Headers.RetryAfter -and $_.Exception.Response.Headers.RetryAfter.Delta) {
+                $wait = [math]::Max(1, [int][math]::Ceiling($_.Exception.Response.Headers.RetryAfter.Delta.TotalSeconds))
+            }
+            Start-Sleep -Seconds $wait
+            $delay = [math]::Min(32, $delay * 2)
+        }
+    }
+}
+
 function Get-RetailMeter {
     param([string] $Filter)
+    if ($script:RetailMeterCache.ContainsKey($Filter)) {
+        return $script:RetailMeterCache[$Filter]
+    }
     $uri = "https://prices.azure.com/api/retail/prices?`$filter=$([uri]::EscapeDataString($Filter))"
     $items = [System.Collections.Generic.List[object]]::new()
     while ($uri) {
-        $page = Invoke-RestMethod -Uri $uri -Method Get
+        $page = Invoke-RetailPricesPage -Uri $uri
         $page.Items | ForEach-Object { $items.Add($_) }
         $uri = if ($page.Items.Count -gt 0) { $page.NextPageLink } else { $null }  # end on empty pages (lesson 0008)
     }
-    $items | Where-Object { $_.type -eq 'Consumption' -and $_.unitPrice -gt 0 }
+    $filtered = @($items | Where-Object { $_.type -eq 'Consumption' -and $_.unitPrice -gt 0 })
+    $script:RetailMeterCache[$Filter] = $filtered
+    $filtered
 }
 
 $lines = @(
