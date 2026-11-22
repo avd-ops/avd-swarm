@@ -1,0 +1,21 @@
+# Default-deny MCP policy for the optional w365-agents CUA gateway adapter.
+# Explicit deny always outranks allow.
+defaultDecision: deny
+maxSteps: 150
+allow:
+  - StartSession
+  - EndSession
+  - screenshot
+  - get_accessibility_tree
+  - browser_navigate
+  - click
+  - type_text
+deny:
+  - execute_shell_command
+  - execute_python_code
+  - browser_eval_js
+  - clipboard_read
+  - clipboard_write
+  - kill_process
+allowedUrls:
+  - https://learn.microsoft.com/
