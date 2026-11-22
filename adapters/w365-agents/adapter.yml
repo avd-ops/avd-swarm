@@ -1,0 +1,51 @@
+# Optional adapter for Microsoft Windows 365 for Agents (mcp_W365ComputerUse).
+# Checked by scripts/check_adapters.py. Off by default; avd-swarm remains API-first
+# and delegates UI-only tasks only through approved external-executor (C9) plans.
+
+name: w365-agents
+kind: gateway
+status: designed
+addsTo: tool-governance
+replaces: []
+default: off
+
+meters:
+  - service: Windows 365 for Agents (Pay-as-you-go runtime)
+    meter: Per-hour Cloud PC runtime billed via Azure subscription billing policy (US ~$0.40/hour, rounded up per hourly window)
+    standing: false
+    monthlyUsdIdle: 0
+    source: https://learn.microsoft.com/en-us/windows-365/
+  - service: Windows 365 for Agents (Always-available Cloud PC, optional)
+    meter: Fixed monthly charge per warmed Cloud PC (US ~$5.00/month) in addition to PAYGO runtime
+    standing: true
+    monthlyUsdIdle: 5
+    source: https://learn.microsoft.com/en-us/windows-365/
+
+identity:
+  runsAs: Entra Agent ID agent user (sponsored by operator) or id-swarm-w365a-<env>
+  mustNotHold:
+    - Owner
+    - Contributor
+    - User Access Administrator
+    - Role Based Access Control Administrator
+    - Global Administrator
+    - Intune Administrator
+  policyDeny: >-
+    Azure Policy deny on Microsoft.Authorization/roleAssignments/write for any CUA gateway identity;
+    Conditional Access for agents restricts agent users to compliant Windows 365 for Agents Cloud PCs.
+  watchdog: Core scheduled check and hosts.cua-cross-lane runbook verify CUA identities stay out of human AVD host pools.
+
+switch:
+  run: Allowed only for human-approved external-executor (C9) plans when adapters/w365-agents is enabled
+  halt-actions: Refused; no new StartSession allowed, active sessions may call EndSession only
+  halt-agents: Refused at the gateway before any MCP tool call is forwarded
+  halt-all: Refused at the gateway; active sessions terminated via EndSession
+  residual: "$0/month in pure PAYGO mode when no session is active ($5/month per Cloud PC if always-available is enabled)"
+
+events:
+  - w365agents.tool.called
+  - w365agents.tool.denied
+
+writes: none
+
+exitTests: []
