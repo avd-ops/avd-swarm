@@ -19,6 +19,12 @@ param location string = resourceGroup().location
 @description('Spend run ID, tagged on every resource (docs/spend.md).')
 param runId string
 
+@description('Optional lowercase batch identifier (defaults to lowercase runId).')
+param batchId string = ''
+
+@description('UTC ISO-8601 expiry timestamp (YYYY-MM-DDTHH:MM:SSZ) for automated orphan sweepers (defaults to UTC now + 4h).')
+param expireOn string = dateTimeAdd(utcNow(), 'PT4H')
+
 @description('Resource ID of the Container Apps environment the agent API runs in.')
 param managedEnvironmentId string
 
@@ -46,7 +52,8 @@ param cloudEnvironment string = 'commercial'
 
 param suffix string = take(uniqueString(resourceGroup().id), 6)
 
-var tags = { 'avd-swarm-run': runId, 'avd-swarm-part': 'alert-path' }
+var effectiveBatchId = empty(batchId) ? toLower(runId) : toLower(batchId)
+var tags = { 'avd-swarm-run': runId, 'avd-swarm-part': 'alert-path', 'batch-id': effectiveBatchId, 'expire-on': expireOn }
 var queueName = 'alerts'
 var roles = {
   queueSender: 'c6a89b2d-59bc-44d0-9896-0f6e12d7b80a'    // Storage Queue Data Message Sender
