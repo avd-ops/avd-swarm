@@ -112,12 +112,18 @@ try {
     az group create --name $ResourceGroup --location $Region --tags "avd-swarm-run=$runId" --only-show-errors | Out-Null
     if ($LASTEXITCODE) { throw "az group create failed (exit $LASTEXITCODE)." }
     $deployStart = Get-Date
-    $depRaw = az deployment group create `
-        --resource-group $ResourceGroup `
-        --template-file (Join-Path $SpikeRoot 'infra/main.bicep') `
-        --parameters runId=$runId `
-        --query 'properties.outputs' -o json --only-show-errors
-    if ($LASTEXITCODE) { throw "az deployment group create failed (exit $LASTEXITCODE)." }
+    $depRaw = $null
+    for ($depAttempt = 1; $depAttempt -le 3; $depAttempt++) {
+        $depRaw = az deployment group create `
+            --resource-group $ResourceGroup `
+            --template-file (Join-Path $SpikeRoot 'infra/main.bicep') `
+            --parameters runId=$runId `
+            --query 'properties.outputs' -o json --only-show-errors
+        if ($LASTEXITCODE -eq 0) { break }
+        if ($depAttempt -eq 3) { throw "az deployment group create failed (exit $LASTEXITCODE)." }
+        Write-Warning "az deployment group create failed (attempt $depAttempt/3, likely Log Analytics workspace propagation); retrying in 15s..."
+        Start-Sleep -Seconds 15
+    }
     $dep = $depRaw | ConvertFrom-Json
 
     $qPrincipal = $dep.quarantinePrincipalId.value
