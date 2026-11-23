@@ -7,14 +7,24 @@ param location string = resourceGroup().location
 @description('Spend run ID, tagged on every resource (docs/spend.md).')
 param runId string
 
+@description('Optional lowercase batch identifier (defaults to lowercase runId).')
+param batchId string = ''
+
+@description('UTC ISO-8601 expiry timestamp (YYYY-MM-DDTHH:MM:SSZ) for automated orphan sweepers (defaults to UTC now + 4h).')
+param expireOn string = dateTimeAdd(utcNow(), 'PT4H')
+
 @description('Deploy a minimal empty AVD host pool + workspace for Assumption 5/4 testing (false if reusing an existing lab pool).')
 param deployHostPool bool = false
 
 param suffix string = take(uniqueString(resourceGroup().id), 6)
 
+var effectiveBatchId = empty(batchId) ? toLower(runId) : toLower(batchId)
+
 var tags = {
   'avd-swarm-run': runId
   'avd-swarm-part': 'bouncer-verify'
+  'batch-id': effectiveBatchId
+  'expire-on': expireOn
 }
 
 // 1. User-assigned managed identities (NO Graph app roles granted; Entra AU roles assigned by Invoke-Spike.ps1).

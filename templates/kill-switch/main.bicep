@@ -19,6 +19,12 @@ param location string = resourceGroup().location
 @description('Spend run ID, tagged on every resource (docs/spend.md).')
 param runId string
 
+@description('Optional lowercase batch identifier (defaults to lowercase runId).')
+param batchId string = ''
+
+@description('UTC ISO-8601 expiry timestamp (YYYY-MM-DDTHH:MM:SSZ) for automated orphan sweepers (defaults to UTC now + 4h).')
+param expireOn string = dateTimeAdd(utcNow(), 'PT4H')
+
 @description('Name of the approve user-assigned managed identity whose federated credential is deleted at halt-actions and above.')
 param approveIdentityName string
 
@@ -49,7 +55,8 @@ param armEndpoint string = 'https://management.azure.com'
 
 param suffix string = take(uniqueString(resourceGroup().id), 6)
 
-var tags = { 'avd-swarm-run': runId, 'avd-swarm-part': 'kill-switch' }
+var effectiveBatchId = empty(batchId) ? toLower(runId) : toLower(batchId)
+var tags = { 'avd-swarm-run': runId, 'avd-swarm-part': 'kill-switch', 'batch-id': effectiveBatchId, 'expire-on': expireOn }
 
 resource switchIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: 'avd-swarm-switch-${suffix}'

@@ -109,7 +109,9 @@ $failed = $false
 
 try {
     # 2. Deploy disposable Azure resources
-    az group create --name $ResourceGroup --location $Region --tags "avd-swarm-run=$runId" --only-show-errors | Out-Null
+    $expireOn = (Get-Date).ToUniversalTime().AddHours(4).ToString('yyyy-MM-ddTHH:mm:ssZ')
+    $batchId = $runId.ToLowerInvariant()
+    az group create --name $ResourceGroup --location $Region --tags "avd-swarm-run=$runId" "batch-id=$batchId" "expire-on=$expireOn" --only-show-errors | Out-Null
     if ($LASTEXITCODE) { throw "az group create failed (exit $LASTEXITCODE)." }
     $deployStart = Get-Date
     $depRaw = $null
@@ -117,7 +119,7 @@ try {
         $depRaw = az deployment group create `
             --resource-group $ResourceGroup `
             --template-file (Join-Path $SpikeRoot 'infra/main.bicep') `
-            --parameters runId=$runId `
+            --parameters runId=$runId batchId=$batchId expireOn=$expireOn `
             --query 'properties.outputs' -o json --only-show-errors
         if ($LASTEXITCODE -eq 0) { break }
         if ($depAttempt -eq 3) { throw "az deployment group create failed (exit $LASTEXITCODE)." }
