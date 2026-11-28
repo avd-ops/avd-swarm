@@ -46,7 +46,7 @@ jobs:
         run: python3 scripts/check_runbooks.py
       - name: Action catalog declares all section 5a preconditions, limits, verification and script hashes
         run: python3 scripts/check_actions.py
-      - name: Kill switch template, watchdog rules and 4-position drill invariants (governance sections 2.3 and 2.4)
+      - name: Kill switch & outside observer templates, watchdog rules and 4-position drill invariants (governance sections 2.2-2.4)
         run: python3 scripts/check_kill_switch.py
       - name: Offline policy engine evaluates three gate rules against governance/ (governance section 2.1, V1-6)
         run: python3 scripts/check_policy.py

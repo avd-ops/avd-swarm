@@ -93,7 +93,7 @@ The counters let an observer see a runaway (an agent calling tools a thousand ti
 
 **Failing closed.** If an observer with required verdicts stops acknowledging events or heartbeats for 15 minutes, the switch moves to `halt-actions` until it is back. Reads keep working.
 
-**Observers in v1** (red team V1-18). v1 has no observer outside avd-swarm's trust boundary: the watchdog runs in the switch's own Logic App, and the person's channel is a notification. No v1 plan needs a verdict (drain and restart touch one host and no identity), so the 15-minute silence rule and required verdicts are exercised first in step 4's red team. A budget's action group that calls `trip` is registered as an observer with its own managed identity, and the trip endpoint refuses unauthenticated calls (V1-37).
+**Observers in v1** (red team V1-18). v1 has no observer outside avd-swarm's trust boundary: the watchdog runs in the switch's own Logic App, and the person's channel is a notification. No v1 plan needs a verdict (drain and restart touch one host and no identity), so the 15-minute silence rule and required verdicts are exercised first in step 4's red team. A budget's action group that calls `trip` is registered as an observer with its own managed identity, and the trip endpoint refuses unauthenticated calls (V1-37). For the near-zero-cost 3-layer external observer design and templates, see [outside-observer-spec.md](outside-observer-spec.md) (`observer/`, `templates/outside-observer/`).
 
 **Possible observers**, in the order worth building:
 1. The **watchdog** (§2.4), the minimum and always on.
