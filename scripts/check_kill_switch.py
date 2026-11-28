@@ -28,6 +28,8 @@ import yaml
 
 WATCHDOG_FILE = "governance/watchdog.yml"
 BICEP_FILE = "templates/kill-switch/main.bicep"
+OBSERVER_BICEP_FILE = "templates/outside-observer/main.bicep"
+OBSERVER_READ_RBAC_FILE = "templates/outside-observer/avd-read-rbac.bicep"
 POSITIONS = ["run", "halt-actions", "halt-agents", "halt-all"]
 TRIP_POSITIONS = {"halt-actions", "halt-agents", "halt-all"}
 REQUIRED_PRESERVED_IDENTITIES = {"stop-spend", "landing-zone-deploy", "operator"}
@@ -186,6 +188,56 @@ def bicep_errors(root: Path) -> list[str]:
     return [f"{BICEP_FILE}: {e}" for e in errors]
 
 
+def observer_bicep_errors(root: Path) -> list[str]:
+    """Validates the 3-layer outside observer Bicep templates (docs/outside-observer-spec.md)."""
+    path = root / OBSERVER_BICEP_FILE
+    if not path.is_file():
+        return [f"{OBSERVER_BICEP_FILE}: file does not exist"]
+    text = path.read_text(encoding="utf-8")
+    errors: list[str] = []
+
+    for forbidden_type in ("Microsoft.OperationalInsights/workspaces", "Microsoft.SecurityInsights/"):
+        if forbidden_type in text:
+            errors.append(f"must not deploy billable workspace/SIEM resource {forbidden_type}")
+
+    for required_resource in (
+        "Microsoft.ManagedIdentity/userAssignedIdentities",
+        "Microsoft.Storage/storageAccounts/blobServices/containers/immutabilityPolicies",
+        "Microsoft.Web/sites",
+        "Microsoft.Insights/actionGroups",
+        "Microsoft.Insights/activityLogAlerts",
+    ):
+        if required_resource not in text:
+            errors.append(f"missing required observer resource {required_resource}")
+
+    for alert_name in ("alertApproveWrite", "alertRbacOrPolicyWrite", "alertDefenderWrite", "alertSreAgentWrite"):
+        if alert_name not in text:
+            errors.append(f"missing Layer 2 Activity Log Alert {alert_name}")
+
+    for forbidden_perm in (
+        "Microsoft.Authorization/roleDefinitions@",
+        "federatedIdentityCredentials/write",
+        "containerApps/start/action",
+    ):
+        if forbidden_perm in text:
+            errors.append(f"observer template must not reference {forbidden_perm}")
+
+    if "https://management.azure.com" not in text or "https://management.usgovcloudapi.net" not in text:
+        errors.append("must support both commercial and usgov ARM endpoints (C26)")
+    if "https://graph.microsoft.com" not in text or "https://graph.microsoft.us" not in text:
+        errors.append("must support both commercial and usgov Graph endpoints (C26)")
+
+    rbac_path = root / OBSERVER_READ_RBAC_FILE
+    if not rbac_path.is_file():
+        errors.append(f"{OBSERVER_READ_RBAC_FILE}: file does not exist")
+    else:
+        rbac_text = rbac_path.read_text(encoding="utf-8")
+        if "acdd72a7-3385-48ef-bd42-f606fba81ae7" not in rbac_text:
+            errors.append(f"{OBSERVER_READ_RBAC_FILE}: must grant only built-in Reader role")
+
+    return [f"{OBSERVER_BICEP_FILE}: {e}" for e in errors]
+
+
 def simulate_drill(root: Path | None = None) -> dict[str, Any]:
     """Runs the deterministic monthly kill-switch drill across all 4 positions, adapters, MCP callers,
     and incomplete-reset re-trip (governance.md section 2.3; R13, V1-3, V1-15, WP5)."""
@@ -294,6 +346,8 @@ def simulate_drill(root: Path | None = None) -> dict[str, Any]:
 
 def check(root: Path) -> list[str]:
     errors = watchdog_errors(root) + bicep_errors(root)
+    if (root / "templates/outside-observer").is_dir():
+        errors += observer_bicep_errors(root)
     drill = simulate_drill(root)
     if not drill["passed"]:
         errors.append("simulate_drill: kill switch drill failed one or more layer invariants")

@@ -25,3 +25,9 @@ acdd72a7-3385-48ef-bd42-f606fba81ae7
 0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3
 # 4633458b-17de-408a-b874-0445c86b69e6  built-in role: Key Vault Secrets User
 4633458b-17de-408a-b874-0445c86b69e6
+# 2a2b9908-6ea1-4ae2-8e65-a410df84e7d1  built-in role: Storage Blob Data Reader
+2a2b9908-6ea1-4ae2-8e65-a410df84e7d1
+# b7e6dc6d-f1e8-4753-8033-0f276bb0955b  built-in role: Storage Blob Data Owner
+b7e6dc6d-f1e8-4753-8033-0f276bb0955b
+# 974c5e8b-45b9-4653-ba55-5f855dd0fb88  built-in role: Storage Queue Data Contributor
+974c5e8b-45b9-4653-ba55-5f855dd0fb88

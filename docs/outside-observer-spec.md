@@ -62,3 +62,13 @@ This specification defines a **near-zero-cost (~\$0.02–\$0.05/month)** externa
 
 * **Now / Step 2–3:** Layer 1 (Corroborator Function) and Layer 2 (Activity Log Alerts) can be built and unit-tested offline immediately alongside `templates/kill-switch/main.bicep` and `governance/watchdog.yml`.
 * **Step 4+:** Layer 3 (`verdict` webhook and second-opinion model) activates when plans requiring `observer: required` are introduced, exercised first in step 4's red team.
+
+---
+
+## 5. Implementation Layout
+
+* `observer/` — Python 3.12 Azure Functions Consumption package (`function_app.py`, `corroborator.py`, `verdict.py`, `models.py`, `auth.py`).
+* `templates/outside-observer/main.bicep` — Isolated-RG Bicep template deploying the User-Assigned Managed Identity, immutable audit blob container, Consumption Function App (Layer 1 + Layer 3), and zero-workspace Activity Log Alerts + Action Group (Layer 2).
+* `templates/outside-observer/avd-read-rbac.bicep` — Optional cross-RG read-only `Reader` assignment for the observer UAMI on target AVD resource groups (zero write/reset roles).
+* `templates/outside-observer/Test-OutsideObserver.ps1` — Offline Bicep build, RBAC isolation verification, and monotonic `trip` dry-run helper.
+* `scripts/check_kill_switch.py` & `scripts/tests/test_outside_observer.py` — Offline CI invariants and unit tests.
